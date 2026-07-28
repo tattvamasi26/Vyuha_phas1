@@ -1,0 +1,1415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vyuha · Founder Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Mono:wght@300;400;500&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+:root{
+  --bg:       #0C0C0F;
+  --bg2:      #111116;
+  --card:     #16161E;
+  --card2:    #1C1C28;
+  --border:   rgba(255,255,255,.07);
+  --border2:  rgba(255,255,255,.12);
+  --white:    #EEEAF4;
+  --muted:    #6B6B80;
+  --muted2:   #9090A8;
+
+  /* section accent colours */
+  --ai:       #7C5CFC;
+  --platform: #00C9A7;
+  --biz:      #F0A500;
+  --finance:  #3B82F6;
+  --supply:   #EF4444;
+  --design:   #EC4899;
+  --general:  #8B8BFF;
+
+  --accent:   var(--ai);
+}
+
+html,body{height:100%;overflow:hidden}
+
+body{
+  font-family:'Inter',sans-serif;
+  background:var(--bg);
+  color:var(--white);
+  display:flex;
+}
+
+/* ── SIDEBAR ─────────────────────────────── */
+.sidebar{
+  width:220px;
+  flex-shrink:0;
+  height:100vh;
+  background:var(--bg2);
+  border-right:1px solid var(--border);
+  display:flex;
+  flex-direction:column;
+  padding:0;
+  overflow:hidden;
+}
+
+.brand{
+  padding:20px 18px 16px;
+  border-bottom:1px solid var(--border);
+}
+
+.brand-name{
+  font-family:'Syne',sans-serif;
+  font-size:20px;
+  font-weight:800;
+  letter-spacing:-.02em;
+  color:var(--white);
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+
+.brand-dot{
+  width:8px;height:8px;
+  border-radius:50%;
+  background:var(--accent);
+  transition:background .3s;
+}
+
+.brand-sub{
+  font-family:'DM Mono',monospace;
+  font-size:10px;
+  color:var(--muted);
+  margin-top:3px;
+  letter-spacing:.05em;
+}
+
+.nav-section-label{
+  font-family:'DM Mono',monospace;
+  font-size:9px;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+  color:var(--muted);
+  padding:16px 18px 6px;
+}
+
+.nav-item{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:9px 18px;
+  cursor:pointer;
+  border-left:2px solid transparent;
+  transition:all .18s;
+  position:relative;
+}
+
+.nav-item:hover{background:rgba(255,255,255,.03)}
+
+.nav-item.active{
+  border-left-color:var(--accent);
+  background:rgba(255,255,255,.04);
+}
+
+.nav-item.active .nav-label{color:var(--white)}
+.nav-item.active .nav-icon{opacity:1}
+
+.nav-icon{
+  font-size:15px;
+  opacity:.45;
+  transition:opacity .18s;
+  width:18px;text-align:center;
+}
+
+.nav-label{
+  font-size:13px;
+  font-weight:500;
+  color:var(--muted2);
+  transition:color .18s;
+}
+
+.nav-badge{
+  margin-left:auto;
+  font-family:'DM Mono',monospace;
+  font-size:10px;
+  padding:2px 6px;
+  border-radius:20px;
+  background:rgba(255,255,255,.07);
+  color:var(--muted);
+}
+
+.nav-item.active .nav-badge{
+  background:var(--accent);
+  color:#fff;
+  opacity:.9;
+}
+
+.sidebar-footer{
+  margin-top:auto;
+  padding:14px 18px;
+  border-top:1px solid var(--border);
+  font-family:'DM Mono',monospace;
+  font-size:10px;
+  color:var(--muted);
+}
+
+/* ── MAIN ─────────────────────────────────── */
+.main{
+  flex:1;
+  height:100vh;
+  overflow-y:auto;
+  background:var(--bg);
+}
+
+.main::-webkit-scrollbar{width:4px}
+.main::-webkit-scrollbar-track{background:transparent}
+.main::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px}
+
+/* ── PAGE HEADER ─────────────────────────── */
+.page-header{
+  padding:24px 32px 20px;
+  border-bottom:1px solid var(--border);
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:16px;
+  position:sticky;
+  top:0;
+  background:var(--bg);
+  z-index:10;
+}
+
+.page-title{
+  font-family:'Syne',sans-serif;
+  font-size:22px;
+  font-weight:700;
+  letter-spacing:-.02em;
+  color:var(--white);
+}
+
+.page-desc{
+  font-size:13px;
+  color:var(--muted2);
+  margin-top:3px;
+}
+
+.accent-bar{
+  width:28px;height:3px;
+  border-radius:2px;
+  background:var(--accent);
+  margin-top:8px;
+  transition:background .3s;
+}
+
+.header-actions{display:flex;gap:8px;align-items:center;flex-shrink:0}
+
+.btn{
+  font-family:'DM Mono',monospace;
+  font-size:11px;
+  font-weight:500;
+  padding:7px 14px;
+  border-radius:7px;
+  border:none;
+  cursor:pointer;
+  transition:all .15s;
+  letter-spacing:.03em;
+}
+
+.btn-primary{
+  background:var(--accent);
+  color:#fff;
+}
+.btn-primary:hover{filter:brightness(1.1)}
+
+.btn-ghost{
+  background:rgba(255,255,255,.05);
+  color:var(--muted2);
+  border:1px solid var(--border);
+}
+.btn-ghost:hover{background:rgba(255,255,255,.08);color:var(--white)}
+
+/* ── CONTENT ─────────────────────────────── */
+.content{padding:28px 32px 60px}
+
+.section-view{display:none}
+.section-view.active{display:block}
+
+/* ── CARDS ───────────────────────────────── */
+.card{
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:12px;
+  padding:20px;
+  transition:border-color .18s;
+}
+.card:hover{border-color:var(--border2)}
+
+.card-title{
+  font-family:'Syne',sans-serif;
+  font-size:13px;
+  font-weight:600;
+  color:var(--white);
+  margin-bottom:4px;
+  letter-spacing:.01em;
+}
+
+.card-sub{
+  font-size:12px;
+  color:var(--muted);
+  line-height:1.5;
+}
+
+/* ── GRID HELPERS ────────────────────────── */
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.grid-auto{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px}
+.stack{display:flex;flex-direction:column;gap:14px}
+
+/* ── STAT ROW ────────────────────────────── */
+.stat-row{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(120px,1fr));
+  gap:12px;
+  margin-bottom:24px;
+}
+
+.stat-box{
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:10px;
+  padding:14px 16px;
+}
+
+.stat-num{
+  font-family:'Syne',sans-serif;
+  font-size:24px;
+  font-weight:700;
+  color:var(--accent);
+  letter-spacing:-.02em;
+}
+
+.stat-label{
+  font-family:'DM Mono',monospace;
+  font-size:10px;
+  color:var(--muted);
+  letter-spacing:.05em;
+  margin-top:3px;
+  text-transform:uppercase;
+}
+
+/* ── SECTION LABEL ───────────────────────── */
+.sec-label{
+  font-family:'DM Mono',monospace;
+  font-size:10px;
+  letter-spacing:.1em;
+  text-transform:uppercase;
+  color:var(--muted);
+  margin-bottom:10px;
+}
+
+.sec-heading{
+  font-family:'Syne',sans-serif;
+  font-size:16px;
+  font-weight:700;
+  color:var(--white);
+  margin-bottom:14px;
+}
+
+/* ── AI LEARN ────────────────────────────── */
+.week-grid{
+  display:grid;
+  grid-template-columns:repeat(7,1fr);
+  gap:8px;
+  margin-bottom:24px;
+}
+
+.day-slot{
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:10px;
+  padding:10px 8px;
+  text-align:center;
+  cursor:pointer;
+  transition:all .18s;
+  min-height:80px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:flex-start;
+  gap:4px;
+  position:relative;
+}
+
+.day-slot:hover{border-color:var(--ai);background:rgba(124,92,252,.06)}
+.day-slot.done{border-color:var(--ai);background:rgba(124,92,252,.1)}
+.day-slot.done .day-label{color:var(--ai)}
+.day-slot.today{border-color:var(--ai);box-shadow:0 0 0 1px var(--ai)}
+
+.day-label{
+  font-family:'DM Mono',monospace;
+  font-size:9px;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  color:var(--muted);
+  transition:color .18s;
+}
+
+.day-num{
+  font-family:'Syne',sans-serif;
+  font-size:18px;
+  font-weight:700;
+  color:var(--white);
+}
+
+.day-topic{
+  font-size:10px;
+  color:var(--muted2);
+  line-height:1.3;
+  text-align:center;
+}
+
+.day-check{
+  position:absolute;
+  top:6px;right:6px;
+  width:16px;height:16px;
+  border-radius:50%;
+  background:var(--ai);
+  display:flex;align-items:center;justify-content:center;
+  font-size:9px;
+  color:#fff;
+  opacity:0;
+  transition:opacity .18s;
+}
+.day-slot.done .day-check{opacity:1}
+
+/* ── VIDEO LIST ──────────────────────────── */
+.video-item{
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:10px;
+  padding:14px 16px;
+  display:flex;
+  align-items:flex-start;
+  gap:12px;
+  cursor:pointer;
+  transition:all .18s;
+  margin-bottom:8px;
+}
+
+.video-item:hover{border-color:rgba(124,92,252,.3);background:rgba(124,92,252,.04)}
+.video-item.watched{opacity:.6}
+.video-item.watched .v-title{text-decoration:line-through;color:var(--muted)}
+
+.v-thumb{
+  width:40px;height:40px;
+  background:rgba(124,92,252,.15);
+  border-radius:8px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:18px;
+  flex-shrink:0;
+  transition:background .18s;
+}
+.video-item:hover .v-thumb{background:rgba(124,92,252,.25)}
+
+.v-title{
+  font-size:13px;
+  font-weight:500;
+  color:var(--white);
+  margin-bottom:3px;
+  transition:all .18s;
+}
+
+.v-meta{
+  font-family:'DM Mono',monospace;
+  font-size:10px;
+  color:var(--muted);
+  letter-spacing:.03em;
+}
+
+.v-check{
+  margin-left:auto;
+  width:20px;height:20px;
+  border-radius:50%;
+  border:1.5px solid var(--border2);
+  display:flex;align-items:center;justify-content:center;
+  font-size:10px;
+  flex-shrink:0;
+  transition:all .18s;
+}
+.video-item.watched .v-check{background:var(--ai);border-color:var(--ai);color:#fff}
+
+/* ── NOTES ───────────────────────────────── */
+.notes-area{
+  width:100%;
+  background:var(--card2);
+  border:1px solid var(--border);
+  border-radius:10px;
+  padding:14px;
+  color:var(--white);
+  font-family:'Inter',sans-serif;
+  font-size:13px;
+  line-height:1.7;
+  resize:vertical;
+  min-height:120px;
+  outline:none;
+  transition:border-color .18s;
+}
+.notes-area:focus{border-color:var(--accent)}
+.notes-area::placeholder{color:var(--muted)}
+
+/* ── ROADMAP ─────────────────────────────── */
+.roadmap-phase{
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:12px;
+  overflow:hidden;
+  margin-bottom:12px;
+}
+
+.phase-header{
+  padding:14px 18px;
+  display:flex;
+  align-items:center;
+  gap:12px;
+  cursor:pointer;
+  border-bottom:1px solid var(--border);
+}
+
+.phase-tag{
+  font-family:'DM Mono',monospace;
+  font-size:10px;
+  padding:3px 8px;
+  border-radius:4px;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+  font-weight:500;
+}
+
+.phase-title{
+  font-family:'Syne',sans-serif;
+  font-size:14px;
+  font-weight:600;
+  color:var(--white);
+}
+
+.phase-timeline{
+  font-family:'DM Mono',monospace;
+  font-size:10px;
+  color:var(--muted);
+  margin-left:auto;
+  letter-spacing:.04em;
+}
+
+.phase-body{padding:14px 18px}
+
+.task-item{
+  display:flex;
+  align-items:flex-start;
+  gap:10px;
+  padding:8px 0;
+  border-bottom:1px solid var(--border);
+  cursor:pointer;
+}
+.task-item:last-child{border-bottom:none}
+
+.task-cb{
+  width:18px;height:18px;
+  border-radius:5px;
+  border:1.5px solid var(--border2);
+  display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;
+  margin-top:1px;
+  transition:all .18s;
+  font-size:10px;
+  color:#fff;
+}
+
+.task-item.done .task-cb{background:var(--accent);border-color:var(--accent)}
+.task-item.done .task-text{color:var(--muted);text-decoration:line-through}
+
+.task-text{
+  font-size:13px;
+  color:var(--white);
+  line-height:1.5;
+  transition:all .18s;
+}
+
+.task-note{
+  font-size:11px;
+  color:var(--muted);
+  margin-top:2px;
+  line-height:1.4;
+}
+
+/* ── PROGRESS BAR ────────────────────────── */
+.progress-wrap{
+  background:rgba(255,255,255,.06);
+  border-radius:4px;
+  height:4px;
+  margin-top:6px;
+  overflow:hidden;
+}
+
+.progress-fill{
+  height:100%;
+  border-radius:4px;
+  background:var(--accent);
+  transition:width .4s ease;
+}
+
+/* ── ADD INPUT ───────────────────────────── */
+.add-row{
+  display:flex;
+  gap:8px;
+  margin-top:10px;
+}
+
+.add-input{
+  flex:1;
+  background:var(--card2);
+  border:1px solid var(--border);
+  border-radius:8px;
+  padding:8px 12px;
+  color:var(--white);
+  font-family:'Inter',sans-serif;
+  font-size:13px;
+  outline:none;
+  transition:border-color .18s;
+}
+.add-input:focus{border-color:var(--accent)}
+.add-input::placeholder{color:var(--muted)}
+
+/* ── TAGS ────────────────────────────────── */
+.tag{
+  display:inline-block;
+  font-family:'DM Mono',monospace;
+  font-size:10px;
+  padding:3px 8px;
+  border-radius:5px;
+  font-weight:500;
+  letter-spacing:.04em;
+}
+
+/* ── CHALLENGE CARD ──────────────────────── */
+.challenge-row{
+  display:flex;
+  gap:0;
+  border:1px solid var(--border);
+  border-radius:12px;
+  overflow:hidden;
+  margin-bottom:10px;
+}
+
+.ch-left{
+  width:3px;
+  flex-shrink:0;
+}
+
+.ch-body{
+  flex:1;
+  padding:14px 16px;
+  background:var(--card);
+}
+
+.ch-title{
+  font-size:13px;
+  font-weight:500;
+  color:var(--white);
+  margin-bottom:4px;
+}
+
+.ch-desc{font-size:12px;color:var(--muted);line-height:1.5;margin-bottom:8px}
+
+.ch-solution{
+  background:rgba(255,255,255,.04);
+  border-radius:7px;
+  padding:9px 12px;
+  font-size:12px;
+  color:var(--muted2);
+  line-height:1.5;
+  border-left:2px solid var(--accent);
+}
+
+.ch-solution-label{
+  font-family:'DM Mono',monospace;
+  font-size:9px;
+  letter-spacing:.1em;
+  text-transform:uppercase;
+  color:var(--accent);
+  margin-bottom:4px;
+}
+
+/* ── INPUT: ADD VIDEO ────────────────────── */
+.add-video-form{
+  background:var(--card2);
+  border:1px solid var(--border);
+  border-radius:10px;
+  padding:14px;
+  margin-bottom:16px;
+}
+
+/* ── MOBILE ──────────────────────────────── */
+@media(max-width:700px){
+  .sidebar{width:52px}
+  .brand-sub,.nav-label,.nav-badge,.nav-section-label,.sidebar-footer{display:none}
+  .brand-name{font-size:0}
+  .nav-item{padding:12px;justify-content:center}
+  .nav-icon{width:auto;opacity:.6;font-size:18px}
+  .nav-item.active .nav-icon{opacity:1}
+  .page-header{padding:16px 18px 14px}
+  .content{padding:18px 18px 60px}
+  .week-grid{grid-template-columns:repeat(4,1fr)}
+  .grid-2,.grid-3{grid-template-columns:1fr}
+  .stat-row{grid-template-columns:1fr 1fr}
+}
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<aside class="sidebar">
+  <div class="brand">
+    <div class="brand-name">
+      <span class="brand-dot" id="brandDot"></span>
+      Vyuha
+    </div>
+    <div class="brand-sub">Founder OS · v0.1</div>
+  </div>
+
+  <div class="nav-section-label">Workspace</div>
+
+  <div class="nav-item active" data-section="ai" data-accent="#7C5CFC" onclick="switchSection(this)">
+    <span class="nav-icon">🧠</span>
+    <span class="nav-label">AI Learn</span>
+    <span class="nav-badge" id="badge-ai">0</span>
+  </div>
+  <div class="nav-item" data-section="platform" data-accent="#00C9A7" onclick="switchSection(this)">
+    <span class="nav-icon">⚙️</span>
+    <span class="nav-label">Platform Build</span>
+    <span class="nav-badge" id="badge-platform">0</span>
+  </div>
+  <div class="nav-item" data-section="biz" data-accent="#F0A500" onclick="switchSection(this)">
+    <span class="nav-icon">💼</span>
+    <span class="nav-label">Business</span>
+    <span class="nav-badge" id="badge-biz">0</span>
+  </div>
+  <div class="nav-item" data-section="finance" data-accent="#3B82F6" onclick="switchSection(this)">
+    <span class="nav-icon">📊</span>
+    <span class="nav-label">Finance</span>
+    <span class="nav-badge" id="badge-finance">0</span>
+  </div>
+  <div class="nav-item" data-section="supply" data-accent="#EF4444" onclick="switchSection(this)">
+    <span class="nav-icon">🔗</span>
+    <span class="nav-label">Supply Chain</span>
+    <span class="nav-badge" id="badge-supply">0</span>
+  </div>
+  <div class="nav-item" data-section="general" data-accent="#8B8BFF" onclick="switchSection(this)">
+    <span class="nav-icon">📌</span>
+    <span class="nav-label">General</span>
+    <span class="nav-badge" id="badge-general">0</span>
+  </div>
+
+  <div class="sidebar-footer">
+    <div>Last saved: <span id="lastSaved">never</span></div>
+  </div>
+</aside>
+
+<!-- MAIN -->
+<main class="main" id="main">
+
+  <!-- PAGE HEADER -->
+  <div class="page-header">
+    <div>
+      <div class="page-title" id="pageTitle">AI Learning Track</div>
+      <div class="page-desc" id="pageDesc">Track what you're learning, plan your week, take notes</div>
+      <div class="accent-bar" id="accentBar"></div>
+    </div>
+    <div class="header-actions">
+      <button class="btn btn-ghost" onclick="clearSection()">Reset</button>
+      <button class="btn btn-primary" onclick="saveAll()">Save</button>
+    </div>
+  </div>
+
+  <div class="content">
+
+    <!-- ═══════════════════ AI LEARN ═══════════════════ -->
+    <div class="section-view active" id="sec-ai">
+
+      <div class="stat-row" id="ai-stats">
+        <div class="stat-box">
+          <div class="stat-num" id="ai-watched-count">0</div>
+          <div class="stat-label">Videos watched</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-num" id="ai-days-done">0</div>
+          <div class="stat-label">Days completed</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-num" id="ai-streak">0</div>
+          <div class="stat-label">Current streak</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-num" id="ai-topics">3</div>
+          <div class="stat-label">Topics queued</div>
+        </div>
+      </div>
+
+      <!-- 7-day plan -->
+      <div class="sec-label">This week · 7-day learning plan</div>
+      <div class="week-grid" id="weekGrid"></div>
+
+      <!-- Add video -->
+      <div class="sec-label" style="margin-top:24px">Videos to cover</div>
+      <div class="add-video-form">
+        <div class="add-row">
+          <input class="add-input" id="videoTitle" placeholder="Video title or topic…">
+          <input class="add-input" id="videoSource" placeholder="Source (YouTube, Udemy…)" style="max-width:140px">
+          <button class="btn btn-primary" onclick="addVideo()">+ Add</button>
+        </div>
+        <div class="add-row" style="margin-top:8px">
+          <input class="add-input" id="videoUrl" placeholder="Paste YouTube / video link here (optional)…">
+        </div>
+      </div>
+      <div id="videoList"></div>
+
+      <!-- Notes -->
+      <div class="sec-label" style="margin-top:24px">Notes</div>
+      <div id="notesList"></div>
+      <div class="add-row" style="margin-top:8px">
+        <input class="add-input" id="noteTitle" placeholder="Note title (e.g. LangChain session 1)…">
+        <button class="btn btn-primary" onclick="addNote()">+ Note</button>
+      </div>
+    </div>
+
+    <!-- ═══════════════════ PLATFORM BUILD ═══════════════════ -->
+    <div class="section-view" id="sec-platform">
+      <div class="stat-row">
+        <div class="stat-box"><div class="stat-num" id="plat-done">0</div><div class="stat-label">Tasks done</div></div>
+        <div class="stat-box"><div class="stat-num" id="plat-total">0</div><div class="stat-label">Total tasks</div></div>
+        <div class="stat-box"><div class="stat-num" id="plat-pct">0%</div><div class="stat-label">Progress</div></div>
+      </div>
+
+      <div id="platformPhases"></div>
+
+      <div class="add-row" style="margin-top:16px">
+        <input class="add-input" id="platPhase" placeholder="Phase name…" style="max-width:160px">
+        <input class="add-input" id="platTask" placeholder="Add a task to this phase…">
+        <button class="btn btn-primary" onclick="addPlatformTask()">+ Add</button>
+      </div>
+    </div>
+
+    <!-- ═══════════════════ BUSINESS ═══════════════════ -->
+    <div class="section-view" id="sec-biz">
+      <div class="stat-row">
+        <div class="stat-box"><div class="stat-num" id="biz-done">0</div><div class="stat-label">Done</div></div>
+        <div class="stat-box"><div class="stat-num" id="biz-total">0</div><div class="stat-label">Total</div></div>
+        <div class="stat-box"><div class="stat-num" id="biz-pct">0%</div><div class="stat-label">Progress</div></div>
+      </div>
+      <div id="bizPhases"></div>
+      <div class="add-row" style="margin-top:16px">
+        <input class="add-input" id="bizPhase" placeholder="Phase name…" style="max-width:160px">
+        <input class="add-input" id="bizTask" placeholder="Add a task…">
+        <button class="btn btn-primary" onclick="addBizTask()">+ Add</button>
+      </div>
+    </div>
+
+    <!-- ═══════════════════ FINANCE ═══════════════════ -->
+    <div class="section-view" id="sec-finance">
+      <div class="stat-row">
+        <div class="stat-box"><div class="stat-num" id="fin-done">0</div><div class="stat-label">Done</div></div>
+        <div class="stat-box"><div class="stat-num" id="fin-total">0</div><div class="stat-label">Total</div></div>
+        <div class="stat-box"><div class="stat-num" id="fin-pct">0%</div><div class="stat-label">Progress</div></div>
+      </div>
+      <div id="finPhases"></div>
+      <div class="add-row" style="margin-top:16px">
+        <input class="add-input" id="finPhase" placeholder="Phase name…" style="max-width:160px">
+        <input class="add-input" id="finTask" placeholder="Add a task…">
+        <button class="btn btn-primary" onclick="addFinTask()">+ Add</button>
+      </div>
+    </div>
+
+    <!-- ═══════════════════ SUPPLY CHAIN ═══════════════════ -->
+    <div class="section-view" id="sec-supply">
+      <div class="stat-row">
+        <div class="stat-box"><div class="stat-num" id="sup-done">0</div><div class="stat-label">Done</div></div>
+        <div class="stat-box"><div class="stat-num" id="sup-total">0</div><div class="stat-label">Total</div></div>
+        <div class="stat-box"><div class="stat-num" id="sup-pct">0%</div><div class="stat-label">Progress</div></div>
+      </div>
+      <div id="supPhases"></div>
+      <div class="add-row" style="margin-top:16px">
+        <input class="add-input" id="supPhase" placeholder="Phase name…" style="max-width:160px">
+        <input class="add-input" id="supTask" placeholder="Add a task…">
+        <button class="btn btn-primary" onclick="addSupTask()">+ Add</button>
+      </div>
+    </div>
+
+    <!-- ═══════════════════ GENERAL ═══════════════════ -->
+    <div class="section-view" id="sec-general">
+      <div class="sec-label">General tasks & notes</div>
+      <div id="genTasks"></div>
+      <div class="add-row" style="margin-top:10px">
+        <input class="add-input" id="genTask" placeholder="Add a general task or note…">
+        <button class="btn btn-primary" onclick="addGenTask()">+ Add</button>
+      </div>
+
+      <!-- Challenges section inside General -->
+      <div class="sec-label" style="margin-top:32px">Challenges & proposed solutions</div>
+      <div id="challengeList">
+
+        <div class="challenge-row">
+          <div class="ch-left" style="background:#EF4444"></div>
+          <div class="ch-body">
+            <div class="ch-title">Data trust barrier</div>
+            <div class="ch-desc">Distributors are protective of buyer lists, pricing, and margin data. Handing Excel files to a stranger feels risky.</div>
+            <div class="ch-solution">
+              <div class="ch-solution-label">Proposed solution</div>
+              Start with someone you know personally or who was referred. Sign a simple NDA/data agreement upfront. Show that you process data locally and never share it. First client = trust demonstration for the next.
+            </div>
+          </div>
+        </div>
+
+        <div class="challenge-row">
+          <div class="ch-left" style="background:#F0A500"></div>
+          <div class="ch-body">
+            <div class="ch-title">Dirty Excel data</div>
+            <div class="ch-desc">Real Excel files have merged cells, inconsistent naming, broken formulas, missing entries. Cleaning takes invisible time.</div>
+            <div class="ch-solution">
+              <div class="ch-solution-label">Proposed solution</div>
+              Build a data cleaning script as part of the base layer. Charge a small "data audit fee" upfront. Set expectation: "We'll need 2–3 days to clean before building." Makes the invisible work visible and paid.
+            </div>
+          </div>
+        </div>
+
+        <div class="challenge-row">
+          <div class="ch-left" style="background:#7C5CFC"></div>
+          <div class="ch-body">
+            <div class="ch-title">Scope creep</div>
+            <div class="ch-desc">Clients will keep adding requests once you're inside their business. Without clear boundaries, one client becomes a full-time job.</div>
+            <div class="ch-solution">
+              <div class="ch-solution-label">Proposed solution</div>
+              One-page scope document before every project. List exactly what's included and what's not. Extra requests = new quote. Framing this as "professional process" actually builds more trust.
+            </div>
+          </div>
+        </div>
+
+        <div class="challenge-row">
+          <div class="ch-left" style="background:#00C9A7"></div>
+          <div class="ch-body">
+            <div class="ch-title">Explaining AI value to non-tech owners</div>
+            <div class="ch-desc">A 55-year-old distributor doesn't know what a dashboard is. Abstract value doesn't sell.</div>
+            <div class="ch-solution">
+              <div class="ch-solution-label">Proposed solution</div>
+              Show before pitching. Build a sample dashboard from dummy data that looks like their business. Walk in with a live demo, not a slide deck. "This is what your weekly report will look like" closes faster than any explanation.
+            </div>
+          </div>
+        </div>
+
+        <div class="challenge-row">
+          <div class="ch-left" style="background:#3B82F6"></div>
+          <div class="ch-body">
+            <div class="ch-title">Pricing resistance</div>
+            <div class="ch-desc">₹15,000–₹50,000 is not small for a distributor. "Why can't my nephew do this in Excel?" is a real objection.</div>
+            <div class="ch-solution">
+              <div class="ch-solution-label">Proposed solution</div>
+              Lead with time saved, not technology. "This saves your owner 3 hours a day = 90 hours a month. What's that worth?" Frame the ROI in their language. Offer a ₹2,999 pilot report first to remove risk.
+            </div>
+          </div>
+        </div>
+
+        <div class="challenge-row">
+          <div class="ch-left" style="background:#EC4899"></div>
+          <div class="ch-body">
+            <div class="ch-title">Scaling is hard early</div>
+            <div class="ch-desc">Every client has different data structures. The automation for ABC Gears won't copy directly to XYZ Fasteners.</div>
+            <div class="ch-solution">
+              <div class="ch-solution-label">Proposed solution</div>
+              This is exactly why the platform model (base layer + custom config) matters. After 5–6 clients you'll see the patterns repeat. Document every client engagement — that pattern library becomes your competitive moat.
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div><!-- /content -->
+</main>
+
+<script>
+// ── STATE ──────────────────────────────────────────────────
+const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+const today = new Date().getDay(); // 0=Sun
+const todayIdx = today === 0 ? 6 : today - 1;
+
+let state = {
+  ai: {
+    days: DAYS.map((d,i) => ({ label:d, topic:'', done:false, today: i===todayIdx })),
+    videos: [],
+    notes: [],
+    nextVideoId: 1,
+    nextNoteId: 1
+  },
+  platform: {
+    phases: [
+      { id:'p1', name:'Phase 1 · Foundation', timeline:'Month 1', color:'#00C9A7', tasks:[
+        { id:'t1', text:'Set up dev environment (Python, VS Code, Git)', done:false, note:'' },
+        { id:'t2', text:'Build Excel reader that auto-detects column structure', done:false, note:'' },
+        { id:'t3', text:'Build data cleaning pipeline (handle merged cells, blank rows)', done:false, note:'' },
+        { id:'t4', text:'Create first dashboard template (sales, stock, payments)', done:false, note:'' },
+      ]},
+      { id:'p2', name:'Phase 2 · Automation Layer', timeline:'Month 2', color:'#7C5CFC', tasks:[
+        { id:'t5', text:'WhatsApp alert system for low stock', done:false, note:'' },
+        { id:'t6', text:'Email auto-report generator (weekly PDF)', done:false, note:'' },
+        { id:'t7', text:'Quotation generator from product data', done:false, note:'' },
+        { id:'t8', text:'Payment overdue detector + reminder flow', done:false, note:'' },
+      ]},
+      { id:'p3', name:'Phase 3 · Platform Base', timeline:'Month 3–4', color:'#F0A500', tasks:[
+        { id:'t9', text:'Build client config system (per-client column mapping)', done:false, note:'' },
+        { id:'t10', text:'Onboarding flow: client uploads Excel → auto-setup', done:false, note:'' },
+        { id:'t11', text:'Web dashboard (simple, mobile-friendly)', done:false, note:'' },
+        { id:'t12', text:'Subscription billing integration (Razorpay)', done:false, note:'' },
+      ]},
+    ],
+    nextPhaseId: 4, nextTaskId: 13
+  },
+  biz: {
+    phases: [
+      { id:'b1', name:'Month 1 · Validate', timeline:'Weeks 1–4', color:'#F0A500', tasks:[
+        { id:'bt1', text:'Identify 3–5 distributors/manufacturers you know personally', done:false, note:'' },
+        { id:'bt2', text:'Build a sample dashboard using dummy data', done:false, note:'' },
+        { id:'bt3', text:'Approach first prospect — show the demo, not a pitch', done:false, note:'' },
+        { id:'bt4', text:'Deliver first client at free/low cost — document everything', done:false, note:'' },
+      ]},
+      { id:'b2', name:'Month 2 · Case Study', timeline:'Weeks 5–8', color:'#7C5CFC', tasks:[
+        { id:'bt5', text:'Collect before/after metrics from first client', done:false, note:'' },
+        { id:'bt6', text:'Get a video testimonial', done:false, note:'' },
+        { id:'bt7', text:'Create one-page pitch using case study', done:false, note:'' },
+        { id:'bt8', text:'Approach 5 businesses in one industrial cluster', done:false, note:'' },
+      ]},
+      { id:'b3', name:'Month 3 · Revenue', timeline:'Weeks 9–12', color:'#00C9A7', tasks:[
+        { id:'bt9', text:'Close 2–3 paying clients at ₹15K–25K setup fee', done:false, note:'' },
+        { id:'bt10', text:'Offer retainer to all clients (₹999–2,999/mo)', done:false, note:'' },
+        { id:'bt11', text:'Build referral incentive — reward client who refers', done:false, note:'' },
+        { id:'bt12', text:'Register the business (sole prop or LLP)', done:false, note:'' },
+      ]},
+    ],
+    nextPhaseId: 4, nextTaskId: 13
+  },
+  finance: {
+    phases: [
+      { id:'f1', name:'Startup Financials', timeline:'Month 1', color:'#3B82F6', tasks:[
+        { id:'ft1', text:'Estimate startup costs (laptop, tools, domain, GST reg)', done:false, note:'' },
+        { id:'ft2', text:'Open a separate business bank account', done:false, note:'' },
+        { id:'ft3', text:'Decide pricing — setup fee + retainer tiers', done:false, note:'' },
+        { id:'ft4', text:'Create a simple cashflow tracker (monthly)', done:false, note:'' },
+      ]},
+      { id:'f2', name:'Revenue Tracking', timeline:'Month 2–3', color:'#7C5CFC', tasks:[
+        { id:'ft5', text:'Track MRR as retainer clients grow', done:false, note:'' },
+        { id:'ft6', text:'Set a 6-month break-even target', done:false, note:'' },
+        { id:'ft7', text:'Invoice every client properly (use myBillBook or Zoho)', done:false, note:'' },
+        { id:'ft8', text:'Understand GST registration threshold (₹20L turnover)', done:false, note:'' },
+      ]},
+    ],
+    nextPhaseId: 3, nextTaskId: 9
+  },
+  supply: {
+    phases: [
+      { id:'s1', name:'Understand the Domain', timeline:'Month 1', color:'#EF4444', tasks:[
+        { id:'st1', text:'Learn how distributors manage stock (visit 2–3 in person)', done:false, note:'' },
+        { id:'st2', text:'Map the typical distributor data model (what Excel sheets they use)', done:false, note:'' },
+        { id:'st3', text:'Understand supplier → distributor → retailer flow', done:false, note:'' },
+        { id:'st4', text:'Identify top 5 pain points in the supply chain from client interviews', done:false, note:'' },
+      ]},
+      { id:'s2', name:'Build Supply Chain Intelligence', timeline:'Month 2–3', color:'#F0A500', tasks:[
+        { id:'st5', text:'Reorder point calculator from historical data', done:false, note:'' },
+        { id:'st6', text:'Supplier lead time tracker', done:false, note:'' },
+        { id:'st7', text:'Slow-moving and dead stock identifier', done:false, note:'' },
+        { id:'st8', text:'Purchase vs sales reconciliation report', done:false, note:'' },
+      ]},
+    ],
+    nextPhaseId: 3, nextTaskId: 9
+  },
+  general: {
+    tasks: [
+      { id:'g1', text:'Choose a product name → Vyuha ✓', done:true },
+      { id:'g2', text:'Build pitch deck for friend', done:true },
+      { id:'g3', text:'Do competitive analysis (myBillBook, Vyapar)', done:true },
+      { id:'g4', text:'Identify first potential client to approach', done:false },
+      { id:'g5', text:'Create a simple 1-page scope document template', done:false },
+    ],
+    nextId: 6
+  }
+};
+
+// ── ACCENT COLOUR SWITCHING ────────────────────────────────
+function setAccent(color) {
+  document.documentElement.style.setProperty('--accent', color);
+  document.getElementById('brandDot').style.background = color;
+  document.getElementById('accentBar').style.background = color;
+}
+
+const PAGE_META = {
+  ai:       { title:'AI Learning Track',       desc:'Videos, 7-day plan, and notes on what you\'re learning', accent:'#7C5CFC' },
+  platform: { title:'Platform Build Roadmap',  desc:'Step-by-step plan to build the Vyuha platform',           accent:'#00C9A7' },
+  biz:      { title:'Business Roadmap',         desc:'Client acquisition, case studies, and revenue steps',     accent:'#F0A500' },
+  finance:  { title:'Finance Roadmap',          desc:'Cashflow, pricing, invoicing, and break-even tracking',   accent:'#3B82F6' },
+  supply:   { title:'Supply Chain Track',       desc:'Understand the domain and build supply chain intelligence', accent:'#EF4444' },
+  general:  { title:'General Tasks & Challenges', desc:'Pending tasks, decisions, and known challenges with solutions', accent:'#8B8BFF' },
+};
+
+function switchSection(el) {
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  el.classList.add('active');
+  const sec = el.dataset.section;
+  const accent = el.dataset.accent;
+  setAccent(accent);
+  document.querySelectorAll('.section-view').forEach(s => s.classList.remove('active'));
+  document.getElementById('sec-' + sec).classList.add('active');
+  const meta = PAGE_META[sec];
+  document.getElementById('pageTitle').textContent = meta.title;
+  document.getElementById('pageDesc').textContent = meta.desc;
+  renderAll();
+}
+
+// ── RENDER ─────────────────────────────────────────────────
+
+function renderWeek() {
+  const grid = document.getElementById('weekGrid');
+  grid.innerHTML = '';
+  state.ai.days.forEach((day, i) => {
+    const div = document.createElement('div');
+    div.className = 'day-slot' + (day.done?' done':'') + (day.today?' today':'');
+    div.innerHTML = `
+      <div class="day-check">✓</div>
+      <div class="day-label">${day.label}</div>
+      <div class="day-num">${i+1}</div>
+      <div class="day-topic">${day.topic || '<span style="color:var(--muted);font-size:9px">No topic yet</span>'}</div>
+    `;
+    div.onclick = () => openDayModal(i);
+    grid.appendChild(div);
+  });
+  document.getElementById('ai-days-done').textContent = state.ai.days.filter(d=>d.done).length;
+}
+
+function renderVideos() {
+  const list = document.getElementById('videoList');
+  list.innerHTML = '';
+  if(!state.ai.videos.length) {
+    list.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:12px 0">No videos added yet. Add your first one above.</div>';
+    return;
+  }
+  state.ai.videos.forEach((v, idx) => {
+    const div = document.createElement('div');
+    div.className = 'video-item' + (v.watched?' watched':'');
+    div.style.flexDirection = 'column';
+    div.style.alignItems = 'stretch';
+    div.innerHTML = `
+      <div style="display:flex;align-items:flex-start;gap:12px">
+        <div class="v-thumb">🎬</div>
+        <div style="flex:1;min-width:0">
+          <div class="v-title">${v.title}</div>
+          <div class="v-meta">${v.source}</div>
+          ${v.url ? `
+          <div style="display:flex;align-items:center;gap:6px;margin-top:7px;flex-wrap:wrap">
+            <div style="
+              font-family:'DM Mono',monospace;
+              font-size:10px;
+              color:var(--muted);
+              background:rgba(255,255,255,.05);
+              border:1px solid var(--border);
+              border-radius:6px;
+              padding:4px 9px;
+              overflow:hidden;
+              text-overflow:ellipsis;
+              white-space:nowrap;
+              max-width:220px;
+              flex:1;
+              min-width:0;
+            ">${v.url}</div>
+            <button onclick="event.stopPropagation();copyUrl(${idx})" style="
+              font-family:'DM Mono',monospace;
+              font-size:10px;
+              padding:4px 10px;
+              border-radius:6px;
+              border:1px solid var(--border);
+              background:rgba(255,255,255,.05);
+              color:var(--muted2);
+              cursor:pointer;
+              transition:all .15s;
+              white-space:nowrap;
+              flex-shrink:0;
+            " id="copybtn-${idx}">⎘ Copy link</button>
+            <a href="${v.url}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="
+              font-family:'DM Mono',monospace;
+              font-size:10px;
+              padding:4px 10px;
+              border-radius:6px;
+              border:1px solid rgba(124,92,252,.3);
+              background:rgba(124,92,252,.1);
+              color:#a78bfa;
+              cursor:pointer;
+              text-decoration:none;
+              white-space:nowrap;
+              flex-shrink:0;
+              transition:all .15s;
+            ">↗ Open</a>
+          </div>` : ''}
+        </div>
+        <div class="v-check" onclick="event.stopPropagation();toggleWatch(${idx})">${v.watched?'✓':''}</div>
+      </div>
+    `;
+    div.onclick = () => toggleWatch(idx);
+    list.appendChild(div);
+  });
+  document.getElementById('ai-watched-count').textContent = state.ai.videos.filter(v=>v.watched).length;
+  document.getElementById('ai-topics').textContent = state.ai.videos.filter(v=>!v.watched).length;
+  updateBadge('ai');
+}
+
+function renderNotes() {
+  const list = document.getElementById('notesList');
+  if(!state.ai.notes.length) { list.innerHTML=''; return; }
+  list.innerHTML = '';
+  state.ai.notes.forEach(n => {
+    const wrap = document.createElement('div');
+    wrap.style.marginBottom = '12px';
+    wrap.innerHTML = `
+      <div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:5px">${n.title}</div>
+      <textarea class="notes-area" placeholder="Write your notes here…" oninput="state.ai.notes[${state.ai.notes.indexOf(n)}].body=this.value">${n.body||''}</textarea>
+    `;
+    list.appendChild(wrap);
+  });
+}
+
+function updateAIStats() {
+  document.getElementById('ai-watched-count').textContent = state.ai.videos.filter(v=>v.watched).length;
+  document.getElementById('ai-topics').textContent = state.ai.videos.filter(v=>!v.watched).length;
+  document.getElementById('ai-days-done').textContent = state.ai.days.filter(d=>d.done).length;
+  updateBadge('ai');
+}
+
+// Generic phase renderer
+function renderPhases(containerId, phases, sectionKey, doneId, totalId, pctId) {
+  const container = document.getElementById(containerId);
+  if(!container) return;
+  container.innerHTML = '';
+  let done=0, total=0;
+  phases.forEach(phase => {
+    const phaseDone = phase.tasks.filter(t=>t.done).length;
+    const phaseTotal = phase.tasks.length;
+    done += phaseDone; total += phaseTotal;
+    const pct = phaseTotal ? Math.round(phaseDone/phaseTotal*100) : 0;
+
+    const div = document.createElement('div');
+    div.className = 'roadmap-phase';
+    div.innerHTML = `
+      <div class="phase-header">
+        <span class="phase-tag" style="background:${phase.color}22;color:${phase.color}">${phaseDone}/${phaseTotal}</span>
+        <span class="phase-title">${phase.name}</span>
+        <span class="phase-timeline">${phase.timeline||''}</span>
+      </div>
+      <div class="progress-wrap" style="margin:0;border-radius:0;height:3px;background:rgba(255,255,255,.04)">
+        <div class="progress-fill" style="width:${pct}%;background:${phase.color}"></div>
+      </div>
+      <div class="phase-body">
+        ${phase.tasks.map(t => `
+          <div class="task-item${t.done?' done':''}" onclick="toggleTask('${sectionKey}','${phase.id}','${t.id}')">
+            <div class="task-cb">${t.done?'✓':''}</div>
+            <div>
+              <div class="task-text">${t.text}</div>
+              ${t.note?`<div class="task-note">${t.note}</div>`:''}
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+    container.appendChild(div);
+  });
+  if(doneId) document.getElementById(doneId).textContent = done;
+  if(totalId) document.getElementById(totalId).textContent = total;
+  if(pctId) document.getElementById(pctId).textContent = total ? Math.round(done/total*100)+'%' : '0%';
+}
+
+function renderGeneral() {
+  const list = document.getElementById('genTasks');
+  if(!list) return;
+  list.innerHTML = '';
+  state.general.tasks.forEach(t => {
+    const div = document.createElement('div');
+    div.className = 'task-item' + (t.done?' done':'');
+    div.innerHTML = `
+      <div class="task-cb">${t.done?'✓':''}</div>
+      <div class="task-text">${t.text}</div>
+    `;
+    div.onclick = () => { t.done = !t.done; renderGeneral(); updateBadge('general'); };
+    list.appendChild(div);
+  });
+  updateBadge('general');
+}
+
+function renderAll() {
+  renderWeek(); renderVideos(); renderNotes();
+  renderPhases('platformPhases', state.platform.phases, 'platform', 'plat-done','plat-total','plat-pct');
+  renderPhases('bizPhases', state.biz.phases, 'biz', 'biz-done','biz-total','biz-pct');
+  renderPhases('finPhases', state.finance.phases, 'finance', 'fin-done','fin-total','fin-pct');
+  renderPhases('supPhases', state.supply.phases, 'supply', 'sup-done','sup-total','sup-pct');
+  renderGeneral();
+  updateAllBadges();
+}
+
+// ── TOGGLE TASK ────────────────────────────────────────────
+function toggleTask(section, phaseId, taskId) {
+  const sectionData = state[section];
+  const phase = sectionData.phases.find(p=>p.id===phaseId);
+  if(!phase) return;
+  const task = phase.tasks.find(t=>t.id===taskId);
+  if(!task) return;
+  task.done = !task.done;
+  renderPhases(section+'Phases', sectionData.phases, section,
+    section==='platform'?'plat-done':section==='biz'?'biz-done':section==='finance'?'fin-done':'sup-done',
+    section==='platform'?'plat-total':section==='biz'?'biz-total':section==='finance'?'fin-total':'sup-total',
+    section==='platform'?'plat-pct':section==='biz'?'biz-pct':section==='finance'?'fin-pct':'sup-pct'
+  );
+  updateBadge(section);
+}
+
+// ── ADD FUNCTIONS ──────────────────────────────────────────
+function addVideo() {
+  const title = document.getElementById('videoTitle').value.trim();
+  const source = document.getElementById('videoSource').value.trim() || 'YouTube';
+  const url = document.getElementById('videoUrl').value.trim();
+  if(!title) return;
+  state.ai.videos.push({ id: state.ai.nextVideoId++, title, source, url, watched:false });
+  document.getElementById('videoTitle').value = '';
+  document.getElementById('videoSource').value = '';
+  document.getElementById('videoUrl').value = '';
+  renderVideos();
+}
+
+function addNote() {
+  const title = document.getElementById('noteTitle').value.trim();
+  if(!title) return;
+  state.ai.notes.push({ id: state.ai.nextNoteId++, title, body:'' });
+  document.getElementById('noteTitle').value = '';
+  renderNotes();
+}
+
+function addPlatformTask() { addTaskToSection('platform', 'platPhase', 'platTask'); }
+function addBizTask() { addTaskToSection('biz', 'bizPhase', 'bizTask'); }
+function addFinTask() { addTaskToSection('finance', 'finPhase', 'finTask'); }
+function addSupTask() { addTaskToSection('supply', 'supPhase', 'supTask'); }
+
+function addTaskToSection(section, phaseInputId, taskInputId) {
+  const phaseName = document.getElementById(phaseInputId).value.trim() || 'General';
+  const taskText = document.getElementById(taskInputId).value.trim();
+  if(!taskText) return;
+
+  const s = state[section];
+  let phase = s.phases.find(p => p.name === phaseName);
+  if(!phase) {
+    const colors = ['#00C9A7','#7C5CFC','#F0A500','#EF4444','#3B82F6','#EC4899'];
+    phase = { id: 'p'+s.nextPhaseId++, name: phaseName, timeline:'', color: colors[s.phases.length % colors.length], tasks:[] };
+    s.phases.push(phase);
+  }
+  phase.tasks.push({ id: 't'+s.nextTaskId++, text: taskText, done:false, note:'' });
+  document.getElementById(taskInputId).value = '';
+
+  const containerId = section+'Phases';
+  const ids = {
+    platform: ['plat-done','plat-total','plat-pct'],
+    biz: ['biz-done','biz-total','biz-pct'],
+    finance: ['fin-done','fin-total','fin-pct'],
+    supply: ['sup-done','sup-total','sup-pct'],
+  };
+  renderPhases(containerId, s.phases, section, ...ids[section]);
+  updateBadge(section);
+}
+
+function addGenTask() {
+  const text = document.getElementById('genTask').value.trim();
+  if(!text) return;
+  state.general.tasks.push({ id:'g'+state.general.nextId++, text, done:false });
+  document.getElementById('genTask').value = '';
+  renderGeneral();
+}
+
+// ── DAY MODAL ─────────────────────────────────────────────
+function openDayModal(idx) {
+  const day = state.ai.days[idx];
+  const topic = prompt(`Day ${idx+1} (${day.label}) — topic:`, day.topic || '');
+  if(topic === null) return;
+  day.topic = topic;
+  const mark = confirm('Mark this day as completed?');
+  day.done = mark;
+  renderWeek();
+  updateBadge('ai');
+}
+
+// ── BADGES ────────────────────────────────────────────────
+function updateBadge(section) {
+  let count = 0;
+  if(section === 'ai') {
+    count = state.ai.videos.filter(v=>!v.watched).length + state.ai.days.filter(d=>!d.done).length;
+  } else if(section === 'general') {
+    count = state.general.tasks.filter(t=>!t.done).length;
+  } else if(state[section] && state[section].phases) {
+    count = state[section].phases.reduce((acc,p) => acc + p.tasks.filter(t=>!t.done).length, 0);
+  }
+  const badge = document.getElementById('badge-'+section);
+  if(badge) badge.textContent = count;
+}
+
+function updateAllBadges() {
+  ['ai','platform','biz','finance','supply','general'].forEach(updateBadge);
+}
+
+// ── SAVE / LOAD ───────────────────────────────────────────
+async function saveAll() {
+  try {
+    const result = await window.storage.set('vyuha_state', JSON.stringify(state));
+    if(result) {
+      const now = new Date();
+      document.getElementById('lastSaved').textContent = now.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+      const btn = document.querySelector('.btn-primary');
+      btn.textContent = 'Saved ✓';
+      setTimeout(()=>btn.textContent='Save', 1500);
+    }
+  } catch(e) {
+    // fallback: use localStorage if available
+    try { localStorage.setItem('vyuha_state', JSON.stringify(state)); } catch(_){}
+  }
+}
+
+async function loadState() {
+  try {
+    const result = await window.storage.get('vyuha_state');
+    if(result && result.value) {
+      const saved = JSON.parse(result.value);
+      // Deep merge to preserve any new default data
+      if(saved.ai) state.ai = {...state.ai, ...saved.ai};
+      if(saved.platform) state.platform = {...state.platform, ...saved.platform};
+      if(saved.biz) state.biz = {...state.biz, ...saved.biz};
+      if(saved.finance) state.finance = {...state.finance, ...saved.finance};
+      if(saved.supply) state.supply = {...state.supply, ...saved.supply};
+      if(saved.general) state.general = {...state.general, ...saved.general};
+      document.getElementById('lastSaved').textContent = 'restored';
+    }
+  } catch(e) {
+    try {
+      const saved = localStorage.getItem('vyuha_state');
+      if(saved) { Object.assign(state, JSON.parse(saved)); }
+    } catch(_){}
+  }
+  renderAll();
+}
+
+function clearSection() {
+  if(!confirm('Reset all data in this section?')) return;
+}
+
+// ── INIT ──────────────────────────────────────────────────
+setAccent('#7C5CFC');
+loadState();
+</script>
+</body>
+</html>
