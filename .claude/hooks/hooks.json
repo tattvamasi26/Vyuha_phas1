@@ -1,0 +1,8 @@
+{
+  "hooks": [
+    { "event": "before_tool_use", "matcher": "task", "script": "pre-plan.py" },
+    { "event": "after_tool_use", "matcher": "write|edit", "script": "post-development.py" },
+    { "event": "after_file_change", "matcher": "requirements/**", "script": "on-requirement-change.py" },
+    { "event": "before_tool_use", "matcher": "bash", "script": "pre-deploy.py" }
+  ]
+}
