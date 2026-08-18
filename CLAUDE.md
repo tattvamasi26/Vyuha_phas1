@@ -47,7 +47,7 @@ Five stages, one per module, wired by `pipeline.run()` → `RunResult`. Each sta
 - **`sample.py`** — generates the messy demo workbook: junk rows and a merged title above the header, blank spacers, a Grand Total row, ₹/comma/paren/Cr number formats, dates as text in one sheet and real dates in another, four spellings of one customer, three planted dead SKUs, one planted about-to-stock-out SKU, and a prose "Notes" sheet that must be skipped. It is both the test fixture and the demo file for prospects.
 - **`cli.py`** — `run` / `check` / `demo`. `say()` exists because the Windows console is cp1252 and cannot encode ₹; it transliterates on the way out rather than weakening the report.
 
-`tests/test_pipeline.py` covers value parsing, header detection under junk rows, column mapping, classification, total-row exclusion, derived amounts, a full end-to-end run against the sample, and the self-contained-report guarantee. It runs under pytest *or* standalone via `python -m tests.test_pipeline`.
+`tests/test_pipeline.py` covers value parsing, header detection under junk rows, column mapping, classification, total-row exclusion, derived amounts, a full end-to-end run against the sample, and the self-contained-report guarantee. The file is written to run under pytest *or* standalone, but **pytest is not installed in `.venv` and is not a declared dependency** — `python -m pytest` fails with "No module named pytest". Use `python -m tests.test_pipeline`.
 
 ## Architecture of `vyuha_dashboard.html`
 
