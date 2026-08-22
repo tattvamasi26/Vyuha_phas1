@@ -10,7 +10,7 @@ from __future__ import annotations
 import html
 from datetime import datetime
 
-from . import schema
+from . import fmt, schema
 from .analyze import CRITICAL, INFO, WARNING, Alert, Insights
 
 ACCENTS = {
@@ -483,37 +483,13 @@ def esc(value: object) -> str:
 
 
 def money(amount: float | None) -> str:
-    """Full rupee amount in Indian digit grouping: ₹12,34,567."""
-    if amount is None:
-        return "—"
-    amount = float(amount)
-    sign = "-" if amount < 0 else ""
-    whole = f"{abs(amount):.0f}"
-    if len(whole) > 3:
-        head, tail = whole[:-3], whole[-3:]
-        pieces = []
-        while len(head) > 2:
-            pieces.insert(0, head[-2:])
-            head = head[:-2]
-        if head:
-            pieces.insert(0, head)
-        whole = ",".join(pieces) + "," + tail
-    return f"{sign}&#8377;{whole}"
+    """Full rupee amount in Indian digit grouping: &#8377;12,34,567 (HTML)."""
+    return fmt.rupees(amount, symbol=fmt.RUPEE_HTML, dash="—")
 
 
 def money_short(amount: float | None) -> str:
-    if amount is None:
-        return "—"
-    amount = float(amount)
-    sign = "-" if amount < 0 else ""
-    value = abs(amount)
-    if value >= 1_00_00_000:
-        return f"{sign}&#8377;{value / 1_00_00_000:.2f} Cr"
-    if value >= 1_00_000:
-        return f"{sign}&#8377;{value / 1_00_000:.2f} L"
-    if value >= 1_000:
-        return f"{sign}&#8377;{value / 1_000:.1f} K"
-    return f"{sign}&#8377;{value:,.0f}"
+    """Abbreviated rupee amount for HTML: &#8377;2.10 L."""
+    return fmt.rupees_short(amount, symbol=fmt.RUPEE_HTML, dash="—")
 
 
 def num(value: float | int | None) -> str:

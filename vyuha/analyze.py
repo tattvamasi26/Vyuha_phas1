@@ -42,6 +42,13 @@ class Alert:
     title: str
     detail: str
     value: float | None = None
+    #: Stable machine identity. Channels dispatch on this rather than parsing
+    #: ``title``, so rewording a title can never silently break a renderer.
+    code: str = "generic"
+    #: The SKUs / parties / invoices behind the alert, structured. ``detail`` is
+    #: pre-rendered English for the dashboard; this is what other channels
+    #: (WhatsApp, email) re-format to their own length limits.
+    entities: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -205,6 +212,7 @@ def _add_trend(out: dict, insights: Insights) -> None:
                 f"{latest['label']} did {_inr(latest['amount'])} against "
                 f"{_inr(previous['amount'])} in {previous['label']}.",
                 value=abs(change) * 100,
+                code="revenue_drop",
             )
         )
 
@@ -226,6 +234,8 @@ def _check_concentration(out: dict, insights: Insights) -> None:
                 + ", ".join(row["label"] for row in top[:3])
                 + " would take a visible bite out of the month.",
                 value=share * 100,
+                code="concentration",
+                entities=[row["label"] for row in top[:3]],
             )
         )
 
@@ -303,6 +313,8 @@ def _analyse_stock(
                     + ", ".join(r["label"] for r in out["below_reorder"][:3])
                     + ". Raise a purchase order before these stock out.",
                     value=float(len(below.index)),
+                    code="below_reorder",
+                    entities=[r["label"] for r in out["below_reorder"]],
                 )
             )
     elif out["out_of_stock_count"]:
@@ -313,6 +325,8 @@ def _analyse_stock(
                 "No reorder-level column in the file, so this is based on zero "
                 "or negative stock alone.",
                 value=float(out["out_of_stock_count"]),
+                code="out_of_stock",
+                entities=[r["label"] for r in out["out_of_stock"]],
             )
         )
 
@@ -438,6 +452,8 @@ def _stock_movement(
                  if locked else "")
                 + "Discount, bundle or return these before they age further.",
                 value=locked or float(len(dead)),
+                code="dead_stock",
+                entities=[d["label"] for d in dead],
             )
         )
 
@@ -476,6 +492,8 @@ def _stock_movement(
                     )
                     + ".",
                     value=float(len(at_risk)),
+                    code="stockout_risk",
+                    entities=[f"{r['label']} ({r['days_cover']:g}d)" for r in at_risk],
                 )
             )
     return out
@@ -576,6 +594,11 @@ def _analyse_receivables(frame: pd.DataFrame, insights: Insights, as_of: datetim
                     else "."
                 ),
                 value=out["overdue_total"],
+                code="overdue_ar",
+                entities=[
+                    f"{r['party']} · {r['invoice']} · {_inr(r['amount'])} · {r['days']}d"
+                    for r in out.get("worst_overdue", [])
+                ],
             )
         )
 
