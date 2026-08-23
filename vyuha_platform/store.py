@@ -19,6 +19,7 @@ REPO = Path(__file__).resolve().parent.parent
 DATA = REPO / "vyuha_data"
 UPLOADS = DATA / "uploads"
 DASHBOARDS = DATA / "dashboards"
+COVERS = DATA / "covers"
 REGISTRY = DATA / "clients.json"
 
 
@@ -42,6 +43,14 @@ class Run:
     status: str = "ok"              # ok | failed
     error: str = ""
     dashboard: str = ""             # path relative to DASHBOARDS
+    # --- provenance: how this file was read before the engine ever saw it.
+    # A number transcribed from a photograph must never look identical to one
+    # typed into Excel, so every run carries its own reading method forward.
+    source_kind: str = "native"     # native | text | pdf-text | vision-image | vision-pdf
+    source_method: str = ""         # human-readable, e.g. "Handwriting read by Claude"
+    confidence: str = "high"        # high | medium | low
+    source_notes: list[str] = field(default_factory=list)
+    converted: str = ""             # the CSV actually handed to the engine, if any
     alert_count: int = 0
     critical_count: int = 0
     sheets_read: list[str] = field(default_factory=list)
@@ -61,6 +70,13 @@ class Client:
     email: str = ""
     industry: str = ""
     created_at: str = field(default_factory=_now)
+    #: "upload" — they send files. "books" — they have no spreadsheet at all and
+    #: type entries in directly. Both end up in the same engine; see books.py.
+    data_mode: str = "upload"
+    #: Drives the workspace's colour and default backdrop. See ui.TRADES.
+    trade: str = "general"
+    #: True once they have uploaded their own cover photo (served at /c/<slug>/cover).
+    has_cover: bool = False
     # Per-client alert thresholds. The engine's module-level constants are the
     # defaults; a slow-moving spares dealer and an FMCG distributor do not share
     # a definition of "dead".
@@ -143,6 +159,11 @@ def upload_dir(slug: str) -> Path:
     d = UPLOADS / slug
     d.mkdir(parents=True, exist_ok=True)
     return d
+
+
+def covers_dir() -> Path:
+    COVERS.mkdir(parents=True, exist_ok=True)
+    return COVERS
 
 
 def dashboard_dir(slug: str) -> Path:

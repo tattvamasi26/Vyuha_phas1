@@ -26,7 +26,7 @@ python -m venv .venv
 .venv/Scripts/python -m vyuha run FILE.xlsx --client "Name" --open
 .venv/Scripts/python -m vyuha check FILE.xlsx   # what was understood, no report written
 .venv/Scripts/python -m tests.test_pipeline     # 13 engine tests, no pytest required
-.venv/Scripts/python -m tests.test_platform     # 7 platform tests, same runner
+.venv/Scripts/python -m tests.test_platform     # 24 platform tests, same runner
 
 .venv/Scripts/python -m vyuha_platform --open   # the web platform on :8000
 ```
@@ -74,8 +74,62 @@ but **not yet declared in `pyproject.toml`**.
 - **`ui.py`** — hand-rolled HTML strings (same choice as `report.py`). Dark, glass-card styling.
   Unlike the client dashboard this **may** use a webfont CDN, since it is served over localhost;
   the embedded dashboard is still strictly self-contained and a test enforces that.
-- **`app.py`** — routes: `/` portfolio, `/onboard`, `/c/{slug}?tab=data|dashboard|alerts`,
-  `POST /c/{slug}/upload`, `/c/{slug}/dashboard`, `POST /c/{slug}/delete`.
+- **`sources.py`** — everything that is not a spreadsheet is *converted to a CSV first* and then
+  handed to the unchanged pipeline: `.txt`/`.tsv` by delimiter sniffing, `.pdf` via its own text
+  layer, and images plus scanned PDFs via **Claude vision** (`claude-opus-5`, base64 image /
+  document blocks, structured output). Every conversion returns an `Extraction` carrying method
+  and confidence, surfaced in the UI — a number transcribed from a photograph must never look
+  identical to one typed into Excel. Vision needs `anthropic_key`; without it those uploads are
+  rejected with the action required, never silently.
+- **`books.py`** — for a business with no spreadsheet at all (the nursery/manure case). Keeps a
+  small `Item`/`Sale` ledger per client in `vyuha_data/books/<slug>.json`, decrements stock on
+  each sale, and **writes the whole thing out as a workbook whose sheet names and headers
+  `schema.py` already recognises** (Sales Register / Stock Statement / Outstanding). Typed-in
+  entries and uploaded files therefore converge on the same engine, same dead-stock join, same
+  alerts. `app._rebuild_from_book()` re-runs the pipeline after every edit.
+- **`ledger.py`** — append-only JSONL at `vyuha_data/activity.jsonl`. Every onboard, file,
+  conversion, run, send and export is logged, so "where did this number come from" is one screen
+  away (`/activity`, filterable by client and event).
+- **`exports.py`** — PDF (reportlab), PPTX (python-pptx) and a framed email + SMTP sender, all
+  rendered from the same `Insights` as the dashboard so they cannot disagree. **The PDF uses
+  `Rs.` because the Helvetica core fonts have no ₹ glyph** — precisely the split `vyuha/fmt.py`
+  exists to make explicit.
+- **`config.py`** — settings and credentials from `vyuha_data/config.json` + env vars, with
+  `whatsapp_live` / `vision_live` / `email_live` capability probes. Secrets are write-only in the
+  UI (masked on render, blank means "keep"). `install` is `operator` or `tenant` — see the
+  section below; it is set at first run and intentionally not editable from the UI.
+- **`app.py`** — routes: `/` portfolio, `/onboard`, `/setup`, `/settings`, `/activity`,
+  `/c/{slug}?tab=data|books|dashboard|alerts|settings`, `POST /c/{slug}/upload`,
+  `POST /c/{slug}/book/item|sale`, `/c/{slug}/export/{pdf|pptx|html}`,
+  `POST /c/{slug}/email|whatsapp|delete`.
+
+- **`theme.py`** — per-trade accent colour and a generated backdrop (inline SVG data URIs:
+  fronds for a nursery, crates for distribution, cogs for manufacturing, shelves for retail).
+  No stock photography: the backdrops render instantly, work offline, never 404, and cannot be
+  mistaken for someone else's shop. `theme.guess()` infers the trade from the business name so
+  nobody picks twice. A client's own uploaded cover photo (`/c/<slug>/cover`) always wins.
+
+## Operator vs tenant — the product boundary
+
+`settings.install` is chosen once on first run and is **not** an editable preference, because
+flipping it would change who can see what:
+
+- **`operator`** — Vyuha's own copy. Portfolio, onboarding, every client's activity, and the
+  credentials. This is Vishak's install.
+- **`tenant`** — a copy handed to a business we onboarded. Exactly one workspace, named by
+  `settings.tenant_slug`. No portfolio, no onboarding, no other business's data, and no
+  awareness that any other exists. Their setup screen is about *their own operation* (business
+  name, trade, how they keep records) — never about clients.
+
+Enforcement is in `app.py`: `_deny_tenant()` closes the operator-only routes, and `client_page`
+refuses any slug other than the tenant's own. `_tenant_client()` is deliberately strict — an
+install with no `tenant_slug` shows setup rather than adopting whatever client happens to exist.
+Four tests cover the boundary, including that a tenant cannot reach another workspace by URL.
+
+**Onboarding is deliberately two fields** — business name, and optionally a WhatsApp number.
+Contact, email, industry and thresholds live on the client's own Details tab and may never be
+filled in. The one other choice is `data_mode`: `upload` (they send files) or `books` (they keep
+none, so you get entry forms instead of a drop zone).
 
 **Known wart:** `analyze.py` holds its thresholds as module constants, so honouring a per-client
 value means `app._thresholds()` swaps them for the duration of one run behind a `threading.Lock`.
