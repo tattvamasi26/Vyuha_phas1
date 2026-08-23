@@ -74,6 +74,12 @@ but **not yet declared in `pyproject.toml`**.
 - **`ui.py`** — hand-rolled HTML strings (same choice as `report.py`). Dark, glass-card styling.
   Unlike the client dashboard this **may** use a webfont CDN, since it is served over localhost;
   the embedded dashboard is still strictly self-contained and a test enforces that.
+  The workspace shell is `cover_hero()` + `actions()`, **not** a tab strip: a full-bleed banner
+  carrying the client's own photo (or their trade backdrop) with the live numbers over a scrim,
+  then every option as a large labelled card stating what it does *and its current state*
+  ("Send & download — 4 alerts ready"). `?tab=` still drives which body renders; the change is
+  that nothing is hidden behind an unlabelled tab. `layout()` swaps the nav and the wordmark by
+  install type — a tenant sees their own business name over "powered by Vyuha".
 - **`sources.py`** — everything that is not a spreadsheet is *converted to a CSV first* and then
   handed to the unchanged pipeline: `.txt`/`.tsv` by delimiter sniffing, `.pdf` via its own text
   layer, and images plus scanned PDFs via **Claude vision** (`claude-opus-5`, base64 image /
