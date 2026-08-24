@@ -4,6 +4,14 @@ JSON on disk, not a database. At the scale this serves — a founder-operated
 service with a handful of clients — a file is easier to inspect, back up and
 hand-edit than sqlite, and swapping it later means replacing this module only.
 Nothing above it knows how persistence works.
+
+Since signup opened up, one file holds the clients of *every* account, and each
+``Client`` carries the ``owner_id`` of the account that created it. Every read
+in this module therefore demands an ``owner_id`` as a **required** argument:
+forgetting to scope a query is then a ``TypeError`` on the first request rather
+than one business quietly reading another's numbers. The only unscoped readers
+are the two private helpers below, which exist so slugs stay unique across the
+whole file.
 """
 
 from __future__ import annotations
@@ -65,6 +73,10 @@ class Run:
 class Client:
     slug: str
     name: str
+    #: The account this workspace belongs to (``auth.Account.id``). Blank only
+    #: for records written before accounts existed; those belong to nobody and
+    #: are therefore invisible, which is the safe direction to fail.
+    owner_id: str = ""
     contact: str = ""
     phone: str = ""                 # digits with country code, no +
     email: str = ""
@@ -99,7 +111,8 @@ def _ensure_dirs() -> None:
         d.mkdir(parents=True, exist_ok=True)
 
 
-def load_clients() -> list[Client]:
+def _load_all() -> list[Client]:
+    """Every client on the machine, regardless of owner. Private on purpose."""
     _ensure_dirs()
     if not REGISTRY.exists():
         return []
@@ -112,7 +125,7 @@ def load_clients() -> list[Client]:
     return clients
 
 
-def save_clients(clients: list[Client]) -> None:
+def _save_all(clients: list[Client]) -> None:
     _ensure_dirs()
     payload = []
     for c in clients:
@@ -122,33 +135,48 @@ def save_clients(clients: list[Client]) -> None:
     REGISTRY.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
-def get_client(slug: str) -> Client | None:
-    return next((c for c in load_clients() if c.slug == slug), None)
+def load_clients(owner_id: str) -> list[Client]:
+    """The clients one account owns, newest first."""
+    return [c for c in _load_all() if c.owner_id == owner_id]
 
 
-def add_client(**kwargs) -> Client:
-    clients = load_clients()
+def get_client(slug: str, owner_id: str) -> Client | None:
+    """One client, **only** if this account owns it.
+
+    Returning None for somebody else's slug rather than raising is deliberate:
+    the caller then renders the same "no longer exists" page it would for a
+    genuine typo, so a URL cannot be used to probe which businesses exist.
+    """
+    return next((c for c in _load_all()
+                 if c.slug == slug and c.owner_id == owner_id), None)
+
+
+def add_client(owner_id: str, **kwargs) -> Client:
+    clients = _load_all()
     base = slugify(kwargs.get("name", ""))
     slug, n = base, 2
+    # Slugs are unique across every account, because they name directories on
+    # disk (uploads/, dashboards/) that are not partitioned by owner.
     while any(c.slug == slug for c in clients):
         slug, n = f"{base}-{n}", n + 1
-    client = Client(slug=slug, **kwargs)
+    client = Client(slug=slug, owner_id=owner_id, **kwargs)
     clients.append(client)
-    save_clients(clients)
+    _save_all(clients)
     return client
 
 
 def update_client(client: Client) -> None:
-    clients = [client if c.slug == client.slug else c for c in load_clients()]
-    save_clients(clients)
+    """Write a client back. The caller must already have fetched it scoped."""
+    _save_all([client if c.slug == client.slug else c for c in _load_all()])
 
 
-def delete_client(slug: str) -> None:
-    save_clients([c for c in load_clients() if c.slug != slug])
+def delete_client(slug: str, owner_id: str) -> None:
+    _save_all([c for c in _load_all()
+               if not (c.slug == slug and c.owner_id == owner_id)])
 
 
-def add_run(slug: str, run: Run) -> None:
-    client = get_client(slug)
+def add_run(slug: str, owner_id: str, run: Run) -> None:
+    client = get_client(slug, owner_id)
     if client is None:
         raise KeyError(slug)
     client.runs.insert(0, run)          # newest first

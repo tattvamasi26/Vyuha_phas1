@@ -4,6 +4,10 @@ Read from ``vyuha_data/config.json`` first, then environment variables. Nothing
 secret is ever written into the registry or a run record, and the settings page
 only ever renders a masked form of a key.
 
+These are **deployment-level**: one WhatsApp sender, one SMTP account, one
+Claude key for the machine. Anything that varies per logged-in account lives on
+``auth.Account`` instead.
+
 Every capability degrades rather than crashes when its credentials are absent:
 WhatsApp falls back to a wa.me deep link, vision ingestion falls back to a clear
 "cannot read this" message. That is deliberate — the platform has to stay usable
@@ -55,31 +59,11 @@ class Settings:
     smtp_password: str = ""
     smtp_from: str = ""
 
-    # --- Who this install belongs to ----------------------------------------
-    # This is the hard line in the product, not a cosmetic toggle.
-    #
-    # "operator" : Vyuha's own install. Runs a portfolio, onboards parties,
-    #              sees every client's activity, holds the credentials.
-    # "tenant"   : an install handed to a party we onboarded. There is exactly
-    #              one business here — theirs. They never onboard a client,
-    #              never see a portfolio, and never see anyone else's data.
-    #              Their setup is about their own operation, not about clients.
-    # ""         : nothing chosen yet — the first-run screen decides.
-    install: str = ""
-    org_name: str = ""          # the tenant's business name
-    tenant_slug: str = ""       # the single client record a tenant install owns
-
-    @property
-    def is_operator(self) -> bool:
-        return self.install == "operator"
-
-    @property
-    def is_tenant(self) -> bool:
-        return self.install == "tenant"
-
-    @property
-    def configured(self) -> bool:
-        return bool(self.install)
+    # NOTE: ``install`` / ``org_name`` / ``tenant_slug`` used to live here, back
+    # when one machine meant one workspace. They now live on ``auth.Account``,
+    # because a single deployment serves many accounts and the operator/tenant
+    # fork belongs to whoever is logged in, not to the server. What remains here
+    # is deployment-level: the credentials the machine sends messages with.
 
     secret_fields: tuple = field(
         default=("meta_token", "twilio_token", "anthropic_key", "smtp_password"),

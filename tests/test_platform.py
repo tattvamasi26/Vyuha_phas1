@@ -8,6 +8,7 @@ Runs under pytest or standalone:  python -m tests.test_platform
 
 from __future__ import annotations
 
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -19,10 +20,31 @@ sys.path.insert(0, str(REPO))
 
 from vyuha import sample                                      # noqa: E402
 from vyuha_platform import app as app_mod                     # noqa: E402
-from vyuha_platform import books, channels, config, sources, store  # noqa: E402
+from vyuha_platform import auth, books, channels, sources, store  # noqa: E402
 
 client = TestClient(app_mod.app, follow_redirects=True)
 _SLUGS: list[str] = []
+
+#: Every test below runs as one signed-in operator. TestClient keeps cookies
+#: across requests, so signing up once here puts the whole suite inside a real
+#: session — which is also the only way any of these routes answer at all now.
+ACCOUNT = auth.create(f"tests-{auth.secrets.token_hex(4)}@vyuha.test",
+                      "Zeta Test Operator", "test-password-1")
+
+
+def _login() -> None:
+    client.post("/login", data={"email": ACCOUNT.email, "password": "test-password-1"})
+
+
+def _as(install: str, org: str = "", slug: str = "") -> None:
+    """Reshape the logged-in account's workspace, the way signup does."""
+    account = auth.get(ACCOUNT.id)
+    account.install, account.org_name, account.tenant_slug = install, org, slug
+    auth.update(account)
+
+
+_login()
+_as("operator")
 
 
 def _sample_workbook() -> Path:
@@ -37,7 +59,7 @@ def _onboard(name: str, mode: str = "upload", phone: str = "98765 43210") -> str
     resp = client.post("/onboard", data={"name": name, "phone": phone, "data_mode": mode})
     assert resp.status_code == 200, resp.status_code
     base = store.slugify(name)
-    matches = [c.slug for c in store.load_clients() if c.slug.startswith(base)]
+    matches = [c.slug for c in store.load_clients(ACCOUNT.id) if c.slug.startswith(base)]
     assert matches, f"{name} was not persisted"
     _SLUGS.extend(matches)
     return matches[0]
@@ -59,7 +81,7 @@ def test_all_platform_pages_render():
 
 def test_onboarding_asks_for_only_a_name_and_number():
     slug = _onboard("Zeta Minimal Co")
-    got = store.get_client(slug)
+    got = store.get_client(slug, ACCOUNT.id)
     assert got is not None
     assert got.phone == "919876543210", got.phone     # 10 digits -> +91 assumed
     assert got.contact == "" and got.email == ""      # nothing else demanded
@@ -72,7 +94,7 @@ def test_upload_produces_dashboard_and_alerts():
     slug = _onboard("Zeta Upload Co")
     assert _upload(slug, _sample_workbook()).status_code == 200
 
-    run = store.get_client(slug).latest
+    run = store.get_client(slug, ACCOUNT.id).latest
     assert run is not None and run.status == "ok", getattr(run, "error", "no run")
     assert run.alert_count >= 3
     assert {"Sales", "Stock", "Receivables"} <= set(run.sheets_read), run.sheets_read
@@ -93,7 +115,7 @@ def test_text_file_is_converted_and_read():
         encoding="utf-8")
     assert _upload(slug, tmp, "text/plain").status_code == 200
 
-    run = store.get_client(slug).latest
+    run = store.get_client(slug, ACCOUNT.id).latest
     assert run is not None and run.status == "ok", getattr(run, "error", "")
     assert run.source_kind == "text", run.source_kind
     assert run.source_method, "conversion method was not recorded"
@@ -106,7 +128,7 @@ def test_image_without_a_key_is_rejected_with_an_action():
     resp = _upload(slug, img, "image/png")
     assert resp.status_code == 200
     # No run is recorded, and the operator is told what to do about it.
-    assert store.get_client(slug).runs == []
+    assert store.get_client(slug, ACCOUNT.id).runs == []
     assert "API key" in resp.text or "Settings" in resp.text
 
 
@@ -115,7 +137,7 @@ def test_unsupported_file_type_creates_no_run():
     bad = store.upload_dir(slug) / "notes.docx"
     bad.write_bytes(b"nope")
     assert _upload(slug, bad).status_code == 200
-    assert store.get_client(slug).runs == []
+    assert store.get_client(slug, ACCOUNT.id).runs == []
 
 
 # --------------------------------------------------------------- manual books
@@ -123,7 +145,7 @@ def test_unsupported_file_type_creates_no_run():
 def test_manual_books_flow_end_to_end():
     """A nursery with no spreadsheet: add stock, sell it, get the same engine."""
     slug = _onboard("Zeta Nursery", mode="books", phone="")
-    assert store.get_client(slug).data_mode == "books"
+    assert store.get_client(slug, ACCOUNT.id).data_mode == "books"
 
     client.post(f"/c/{slug}/book/item", data={
         "name": "Areca Palm 4ft", "category": "Plants", "unit": "piece",
@@ -152,7 +174,7 @@ def test_manual_books_flow_end_to_end():
     assert book.margin == 20 * (450 - 260)             # profit on what sold
 
     # The typed-in ledger went through the real engine.
-    run = store.get_client(slug).latest
+    run = store.get_client(slug, ACCOUNT.id).latest
     assert run is not None and run.status == "ok", getattr(run, "error", "")
     assert run.source_kind == "manual"
     assert run.revenue == 20 * 450
@@ -200,7 +222,7 @@ def test_credit_sale_becomes_a_receivable_the_engine_sees():
         "sku": sku, "party": "Anil Farms", "qty": "5",
         "payment": "credit", "due_date": "2026-09-30"})
 
-    run = store.get_client(slug).latest
+    run = store.get_client(slug, ACCOUNT.id).latest
     assert run.outstanding == 5 * 260, run.outstanding
     assert "Receivables" in run.sheets_read
 
@@ -260,7 +282,7 @@ def test_every_action_lands_in_the_activity_trail():
     from vyuha_platform import ledger
     slug = _onboard("Zeta Trail Co")
     _upload(slug, _sample_workbook())
-    kinds = {e.kind for e in ledger.read(limit=200, client=slug)}
+    kinds = {e.kind for e in ledger.read(ACCOUNT.id, limit=200, client=slug)}
     assert "client.onboarded" in kinds
     assert "source.received" in kinds
     assert "run.completed" in kinds
@@ -268,12 +290,6 @@ def test_every_action_lands_in_the_activity_trail():
 
 
 # ------------------------------------------------------- operator vs tenant
-
-def _as(install: str, org: str = "", slug: str = "") -> None:
-    s = config.load()
-    s.install, s.org_name, s.tenant_slug = install, org, slug
-    config.save(s)
-
 
 def test_first_run_asks_who_the_install_is_for():
     _as("")
@@ -307,7 +323,7 @@ def test_tenant_never_sees_the_portfolio_or_onboarding():
         # The onboarding route itself is closed, not merely hidden.
         assert "Onboard a client" not in client.get("/onboard").text
         blocked = client.post("/onboard", data={"name": "Sneaky Co", "phone": ""})
-        assert not any(c.name == "Sneaky Co" for c in store.load_clients())
+        assert not any(c.name == "Sneaky Co" for c in store.load_clients(ACCOUNT.id))
 
         # And another workspace cannot be reached by guessing the URL.
         other = client.get(f"/c/{theirs}")
@@ -325,10 +341,10 @@ def test_tenant_setup_creates_exactly_one_business():
         resp = client.post("/setup", data={"name": "Zeta Solo Shop", "trade": "nursery",
                                            "data_mode": "books"})
         assert resp.status_code == 200
-        s = config.load()
-        assert s.tenant_slug and s.org_name == "Zeta Solo Shop"
-        _SLUGS.append(s.tenant_slug)
-        assert store.get_client(s.tenant_slug).trade == "nursery"
+        a = auth.get(ACCOUNT.id)
+        assert a.tenant_slug and a.org_name == "Zeta Solo Shop"
+        _SLUGS.append(a.tenant_slug)
+        assert store.get_client(a.tenant_slug, ACCOUNT.id).trade == "nursery"
     finally:
         _as("operator")
 
@@ -343,20 +359,49 @@ def test_trade_is_guessed_from_the_name():
 
 
 def test_every_trade_has_a_usable_backdrop():
+    """Backdrops are photographs now, with the original SVGs kept underneath.
+
+    A path that 404s is worse than the flat SVG it replaced, so check the file
+    is actually on disk — and that the fallback survived the swap.
+    """
     from vyuha_platform import theme
+    static = REPO / "vyuha_platform" / "static" / "img"
     for key, t in theme.TRADES.items():
-        assert t["backdrop"].startswith("data:image/svg+xml;base64,"), key
-        assert len(t["backdrop"]) > 400, f"{key} backdrop looks empty"
+        assert t["backdrop"].startswith("/static/img/"), key
+        photo = static / t["backdrop"].rsplit("/", 1)[-1]
+        assert photo.exists(), f"{key} backdrop missing on disk: {photo}"
+        assert photo.stat().st_size > 10_000, f"{key} backdrop looks empty"
+        assert t["fallback"].startswith("data:image/svg+xml;base64,"), key
+        assert len(t["fallback"]) > 400, f"{key} fallback looks empty"
+
+
+def test_platform_images_are_served():
+    for name in ("hero-gears.jpg", "trade-nursery.jpg", "trade-manufacturing.jpg",
+                 "trade-distribution.jpg", "trade-retail.jpg"):
+        resp = client.get(f"/static/img/{name}")
+        assert resp.status_code == 200, name
+        assert resp.headers["content-type"].startswith("image/"), name
+
+
+def test_the_client_dashboard_never_reaches_for_a_platform_image():
+    """The engine's self-contained guarantee must survive the platform having
+    images at all. A dashboard forwarded on WhatsApp has no server to ask."""
+    slug = _onboard("Zeta Selfcontained Co")
+    _upload(slug, _sample_workbook())
+    run = store.get_client(slug, ACCOUNT.id).latest
+    html = (store.DASHBOARDS / run.dashboard).read_text(encoding="utf-8")
+    assert "/static/" not in html
+    assert "<script" not in html.lower()
 
 
 def test_cover_photo_upload_shows_on_the_workspace():
     slug = _onboard("Zeta Cover Co", mode="books", phone="")
-    assert store.get_client(slug).has_cover is False
+    assert store.get_client(slug, ACCOUNT.id).has_cover is False
     png = (b"\x89PNG\r\n\x1a\n" + b"\x00" * 64)
     resp = client.post(f"/c/{slug}/cover",
                        files={"file": ("shop.png", png, "image/png")})
     assert resp.status_code == 200
-    assert store.get_client(slug).has_cover is True
+    assert store.get_client(slug, ACCOUNT.id).has_cover is True
     assert f"/c/{slug}/cover" in client.get(f"/c/{slug}").text
     (store.covers_dir() / f"{slug}.img").unlink(missing_ok=True)
 
@@ -368,13 +413,283 @@ def test_workspace_shows_every_option_as_a_labelled_action():
         assert label in body, f"missing action: {label}"
 
 
+# ---------------------------------------------------------- accounts & gate
+
+def test_signed_out_visitor_gets_the_landing_page_not_the_app():
+    anon = TestClient(app_mod.app, follow_redirects=True)
+    body = anon.get("/").text
+    assert "Create an account" in body
+    assert "PORTFOLIO" not in body, "the portfolio leaked to a signed-out visitor"
+
+
+def test_every_private_route_redirects_a_stranger_to_the_login():
+    anon = TestClient(app_mod.app, follow_redirects=False)
+    for path in ("/onboard", "/activity", "/settings", "/c/anything",
+                 "/c/anything/dashboard", "/c/anything/export/pdf"):
+        resp = anon.get(path)
+        assert resp.status_code == 303, f"{path} -> {resp.status_code}"
+        assert resp.headers["location"] == "/login", path
+
+
+def test_signup_rejects_a_bad_email_a_short_password_and_a_duplicate():
+    for data, expect in (
+        ({"name": "X", "email": "not-an-email", "password": "longenough1"},
+         "does not look like"),
+        ({"name": "X", "email": "fresh@vyuha.test", "password": "short"},
+         "at least 8 characters"),
+        ({"name": "X", "email": ACCOUNT.email, "password": "test-password-1"},
+         "already exists"),
+    ):
+        body = TestClient(app_mod.app).post("/signup", data=data).text
+        assert expect in body, f"{data} -> {body[:200]}"
+
+
+def test_a_password_is_never_stored_in_readable_form():
+    raw = auth.ACCOUNTS.read_text(encoding="utf-8")
+    assert "test-password-1" not in raw
+    assert auth.get(ACCOUNT.id).password_hash != "test-password-1"
+
+
+def test_a_forged_cookie_does_not_open_the_app():
+    forged = TestClient(app_mod.app, follow_redirects=False)
+    forged.cookies.set(auth.COOKIE, f"{ACCOUNT.id}.9999999999.deadbeef")
+    resp = forged.get("/settings")
+    assert resp.status_code == 303 and resp.headers["location"] == "/login"
+
+
+def test_one_account_cannot_see_or_reach_another_accounts_client():
+    """The whole point of open signup: two businesses, one machine, no bleed."""
+    mine = _onboard("Zeta Private Co")
+
+    other = auth.create(f"other-{auth.secrets.token_hex(4)}@vyuha.test",
+                        "Someone Else", "other-password-1")
+    other.install = "operator"
+    auth.update(other)
+    session = TestClient(app_mod.app, follow_redirects=True)
+    session.post("/login", data={"email": other.email, "password": "other-password-1"})
+
+    home = session.get("/")
+    assert "Zeta Private Co" not in home.text, "a client leaked across accounts"
+
+    reached = session.get(f"/c/{mine}")
+    assert "Zeta Private Co" not in reached.text, "another account was reached by URL"
+    assert session.get(f"/c/{mine}/dashboard").status_code == 200   # redirected away
+    assert store.get_client(mine, other.id) is None
+
+    # ...and the owner still sees it perfectly well.
+    assert "Zeta Private Co" in client.get("/").text
+
+
+def test_logging_out_closes_the_door():
+    session = TestClient(app_mod.app, follow_redirects=False)
+    session.post("/login", data={"email": ACCOUNT.email, "password": "test-password-1"})
+    assert session.get("/settings").status_code == 200
+    session.post("/logout")
+    resp = session.get("/settings")
+    assert resp.status_code == 303 and resp.headers["location"] == "/login"
+
+
+# ------------------------------------------------ shared workspace (link+PIN)
+
+def _share(slug: str) -> tuple[str, str]:
+    """Mint a link as the operator and read the one-shot PIN back out."""
+    resp = client.post(f"/c/{slug}/share")
+    assert resp.status_code == 200
+    invite = auth.invite_for(slug)
+    assert invite is not None
+    pin = re.search(r'class="pin-val">(\d{4})<', resp.text)
+    assert pin, "the PIN was not shown to the operator"
+    return invite.token, pin.group(1)
+
+
+def test_owner_opens_their_workspace_with_a_link_and_a_pin():
+    slug = _onboard("Zeta Shared Nursery", mode="books", phone="919876543210")
+    token, pin = _share(slug)
+
+    owner = TestClient(app_mod.app, follow_redirects=True)
+    gate = owner.get(f"/w/{token}")
+    assert "Enter your" in gate.text and "PIN" in gate.text
+    assert "Zeta Shared Nursery" in gate.text
+
+    body = owner.post(f"/w/{token}", data={"pin": pin}).text
+    assert "Zeta Shared Nursery" in body, "the PIN did not open the workspace"
+
+    # The device is remembered: the bare link now goes straight in.
+    assert "Zeta Shared Nursery" in owner.get(f"/w/{token}").text
+
+
+def test_the_link_alone_is_not_access():
+    slug = _onboard("Zeta Forwarded Co", mode="books", phone="")
+    token, pin = _share(slug)
+    stranger = TestClient(app_mod.app, follow_redirects=True)
+
+    # The gate names the business on purpose — the owner has to know the link is
+    # theirs — but names nothing else, and hands over no numbers.
+    opened = stranger.get(f"/w/{token}")
+    assert "Enter your" in opened.text, "a forwarded link let someone straight in"
+    assert "Revenue" not in opened.text and "PORTFOLIO" not in opened.text
+
+    wrong = stranger.post(f"/w/{token}", data={"pin": f"{(int(pin) + 1) % 10000:04d}"})
+    assert "not right" in wrong.text
+    assert "PORTFOLIO" not in wrong.text
+
+
+def test_a_guest_sees_one_workspace_and_none_of_the_operators_machinery():
+    mine = _onboard("Zeta Guest Shop", mode="books", phone="")
+    theirs = _onboard("Zeta Other Shop", mode="books", phone="")
+    token, pin = _share(mine)
+
+    guest = TestClient(app_mod.app, follow_redirects=True)
+    guest.post(f"/w/{token}", data={"pin": pin})
+
+    home = guest.get("/")
+    assert "Zeta Guest Shop" in home.text
+    assert "PORTFOLIO" not in home.text
+    assert "Zeta Other Shop" not in home.text, "another client leaked to a guest"
+
+    # Operator machinery is closed, not merely hidden.
+    assert "Onboard a client" not in guest.get("/onboard").text
+    assert "Zeta Other Shop" not in guest.get(f"/c/{theirs}").text
+
+    # Deployment credentials are the operator's, never the guest's.
+    creds = guest.get("/settings")
+    assert "Anthropic" not in creds.text and "SMTP" not in creds.text
+
+    # And a guest cannot re-share or delete the workspace they were lent.
+    guest.post(f"/c/{mine}/share")
+    guest.post(f"/c/{mine}/delete")
+    assert store.get_client(mine, ACCOUNT.id) is not None, "a guest deleted the workspace"
+
+
+def test_revoking_a_link_locks_the_owner_out_immediately():
+    slug = _onboard("Zeta Revoked Co", mode="books", phone="")
+    token, pin = _share(slug)
+    owner = TestClient(app_mod.app, follow_redirects=True)
+    owner.post(f"/w/{token}", data={"pin": pin})
+    assert "Zeta Revoked Co" in owner.get("/").text
+
+    client.post(f"/c/{slug}/share/revoke")
+
+    # The remembered device is not enough once the link is off.
+    assert "Zeta Revoked Co" not in owner.get(f"/w/{token}").text
+    landing = owner.get("/")
+    assert "Create an account" in landing.text, "a revoked guest still had a session"
+
+
+def test_guessing_the_pin_locks_the_link_and_says_so():
+    """Four digits is 10,000 guesses. Failures have to cost something."""
+    slug = _onboard("Zeta Bruteforce Co", mode="books", phone="")
+    token, pin = _share(slug)
+    wrong = f"{(int(pin) + 1) % 10000:04d}"
+    guesser = TestClient(app_mod.app, follow_redirects=True)
+
+    for _ in range(auth.PIN_TRIES):
+        body = guesser.post(f"/w/{token}", data={"pin": wrong}).text
+    assert "Too many wrong PINs" in body, "the link never locked"
+
+    invite = auth.invite_for(slug)
+    assert invite.locked and invite.locked_for >= 1
+
+    # Locked means locked: even the right PIN is refused while it lasts. The
+    # gate still names the business — that is deliberate, so the owner knows the
+    # link is theirs — so check they did not get *in*, not that the name is gone.
+    refused = guesser.post(f"/w/{token}", data={"pin": pin}).text
+    assert "Paused" in refused, "the right PIN opened a locked link"
+    assert "Record a sale" not in refused and "WHAT IS LEFT" not in refused
+
+    # And the form is not offered at all, rather than failing on submit.
+    gate = guesser.get(f"/w/{token}").text
+    assert 'name="pin"' not in gate
+    assert "Paused" in gate
+
+
+def test_a_correct_pin_clears_the_failure_count():
+    slug = _onboard("Zeta Mistype Co", mode="books", phone="")
+    token, pin = _share(slug)
+    owner = TestClient(app_mod.app, follow_redirects=True)
+
+    wrong = f"{(int(pin) + 1) % 10000:04d}"
+    for _ in range(auth.PIN_TRIES - 1):          # mistyped, but stopped in time
+        owner.post(f"/w/{token}", data={"pin": wrong})
+    assert auth.invite_for(slug).failed == auth.PIN_TRIES - 1
+
+    assert "Zeta Mistype Co" in owner.post(f"/w/{token}", data={"pin": pin}).text
+    invite = auth.invite_for(slug)
+    assert invite.failed == 0 and not invite.locked
+
+
+def test_the_session_cookie_is_secure_only_when_the_connection_is():
+    """Unconditional `secure` would mean no session at all over localhost."""
+    plain = TestClient(app_mod.app, base_url="http://testserver",
+                       follow_redirects=False)
+    resp = plain.post("/login", data={"email": ACCOUNT.email,
+                                      "password": "test-password-1"})
+    assert "secure" not in resp.headers["set-cookie"].lower()
+    assert "httponly" in resp.headers["set-cookie"].lower()
+    assert "samesite=lax" in resp.headers["set-cookie"].lower()
+
+    secure = TestClient(app_mod.app, base_url="https://testserver",
+                        follow_redirects=False)
+    resp = secure.post("/login", data={"email": ACCOUNT.email,
+                                       "password": "test-password-1"})
+    assert "secure" in resp.headers["set-cookie"].lower()
+
+    # A reverse proxy terminating TLS says so in a header, not the scheme.
+    proxied = TestClient(app_mod.app, base_url="http://testserver",
+                         follow_redirects=False)
+    resp = proxied.post("/login", data={"email": ACCOUNT.email,
+                                        "password": "test-password-1"},
+                        headers={"x-forwarded-proto": "https"})
+    assert "secure" in resp.headers["set-cookie"].lower()
+
+
+def test_changing_the_password_takes_effect_and_keeps_you_signed_in():
+    session = TestClient(app_mod.app, follow_redirects=True)
+    session.post("/login", data={"email": ACCOUNT.email, "password": "test-password-1"})
+
+    # The current password has to be right.
+    refused = session.post("/password", data={"current_password": "not-my-password",
+                                              "new_password": "second-password-1"})
+    assert "not your current password" in refused.text
+
+    ok = session.post("/password", data={"current_password": "test-password-1",
+                                         "new_password": "second-password-1"})
+    assert "Password changed" in ok.text
+    assert session.get("/settings").status_code == 200, "the change signed us out"
+
+    assert auth.verify(ACCOUNT.email, "second-password-1") is not None
+    assert auth.verify(ACCOUNT.email, "test-password-1") is None
+
+    # Put it back so the rest of the suite's helpers still work.
+    auth.change_password(auth.get(ACCOUNT.id), "second-password-1", "test-password-1")
+
+
+def test_a_guest_has_no_password_to_change():
+    slug = _onboard("Zeta Nopass Co", mode="books", phone="")
+    token, pin = _share(slug)
+    guest = TestClient(app_mod.app, follow_redirects=True)
+    guest.post(f"/w/{token}", data={"pin": pin})
+
+    body = guest.post("/password", data={"current_password": "x",
+                                         "new_password": "yyyyyyyy"}).text
+    assert "not part of your workspace" in body.lower() or "Zeta Nopass Co" in body
+    assert auth.verify(ACCOUNT.email, "test-password-1") is not None
+
+
+def test_a_pin_is_never_stored_in_readable_form():
+    slug = _onboard("Zeta Pinsafe Co", mode="books", phone="")
+    _, pin = _share(slug)
+    assert pin not in auth.INVITES.read_text(encoding="utf-8")
+
+
 def _cleanup() -> None:
     _as("operator")
+    _login()
     for slug in set(_SLUGS):
         shutil.rmtree(store.UPLOADS / slug, ignore_errors=True)
         shutil.rmtree(store.DASHBOARDS / slug, ignore_errors=True)
         (books.BOOKS / f"{slug}.json").unlink(missing_ok=True)
-        store.delete_client(slug)
+        store.delete_client(slug, ACCOUNT.id)
 
 
 def main() -> int:

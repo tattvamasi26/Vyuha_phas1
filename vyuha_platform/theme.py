@@ -5,14 +5,29 @@ trade picks the accent colour and a generated backdrop, and the owner can drop
 their own photograph over it (``/c/<slug>/cover``) — which is the point: the
 first thing they see is their own business, not our branding.
 
-Backdrops are inline SVG data URIs rather than stock photography. They render
-instantly, work with no internet, never 404, and cannot be mistaken for someone
-else's shop. A real photo, once uploaded, always wins.
+Each trade has a **photograph** served from ``static/img/``, with the generated
+SVG kept as ``fallback`` underneath it. The SVGs were the original choice — they
+render instantly and never 404 — and they still cover the case where a photo has
+not been chosen for a trade, or fails to load. What has not changed is the order
+of precedence: a client's own uploaded cover always wins over both.
+
+These are *platform* assets, served over localhost from disk. The generated
+client dashboard stays strictly self-contained and never references them; that
+guarantee lives in ``vyuha/report.py`` and is enforced by a test.
 """
 
 from __future__ import annotations
 
 import base64
+
+
+#: Photographs live here rather than being read into memory: the browser caches
+#: them, and a 200KB JPEG has no business being base64'd into every page render.
+STATIC = "/static/img"
+
+
+def _photo(name: str) -> str:
+    return f"{STATIC}/{name}"
 
 
 def _svg(markup: str) -> str:
@@ -101,34 +116,44 @@ TRADES: dict[str, dict] = {
     "nursery": {
         "label": "Nursery, plants & manure",
         "accent": "#4ade80", "accent2": "#bef264", "ink": "#06130c",
-        "backdrop": _svg(_leaves("#4ade80", "#14532d")),
+        "backdrop": _photo("trade-nursery.jpg"),
+        "fallback": _svg(_leaves("#4ade80", "#14532d")),
         "words": ("plants", "stock", "sales"),
     },
     "distribution": {
         "label": "Distribution & wholesale",
         "accent": "#7c5cff", "accent2": "#22d3ee", "ink": "#0a0a12",
-        "backdrop": _svg(_crates("#7c5cff", "#241a52")),
+        "backdrop": _photo("trade-distribution.jpg"),
+        "fallback": _svg(_crates("#7c5cff", "#241a52")),
         "words": ("SKUs", "stock", "invoices"),
     },
     "manufacturing": {
         "label": "Manufacturing & spares",
         "accent": "#f59e0b", "accent2": "#fb923c", "ink": "#130c02",
-        "backdrop": _svg(_gears("#f59e0b", "#3d2708")),
+        "backdrop": _photo("trade-manufacturing.jpg"),
+        "fallback": _svg(_gears("#f59e0b", "#3d2708")),
         "words": ("parts", "stock", "orders"),
     },
     "retail": {
         "label": "Retail & hardware",
         "accent": "#22d3ee", "accent2": "#60a5fa", "ink": "#04121a",
-        "backdrop": _svg(_shelves("#22d3ee", "#0d3f4d")),
+        "backdrop": _photo("trade-retail.jpg"),
+        "fallback": _svg(_shelves("#22d3ee", "#0d3f4d")),
         "words": ("items", "stock", "bills"),
     },
     "general": {
         "label": "Something else",
         "accent": "#7c5cff", "accent2": "#22d3ee", "ink": "#0a0a12",
-        "backdrop": _svg(_crates("#7c5cff", "#241a52")),
+        "backdrop": _photo("hero-gears.jpg"),
+        "fallback": _svg(_crates("#7c5cff", "#241a52")),
         "words": ("items", "stock", "sales"),
     },
 }
+
+
+#: The landing page hero. Named separately from any trade so changing a trade's
+#: photograph never silently changes the front page.
+HERO = _photo("hero-gears.jpg")
 
 
 def trade(key: str) -> dict:

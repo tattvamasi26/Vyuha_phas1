@@ -26,7 +26,7 @@ python -m venv .venv
 .venv/Scripts/python -m vyuha run FILE.xlsx --client "Name" --open
 .venv/Scripts/python -m vyuha check FILE.xlsx   # what was understood, no report written
 .venv/Scripts/python -m tests.test_pipeline     # 13 engine tests, no pytest required
-.venv/Scripts/python -m tests.test_platform     # 24 platform tests, same runner
+.venv/Scripts/python -m tests.test_platform     # 43 platform tests, same runner
 
 .venv/Scripts/python -m vyuha_platform --open   # the web platform on :8000
 ```
@@ -59,11 +59,23 @@ A FastAPI shell **around** the engine, added 2026-08-22. It imports `pipeline.ru
 Deps: `fastapi`, `uvicorn`, `python-multipart` (+ `httpx` for tests) — installed in `.venv`
 but **not yet declared in `pyproject.toml`**.
 
+- **`auth.py`** — accounts and sessions, added 2026-08-23 when signup opened up.
+  Accounts live in `vyuha_data/accounts.json`; a password is stored only as a stdlib
+  `scrypt` hash over a per-account salt. Sessions are **stateless signed cookies**
+  (HMAC-SHA256 over account id + issue time) keyed by a secret generated once into
+  `vyuha_data/secret.key` — there is no session table, and deleting that file logs
+  everybody out. `auth.current(request)` is the only sanctioned answer to "who is
+  asking". `Account` also carries the workspace fork (`install` / `org_name` /
+  `tenant_slug`), which used to live on `config.Settings`.
 - **`store.py`** — client registry and run history as JSON at `vyuha_data/clients.json`
   (gitignored), with uploads under `vyuha_data/uploads/<slug>/` and generated dashboards under
   `vyuha_data/dashboards/<slug>/<runid>.html`. A file, not a database: at founder-operated scale
   it is easier to inspect and hand-edit, and swapping it means replacing this module only.
-  `Client` carries per-client `dead_stock_days` / `low_cover_days`.
+  `Client` carries per-client `dead_stock_days` / `low_cover_days`, plus the `owner_id` of
+  the account that created it. **Every read here takes `owner_id` as a required argument**
+  (`load_clients(owner_id)`, `get_client(slug, owner_id)`) so a route that forgets to scope
+  is a `TypeError` on the first request rather than one business quietly reading another's
+  numbers.
 - **`channels.py`** — the Phase 2 alert renderers: pure `Insights -> str` functions
   (`as_whatsapp`, `as_email`) sitting beside `report.render()` rather than in a new pipeline.
   `as_whatsapp` respects a 1024-char cap by shedding entity lines first, then whole alerts
@@ -95,42 +107,104 @@ but **not yet declared in `pyproject.toml`**.
   alerts. `app._rebuild_from_book()` re-runs the pipeline after every edit.
 - **`ledger.py`** — append-only JSONL at `vyuha_data/activity.jsonl`. Every onboard, file,
   conversion, run, send and export is logged, so "where did this number come from" is one screen
-  away (`/activity`, filterable by client and event).
+  away (`/activity`, filterable by client and event). One file still holds every account's
+  history — it is append-only and must stay that way — so each `Entry` carries an `owner` and
+  `read(owner, ...)` / `counts(owner)` demand it, same contract as `store.py`.
 - **`exports.py`** — PDF (reportlab), PPTX (python-pptx) and a framed email + SMTP sender, all
   rendered from the same `Insights` as the dashboard so they cannot disagree. **The PDF uses
   `Rs.` because the Helvetica core fonts have no ₹ glyph** — precisely the split `vyuha/fmt.py`
   exists to make explicit.
-- **`config.py`** — settings and credentials from `vyuha_data/config.json` + env vars, with
-  `whatsapp_live` / `vision_live` / `email_live` capability probes. Secrets are write-only in the
-  UI (masked on render, blank means "keep"). `install` is `operator` or `tenant` — see the
-  section below; it is set at first run and intentionally not editable from the UI.
-- **`app.py`** — routes: `/` portfolio, `/onboard`, `/setup`, `/settings`, `/activity`,
-  `/c/{slug}?tab=data|books|dashboard|alerts|settings`, `POST /c/{slug}/upload`,
-  `POST /c/{slug}/book/item|sale`, `/c/{slug}/export/{pdf|pptx|html}`,
-  `POST /c/{slug}/email|whatsapp|delete`.
+- **`config.py`** — **deployment-level** settings and credentials from `vyuha_data/config.json`
+  + env vars, with `whatsapp_live` / `vision_live` / `email_live` capability probes. Secrets are
+  write-only in the UI (masked on render, blank means "keep"). One WhatsApp sender, one SMTP
+  account, one Claude key for the machine; anything that varies per logged-in account lives on
+  `auth.Account` instead. `install` / `org_name` / `tenant_slug` moved there on 2026-08-23.
+- **`app.py`** — routes: `/` (landing when signed out, portfolio when signed in),
+  `GET|POST /signup`, `GET|POST /login`, `POST /logout`, `POST /install`, `/onboard`, `/setup`,
+  `/settings`, `/activity`, `/c/{slug}?tab=data|books|dashboard|alerts|settings`,
+  `POST /c/{slug}/upload`, `POST /c/{slug}/book/item|sale`,
+  `/c/{slug}/export/{pdf|pptx|html}`, `POST /c/{slug}/email|whatsapp|delete`.
+  A single `require_login` **middleware** closes everything outside `PUBLIC =
+  {"/", "/login", "/signup", "/logout"}`, so a route added later is private by default —
+  the safe direction to forget in. Handlers take the account via
+  `Depends(_acct)` rather than re-deriving it.
 
-- **`theme.py`** — per-trade accent colour and a generated backdrop (inline SVG data URIs:
-  fronds for a nursery, crates for distribution, cogs for manufacturing, shelves for retail).
-  No stock photography: the backdrops render instantly, work offline, never 404, and cannot be
-  mistaken for someone else's shop. `theme.guess()` infers the trade from the business name so
-  nobody picks twice. A client's own uploaded cover photo (`/c/<slug>/cover`) always wins.
+- **`theme.py`** — per-trade accent colour and backdrop. As of 2026-08-24 each trade carries a
+  **photograph** from `vyuha_platform/static/img/` (originals in `Project V/Images/Vyuha/`), with
+  the original generated SVG kept alongside as `fallback` for any trade without one.
+  `theme.HERO` is the landing page's own image, named separately so changing a trade's photo
+  never silently changes the front page. `theme.guess()` infers the trade from the business name
+  so nobody picks twice. A client's own uploaded cover photo (`/c/<slug>/cover`) still wins over
+  both. **These are platform assets only** — the generated client dashboard never references
+  them, and a test asserts `/static/` appears nowhere in it, because a dashboard forwarded on
+  WhatsApp has no server to ask.
 
-## Operator vs tenant — the product boundary
+## Accounts, and the flow through the product
 
-`settings.install` is chosen once on first run and is **not** an editable preference, because
-flipping it would change who can see what:
+Signup is **open**: anyone reaches the landing page at `/`, creates an account, and gets their
+own workspace that no other account can see. The whole journey, wired 2026-08-23:
 
-- **`operator`** — Vyuha's own copy. Portfolio, onboarding, every client's activity, and the
-  credentials. This is Vishak's install.
-- **`tenant`** — a copy handed to a business we onboarded. Exactly one workspace, named by
-  `settings.tenant_slug`. No portfolio, no onboarding, no other business's data, and no
+```
+/ (landing) --> /signup --> choose_install --> /setup or /onboard --> /c/<slug>
+     \-------> /login --------------------------------------------------^
+```
+
+Isolation rests on two things and nothing else: the `require_login` middleware in `app.py`
+(private by default), and the required `owner_id` argument on every `store.py` read. A URL
+belonging to another account renders the same "no longer exists" page a typo would, so a slug
+cannot be used to probe which businesses exist.
+
+**But a login form is the wrong shape for the person the product is aimed at** — a shop owner
+with one phone, no email habit, and no wish to remember a password for the tool their supplier
+set up. So there is a second way in, added 2026-08-24: the operator mints a **private link plus a
+4-digit PIN** (`POST /c/<slug>/share`) and sends it over WhatsApp. Two halves make one key — the
+token nobody can guess, and the PIN that makes a forwarded message harmless. After the PIN the
+device is remembered for thirty days, so the owner taps the link and is simply in.
+
+`auth.Guest` is the principal this creates, and it is **deliberately shaped to quack like a
+tenant `Account`**: its `id` returns the *operator's* account id, so every `store`/`ledger` query
+written for accounts scopes correctly with no special case, and `is_tenant` is True, so the
+existing operator/tenant guards already close the portfolio to it. The only place the difference
+matters is deployment credentials, which ask `is_guest` — `_deny_guest()` closes `/settings`,
+client deletion, and re-sharing. The PIN is stored only as a scrypt hash and shown to the
+operator exactly once, when minted; a lost PIN means a new link, never a lookup. Revoking
+(`POST /c/<slug>/share/revoke`) kills the remembered device immediately, because `auth.current()`
+re-reads the invite on every request.
+
+**Wrong PINs cost time.** After `auth.PIN_TRIES` (5) failures the link stops answering for
+`auth.PIN_LOCKOUT` (15 minutes) — turning a 10,000-guess sweep into roughly a month of waiting.
+The counter lives on the `Invite` record rather than in memory, so a restart does not forgive it,
+and a correct PIN clears it. While locked the gate renders **no input at all**: offering a form
+certain to be refused just invites more guessing. A locked link still names the business, which is
+deliberate — the owner has to be able to tell the link is theirs — so tests assert the *workspace*
+was not reached rather than that the name is absent.
+
+**Cookies are `secure` when, and only when, the connection can carry it** (`app._over_https()`
+reads `X-Forwarded-Proto` first, then the request scheme). Setting it unconditionally would mean
+no session at all over plain `localhost`, which the same build still serves.
+
+**Slugs are globally unique**, not per-account, because they name directories on disk
+(`uploads/`, `dashboards/`) that are not partitioned by owner. Two accounts onboarding the same
+business name give the second one `<slug>-2`.
+
+## Operator vs tenant - the product boundary
+
+`account.install` is chosen once, on the screen straight after signup, and is **not** an
+editable preference, because flipping it would change who can see what:
+
+- **`operator`** - an account that manages a portfolio: onboarding, every client's activity.
+  This is Vishak's account.
+- **`tenant`** - an account that *is* one business. Exactly one workspace, named by
+  `account.tenant_slug`. No portfolio, no onboarding, no other business's data, and no
   awareness that any other exists. Their setup screen is about *their own operation* (business
-  name, trade, how they keep records) — never about clients.
+  name, trade, how they keep records) - never about clients.
 
 Enforcement is in `app.py`: `_deny_tenant()` closes the operator-only routes, and `client_page`
-refuses any slug other than the tenant's own. `_tenant_client()` is deliberately strict — an
-install with no `tenant_slug` shows setup rather than adopting whatever client happens to exist.
-Four tests cover the boundary, including that a tenant cannot reach another workspace by URL.
+refuses any slug other than the tenant's own. `_tenant_client()` is deliberately strict - an
+account with no `tenant_slug` shows setup rather than adopting whatever client happens to exist.
+Tests cover the boundary in both directions: a tenant cannot reach another workspace by URL, and
+one account cannot see or reach another account's client.
+
 
 **Onboarding is deliberately two fields** — business name, and optionally a WhatsApp number.
 Contact, email, industry and thresholds live on the client's own Details tab and may never be

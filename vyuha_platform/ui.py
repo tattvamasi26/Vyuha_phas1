@@ -224,6 +224,43 @@ tr:last-child td{border-bottom:0}
 .dot{width:8px;height:8px;border-radius:50%;flex:none}
 .dot.on{background:var(--ok);box-shadow:0 0 10px rgba(52,211,153,.7)}
 .dot.off{background:var(--ink-3)}
+
+/* --- the gate: landing, signup, login ---------------------------------- */
+.cta{display:flex;gap:12px;flex-wrap:wrap;margin-top:30px}
+
+/* Hero photograph. The scrim is not decoration: the headline has to stay
+   readable over an image nobody has colour-corrected for it. */
+.hero.shot{background-size:cover;background-position:center;border-radius:var(--r);
+  padding:0;overflow:hidden;margin-top:26px;border:1px solid var(--line)}
+.hero.shot .shot-in{padding:74px 46px 54px;
+  background:linear-gradient(100deg,rgba(7,8,11,.94) 0%,rgba(7,8,11,.86) 46%,
+    rgba(7,8,11,.55) 100%)}
+.hero.shot .lede{max-width:60ch}
+@media(max-width:720px){.hero.shot .shot-in{padding:52px 22px 40px;
+  background:linear-gradient(180deg,rgba(7,8,11,.80) 0%,rgba(7,8,11,.94) 60%)}}
+
+.trade-strip{display:flex;gap:9px;flex-wrap:wrap;margin-top:32px}
+.tchip{font-size:11.5px;font-weight:700;letter-spacing:.02em;padding:7px 13px;
+  border-radius:999px;color:var(--ink-2);background:rgba(255,255,255,.04);
+  border:1px solid var(--line-2);border-left:3px solid var(--c)}
+
+.pin-show{border:1px solid var(--accent);border-radius:12px;padding:14px 18px;
+  background:rgba(124,92,255,.10);text-align:center}
+.pin-val{font-family:'JetBrains Mono',monospace;font-size:34px;letter-spacing:.34em;
+  text-indent:.34em;margin-top:6px;color:var(--ink)}
+.pin{width:100%;text-align:center;font-family:'JetBrains Mono',monospace;
+  font-size:38px;letter-spacing:.42em;text-indent:.42em;padding:18px 0;margin-bottom:18px}
+
+.step-n{font-family:'Bebas Neue',sans-serif;font-size:34px;line-height:1;
+  letter-spacing:.06em;color:transparent;-webkit-background-clip:text;background-clip:text;
+  background:linear-gradient(96deg,var(--accent),var(--accent-2));margin-bottom:12px}
+.step-t{font-size:16.5px;font-weight:800;margin-bottom:8px}
+.out{display:inline-flex;margin-left:4px}
+.out button{padding:9px 15px;border-radius:11px;font-family:'Manrope';font-size:13.5px;
+  font-weight:600;color:var(--ink-3);background:transparent;border:1px solid transparent;
+  cursor:pointer;transition:.18s}
+.out button:hover{color:var(--ink);background:var(--card);border-color:var(--line-2)}
+
 @media(max-width:720px){.two{grid-template-columns:1fr}.top nav a{padding:8px 10px;font-size:12.5px}}
 """
 
@@ -234,45 +271,244 @@ def short(v) -> str:
     return fmt.rupees_short(v or 0)
 
 
-def layout(title: str, body: str, active: str = "", settings=None,
-           trade_key: str = "general", full_bleed: str = "") -> str:
-    """The shell.
-
-    Navigation differs by install, and that difference is the product boundary:
-    an operator sees a portfolio and can onboard parties; a tenant only ever
-    sees their own business and never learns the other exists.
-    """
-    tenant = settings is not None and settings.is_tenant
+def _shell(title: str, body: str, header: str, trade_key: str = "general",
+           full_bleed: str = "") -> str:
+    """Page scaffolding shared by the signed-in app and the signed-out gate."""
     t = theme.trade(trade_key)
+    palette = f":root{{--accent:{t['accent']};--accent-2:{t['accent2']}}}"
+    return f"""<!doctype html><html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{E(title)} · Vyuha</title>{FONTS}<style>{CSS}{palette}</style></head><body>
+{header}{full_bleed}
+<div class="wrap fade">{body}</div></body></html>"""
+
+
+def layout(title: str, body: str, active: str = "", account=None,
+           trade_key: str = "general", full_bleed: str = "") -> str:
+    """The signed-in shell.
+
+    Navigation differs by workspace kind, and that difference is the product
+    boundary: an operator sees a portfolio and can onboard parties; a tenant
+    only ever sees their own business and never learns the other exists. Since
+    signup opened up, that is a property of the logged-in *account*, so this
+    takes an account rather than the machine's settings.
+    """
+    tenant = account is not None and account.is_tenant
 
     def nav(href, label, key):
         return f'<a href="{href}" class="{"on" if key == active else ""}">{label}</a>'
 
     if tenant:
+        # A shared-link guest has no business on the credentials page, so their
+        # "Setup" points at their own details tab instead of the install's.
+        setup = (f"/c/{account.tenant_slug}?tab=settings"
+                 if getattr(account, "is_guest", False) else "/settings")
         links = (nav("/", "My business", "clients")
                  + nav("/activity", "History", "activity")
-                 + nav("/settings", "Setup", "settings"))
-        badge = f'<span class="who"><span class="dot on"></span>{E(settings.org_name or "My business")}</span>'
-        wordmark = E(settings.org_name or "VYUHA")
+                 + nav(setup, "Setup", "settings"))
+        wordmark = E(account.org_name or "VYUHA")
         tagline = "POWERED BY VYUHA"
     else:
         links = (nav("/", "Clients", "clients") + nav("/onboard", "Onboard", "onboard")
                  + nav("/activity", "Activity", "activity")
                  + nav("/settings", "Settings", "settings"))
-        badge = '<span class="who"><span class="dot on"></span>Operator</span>'
         wordmark, tagline = "VYUHA", "OPERATIONS PLATFORM"
 
-    palette = (f":root{{--accent:{t['accent']};--accent-2:{t['accent2']}}}")
+    if account is None:
+        badge = ""
+    else:
+        who = account.org_name if tenant else account.name
+        badge = (f'<span class="who" title="{E(account.email)}">'
+                 f'<span class="dot on"></span>{E(who or account.email)}</span>')
+    links += ('<form method="post" action="/logout" class="out">'
+              '<button type="submit">Log out</button></form>') if account else ""
 
-    return f"""<!doctype html><html lang="en"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{E(title)} · Vyuha</title>{FONTS}<style>{CSS}{palette}</style></head><body>
-<header class="top"><div class="top-in">
+    header = f"""<header class="top"><div class="top-in">
   <a href="/" class="brand"><span>{wordmark}</span><small>{tagline}</small></a>
   <nav>{badge}{links}</nav>
-</div></header>
-{full_bleed}
-<div class="wrap fade">{body}</div></body></html>"""
+</div></header>"""
+    return _shell(title, body, header, trade_key, full_bleed)
+
+
+# ------------------------------------------------------------------ the gate
+
+def _gate(title: str, body: str) -> str:
+    """Signed-out pages. No app navigation — there is nothing yet to navigate."""
+    header = """<header class="top"><div class="top-in">
+  <a href="/" class="brand"><span>VYUHA</span><small>OPERATIONS PLATFORM</small></a>
+  <nav><a href="/login">Log in</a><a href="/signup" class="on">Sign up</a></nav>
+</div></header>"""
+    return _shell(title, body, header)
+
+
+#: The trades the platform already knows how to dress itself for. Rendered on
+#: the landing page from ``theme.TRADES`` rather than typed out again, so adding
+#: a trade adds it to the front page too.
+def _trade_strip() -> str:
+    return '<div class="trade-strip">' + "".join(
+        f'<span class="tchip" style="--c:{t["accent"]}">{E(t["label"])}</span>'
+        for k, t in theme.TRADES.items() if k != "general") + "</div>"
+
+
+def landing() -> str:
+    """The front page: what this does, for whom, and two ways in.
+
+    Deliberately *not* addressed to distributors, and not to Excel. The engine
+    reads a spreadsheet, a CSV, a PDF from an accountant, a photograph of a
+    handwritten register — or nothing at all, if the business keeps no file and
+    types entries straight in. Narrowing the headline to one trade and one file
+    format would describe less than the product actually does.
+    """
+    steps = [
+        ("01", "However you keep it",
+         "A spreadsheet, a CSV, a PDF from your accountant, a photo of a "
+         "handwritten register — or no file at all: type your entries straight "
+         "in. No template, no clean-up, no re-typing."),
+        ("02", "Vyuha reads it",
+         "It works out which part is sales, which is stock, which is money owed, "
+         "and which row your header is actually on — then shows you exactly what "
+         "it understood before you trust a number."),
+        ("03", "You get the picture",
+         "One dashboard that opens on a phone with no internet, plus a ranked list "
+         "of what needs attention: dead stock, items about to run out, invoices "
+         "past due."),
+    ]
+    step_html = "".join(
+        f'<div class="card"><div class="step-n">{n}</div>'
+        f'<div class="step-t">{E(t)}</div><p class="muted">{E(d)}</p></div>'
+        for n, t, d in steps)
+
+    proof = [
+        ("Dead stock", "Which items have not moved in 90 days, and the cash sitting in them."),
+        ("Days of cover", "Which SKUs run out this fortnight at the current rate."),
+        ("Overdue money", "Who owes you, how long it has been, ageing in buckets."),
+        ("A brief to send", "The same numbers as a WhatsApp message or an email, ready to go."),
+    ]
+    proof_html = "".join(
+        f'<div class="card"><div class="step-t">{E(t)}</div>'
+        f'<p class="muted" style="margin-bottom:0">{E(d)}</p></div>' for t, d in proof)
+
+    return _gate("Vyuha", f"""
+<section class="hero shot" style="background-image:url('{theme.HERO}')">
+  <div class="shot-in">
+    <div class="eyebrow">However your business keeps its records</div>
+    <h1 class="display">Your numbers<br>already know.<br><em>Ask them.</em></h1>
+    <p class="lede">Vyuha reads what you keep today — as it is — and turns it into a dashboard
+    and a short list of what needs attention. Nothing to install, nothing to reformat, no new
+    system to learn.</p>
+    <div class="cta">
+      <a class="btn primary" href="/signup">Create an account →</a>
+      <a class="btn" href="/login">I already have one</a>
+    </div>
+    {_trade_strip()}
+  </div>
+</section>
+
+<div class="section-h">How it works</div>
+<div class="grid g3">{step_html}</div>
+
+<div class="section-h" style="margin-top:44px">What comes back</div>
+<div class="grid g4">{proof_html}</div>
+
+<div class="card" style="margin-top:44px">
+  <div class="step-t">It shows its working</div>
+  <p class="muted" style="margin-bottom:0">Every dashboard ends with what Vyuha read from your
+  file — which sheets it used, which columns it understood, which it ignored, and every fix it
+  applied along the way. If it misreads something, you see that before anyone else does.</p>
+</div>
+
+<div class="tiny" style="margin-top:30px">Your data stays in your own workspace. Nobody else who
+signs up can see it.</div>""")
+
+
+# ------------------------------------------------------- shared workspace link
+
+def pin_gate(invite, flash: str = "") -> str:
+    """What the owner of a small shop actually sees: four boxes, nothing else.
+
+    No email, no password, no account to create. They tapped a link their
+    supplier sent; all that is left is to prove the phone is theirs.
+    """
+    # A locked link shows no boxes to type in. Offering a form that is certain
+    # to be refused just invites more guessing and reads as a broken page.
+    if invite.locked:
+        body = f"""<div class="card" style="max-width:360px;margin:0 auto;text-align:center">
+  {_flash(flash, "bad")}
+  <div class="tiny">The link starts working again on its own. Nothing is lost.</div>
+</div>"""
+        head = "Paused<br><em>for now.</em>"
+        lede = ("Too many wrong PINs were entered, so this link has stopped answering for a "
+                "little while. Wait and try again, or ask whoever sent it for a new one.")
+    else:
+        body = f"""<form method="post" action="/w/{invite.token}" class="card"
+      style="max-width:360px;margin:0 auto;text-align:center">
+  {_flash(flash, "bad")}
+  <input name="pin" class="pin" inputmode="numeric" pattern="[0-9]*" maxlength="4"
+         autocomplete="one-time-code" required autofocus placeholder="••••">
+  <button class="btn primary" type="submit" style="width:100%;justify-content:center">
+    Open my workspace →</button>
+  <div class="tiny" style="margin-top:14px">Did not get a PIN? Ask whoever sent you this link.</div>
+</form>"""
+        head = "Enter your<br><em>PIN.</em>"
+        lede = ("Four digits, once. This device will be remembered, so next time the link opens "
+                "straight into your workspace.")
+
+    return _gate("Open workspace", f"""
+<section class="hero" style="padding:70px 0 20px;text-align:center">
+  <div class="eyebrow">{E(invite.org_name)}</div>
+  <h1 class="display">{head}</h1>
+  <p class="lede" style="margin-left:auto;margin-right:auto">{lede}</p>
+</section>
+{body}""")
+
+
+def link_dead() -> str:
+    return _gate("Link closed", """
+<section class="hero" style="padding:80px 0 30px;text-align:center">
+  <div class="eyebrow">This link is closed</div>
+  <h1 class="display">Not<br><em>available.</em></h1>
+  <p class="lede" style="margin-left:auto;margin-right:auto">This workspace link has been turned
+  off, or it never existed. Ask whoever sent it to you for a new one.</p>
+</section>""")
+
+
+def signup(flash: str = "", flash_kind: str = "bad", email: str = "",
+           name: str = "") -> str:
+    return _gate("Sign up", f"""
+<section class="hero" style="padding-bottom:18px">
+  <div class="eyebrow">Create an account</div>
+  <h1 class="display">Start<br><em>here.</em></h1>
+  <p class="lede">Three fields. You choose what kind of workspace you want on the next screen.</p>
+</section>
+<form method="post" action="/signup" class="card" style="max-width:520px">
+  {_flash(flash, flash_kind)}
+  <div class="field"><label>Your name</label>
+    <input name="name" value="{E(name)}" required autofocus placeholder="Vishak Rao"></div>
+  <div class="field"><label>Email</label>
+    <input name="email" type="email" value="{E(email)}" required placeholder="you@business.com"></div>
+  <div class="field"><label>Password</label>
+    <input name="password" type="password" required minlength="8"
+           placeholder="At least 8 characters"></div>
+  <button class="btn primary" type="submit">Create account →</button>
+  <div class="tiny" style="margin-top:16px">Already have one? <a href="/login">Log in</a>.</div>
+</form>""")
+
+
+def login(flash: str = "", flash_kind: str = "bad", email: str = "") -> str:
+    return _gate("Log in", f"""
+<section class="hero" style="padding-bottom:18px">
+  <div class="eyebrow">Welcome back</div>
+  <h1 class="display">Log<br><em>in.</em></h1>
+</section>
+<form method="post" action="/login" class="card" style="max-width:520px">
+  {_flash(flash, flash_kind)}
+  <div class="field"><label>Email</label>
+    <input name="email" type="email" value="{E(email)}" required autofocus></div>
+  <div class="field"><label>Password</label>
+    <input name="password" type="password" required></div>
+  <button class="btn primary" type="submit">Log in →</button>
+  <div class="tiny" style="margin-top:16px">No account yet? <a href="/signup">Create one</a>.</div>
+</form>""")
 
 
 def cover_hero(c, settings, stats: list[tuple[str, str]]) -> str:
@@ -311,7 +547,7 @@ def _flash(msg: str, kind: str) -> str:
 
 # ------------------------------------------------------------ self-serve setup
 
-def choose_install() -> str:
+def choose_install(account) -> str:
     """Asked exactly once per install, and it decides what the product is.
 
     Vyuha's own copy runs a portfolio. A copy handed to a party we onboarded is
@@ -319,7 +555,7 @@ def choose_install() -> str:
     onboard. Getting this wrong the other way would show a client the existence
     of every other client, so it is a deliberate fork rather than a setting.
     """
-    return layout("Set up", """
+    return layout("Set up", account=account, body="""
 <section class="hero">
   <div class="eyebrow">First run</div>
   <h1 class="display">Who is this copy<br><em>for?</em></h1>
@@ -351,14 +587,14 @@ def choose_install() -> str:
   second option on <b>their</b> machine — they will never see the portfolio or anyone else's data.</div>""")
 
 
-def tenant_setup(preset: str = "") -> str:
+def tenant_setup(account, preset: str = "") -> str:
     """A tenant's onboarding is about their own operation, never about clients."""
     tiles = "".join(
         f"""<label class="trade-opt" style="background-image:url('{t['backdrop']}')">
   <input type="radio" name="trade" value="{k}"{' checked' if k == (preset or 'nursery') else ''}>
   <span>{E(t['label'])}</span></label>""" for k, t in theme.TRADES.items())
 
-    return layout("Set up", f"""
+    return layout("Set up", account=account, body=f"""
 <section class="hero">
   <div class="eyebrow">Two questions</div>
   <h1 class="display">Set up your<br><em>business.</em></h1>
@@ -390,7 +626,7 @@ def trade_picker(current: str, name: str = "trade") -> str:
 
 # ------------------------------------------------------------------- portfolio
 
-def home(clients, settings, recent, counts, flash: str = "", flash_kind: str = "ok") -> str:
+def home(clients, account, recent, counts, flash: str = "", flash_kind: str = "ok") -> str:
     if clients:
         tiles = []
         for c in clients:
@@ -441,10 +677,10 @@ def home(clients, settings, recent, counts, flash: str = "", flash_kind: str = "
 <div class="section-h"><h2>RECENT ACTIVITY</h2><div class="rule"></div>
   <a class="btn ghost sm" href="/activity">See all →</a></div>
 <div class="card">{_trail(recent) if recent else '<div class="muted">Nothing yet.</div>'}</div>""",
-                  active="clients", settings=settings)
+                  active="clients", account=account)
 
 
-def onboard(settings, flash: str = "", flash_kind: str = "ok") -> str:
+def onboard(settings, account, flash: str = "", flash_kind: str = "ok") -> str:
     live = settings.whatsapp_live
     note = ("A test message goes out the moment you save, so a wrong number is caught today."
             if live else
@@ -478,7 +714,7 @@ def onboard(settings, flash: str = "", flash_kind: str = "ok") -> str:
   <div style="display:flex;gap:11px;margin-top:9px">
     <button class="btn primary" type="submit">Create workspace →</button>
     <a class="btn ghost" href="/">Cancel</a></div>
-</form>""", active="onboard", settings=settings)
+</form>""", active="onboard", account=account)
 
 
 # -------------------------------------------------------------------- activity
@@ -494,7 +730,7 @@ def _trail(entries) -> str:
     return f'<div class="trail">{"".join(out)}</div>'
 
 
-def activity(entries, counts, clients, sel_client: str, sel_kind: str, settings) -> str:
+def activity(entries, counts, clients, sel_client: str, sel_kind: str, account) -> str:
     opts = '<option value="">All clients</option>' + "".join(
         f'<option value="{c.slug}"{" selected" if c.slug == sel_client else ""}>{E(c.name)}</option>'
         for c in clients)
@@ -528,12 +764,12 @@ def activity(entries, counts, clients, sel_client: str, sel_kind: str, settings)
 <div class="card">{_trail(entries) if entries else
     '<div class="empty"><div class="big">Nothing logged yet</div>'
     '<div class="muted">Onboard a client and upload a file.</div></div>'}</div>""",
-                  active="activity", settings=settings)
+                  active="activity", account=account)
 
 
 # -------------------------------------------------------------------- settings
 
-def settings(s, flash: str = "", flash_kind: str = "ok") -> str:
+def settings(s, account, flash: str = "", flash_kind: str = "ok") -> str:
     from .config import mask
 
     def cap(on, label, detail):
@@ -565,17 +801,16 @@ def settings(s, flash: str = "", flash_kind: str = "ok") -> str:
 {_flash(flash, flash_kind)}
 {caps}
 <form method="post" action="/settings" class="card" style="margin-top:22px">
-  <div class="section-h" style="margin-top:0"><h2>THIS INSTALL</h2><div class="rule"></div></div>
+  <div class="section-h" style="margin-top:0"><h2>THIS WORKSPACE</h2><div class="rule"></div></div>
   <div class="cap"><span class="dot on"></span><div>
     <div style="font-size:13.5px;font-weight:800">
-      {"Operator — you run Vyuha" if s.is_operator else "Single business — " + E(s.org_name or "your own shop")}</div>
+      {"Operator — you run a portfolio" if account.is_operator else "Single business — " + E(account.org_name or "your own shop")}</div>
     <div class="tiny">{"You manage a portfolio and can onboard businesses."
-                       if s.is_operator else
+                       if account.is_operator else
                        "This copy only ever shows your business. There is no portfolio and "
                        "nothing to onboard."}</div></div></div>
-  <div class="tiny" style="margin:10px 0 6px">Chosen at first run and deliberately not editable —
-    switching would change who can see what. To change it, clear
-    <span class="mono">vyuha_data/config.json</span>.</div>
+  <div class="tiny" style="margin:10px 0 6px">Chosen when you signed up and deliberately not
+    editable — switching would change who can see what.</div>
 
   <div class="section-h"><h2>WHATSAPP</h2><div class="rule"></div></div>
   <div class="field"><label>Provider</label>
@@ -626,7 +861,26 @@ def settings(s, flash: str = "", flash_kind: str = "ok") -> str:
 
   <button class="btn primary" type="submit">Save settings</button>
   <div class="tiny" style="margin-top:12px">Leave a secret field blank to keep the stored value.</div>
-</form>""", active="settings", settings=s)
+</form>
+
+<div class="section-h"><h2>YOUR LOGIN</h2><div class="rule"></div></div>
+<form method="post" action="/password" class="card">
+  <div class="cap"><span class="dot on"></span><div>
+    <div style="font-size:13.5px;font-weight:800">{E(account.email)}</div>
+    <div class="tiny">Signed in since {E((account.last_login or account.created_at).replace('T', ' ')[:16])}</div>
+  </div></div>
+  <div class="two" style="margin-top:16px">
+    <div class="field"><label>Current password</label>
+      <input name="current_password" type="password" required autocomplete="current-password"></div>
+    <div class="field"><label>New password</label>
+      <input name="new_password" type="password" required minlength="8"
+             autocomplete="new-password" placeholder="At least 8 characters"></div>
+  </div>
+  <button class="btn" type="submit">Change password</button>
+  <div class="tiny" style="margin-top:12px">Changing it signs this browser back in straight away.
+    Any other browser you are signed in on keeps its session — clear
+    <span class="mono">vyuha_data/secret.key</span> to end every session everywhere.</div>
+</form>""", active="settings", account=account)
 
 
 # ------------------------------------------------------------------- workspace
@@ -825,9 +1079,58 @@ def books_tab(c, book) -> str:
   the same one an uploaded spreadsheet produces.</div>"""
 
 
-def client_page(c, tab: str, settings, activity_entries, flash: str = "", flash_kind: str = "ok",
+def _share_card(c, invite, fresh_pin: str) -> str:
+    """Hand the owner their own workspace, without making them create anything.
+
+    The PIN is shown exactly once — when it is minted — because it is stored only
+    as a hash. Losing it means issuing a new link, which is the right trade: a
+    PIN we could read back is a PIN anyone with the file could read back.
+    """
+    if invite is None:
+        return f"""<div class="card"><div class="row"
+     style="justify-content:space-between;flex-wrap:wrap;gap:14px">
+  <div style="max-width:52ch"><div class="step-t">Not shared yet</div>
+    <div class="muted">Give the owner their own view of this workspace — a private link and a
+      4-digit PIN, sent over WhatsApp. Nothing for them to create, no password to remember.</div></div>
+  <form method="post" action="/c/{c.slug}/share">
+    <button class="btn primary" type="submit">Create their link →</button></form>
+</div></div>"""
+
+    link = f"/w/{invite.token}"
+    used = (f"Last opened {E(invite.last_used.replace('T', ' ')[:16])}"
+            if invite.last_used else "Not opened yet")
+    if fresh_pin:
+        pin_row = ('<div class="pin-show"><div class="tiny">PIN — shown once, send it now</div>'
+                   f'<div class="pin-val">{E(fresh_pin)}</div></div>')
+        wa = f"Your Vyuha workspace — PIN {fresh_pin}"
+    else:
+        pin_row = ('<div class="tiny">The PIN was shown when the link was made and is not stored '
+                   'in readable form. If it is lost, create a new link.</div>')
+        wa = "Your Vyuha workspace"
+
+    return f"""<div class="card">
+  <div class="step-t">Shared with the owner</div>
+  <div class="muted" style="margin-bottom:14px">{used}. Anyone holding both the link and the PIN
+    sees this workspace — and nothing else on this install.</div>
+  <div class="field"><label>Their private link</label>
+    <input id="shlink" value="{link}" readonly onclick="this.select()"></div>
+  {pin_row}
+  <div class="row" style="gap:10px;flex-wrap:wrap;margin-top:16px">
+    <button class="btn" type="button" onclick="
+      var u=location.origin+document.getElementById('shlink').value;
+      navigator.clipboard.writeText(u);this.textContent='Copied';">Copy full link</button>
+    <a class="btn" target="_blank"
+       href="https://wa.me/{E(c.phone)}?text={E(wa)}">Send on WhatsApp ↗</a>
+    <form method="post" action="/c/{c.slug}/share/revoke"
+          onsubmit="return confirm('Turn off this link? They lose access immediately.')">
+      <button class="btn danger" type="submit">Revoke</button></form>
+  </div></div>"""
+
+
+def client_page(c, tab: str, settings, account, activity_entries, flash: str = "", flash_kind: str = "ok",
                 wa_text: str = "", wa_link: str = "", mail_link: str = "",
-                email_subject: str = "", email_body: str = "", book=None) -> str:
+                email_subject: str = "", email_body: str = "", book=None,
+                invite=None, fresh_pin: str = "") -> str:
     last = c.latest
     manual = c.data_mode == "books"
     if manual and tab == "data":
@@ -921,6 +1224,22 @@ def client_page(c, tab: str, settings, activity_entries, flash: str = "", flash_
                  f'<div class="rule"></div></div>{_alert_cards(alerts)}{blocks}')
 
     elif tab == "settings":
+        # A shared-link guest is looking at their own business: they may edit
+        # their details, but sharing and deleting stay with the operator.
+        if account.is_guest:
+            owner_access = danger = ""
+        else:
+            owner_access = ('<div class="section-h"><h2>THE OWNER&#39;S OWN ACCESS</h2>'
+                            '<div class="rule"></div></div>'
+                            + _share_card(c, invite, fresh_pin))
+            danger = f"""<div class="section-h"><h2>DANGER</h2><div class="rule"></div></div>
+<div class="card"><div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:14px">
+  <div class="muted">Deletes the workspace, every uploaded file and every generated dashboard.</div>
+  <form method="post" action="/c/{c.slug}/delete"
+        onsubmit="return confirm('Delete {E(c.name)} and everything they sent?')">
+    <button class="btn danger" type="submit">Delete client</button></form>
+</div></div>"""
+
         inner = f"""<div class="section-h" style="margin-top:0"><h2>DETAILS</h2><div class="rule"></div></div>
 <form method="post" action="/c/{c.slug}/contact" class="card">
   <div class="two">
@@ -949,15 +1268,10 @@ def client_page(c, tab: str, settings, activity_entries, flash: str = "", flash_
       Use <b>Add a photo</b> at the top right of the banner to put a real picture up instead.</div></div>
   <button class="btn primary" type="submit">Save</button>
 </form>
+{owner_access}
 <div class="section-h"><h2>THIS CLIENT'S TRAIL</h2><div class="rule"></div></div>
 <div class="card">{_trail(activity_entries) if activity_entries else '<div class="muted">Nothing yet.</div>'}</div>
-<div class="section-h"><h2>DANGER</h2><div class="rule"></div></div>
-<div class="card"><div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:14px">
-  <div class="muted">Deletes the workspace, every uploaded file and every generated dashboard.</div>
-  <form method="post" action="/c/{c.slug}/delete"
-        onsubmit="return confirm('Delete {E(c.name)} and everything they sent?')">
-    <button class="btn danger" type="submit">Delete client</button></form>
-</div></div>"""
+{danger}"""
 
     else:  # data
         rows = []
@@ -1009,5 +1323,5 @@ def client_page(c, tab: str, settings, activity_entries, flash: str = "", flash_
 </script>"""
 
     return layout(c.name, f"{tabs}{_flash(flash, flash_kind)}{inner}",
-                  active="clients", settings=settings, trade_key=c.trade,
+                  active="clients", account=account, trade_key=c.trade,
                   full_bleed=cover_hero(c, settings, stats))

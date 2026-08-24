@@ -23,13 +23,14 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 from vyuha import analyze, pipeline
 
-from . import (books, channels, config, exports, ledger, sources, store, theme, ui,
-               whatsapp)
+from . import (auth, books, channels, config, exports, ledger, sources, store, theme,
+               ui, whatsapp)
 
 app = FastAPI(title="Vyuha Operations Platform", docs_url=None, redoc_url=None)
 
@@ -52,6 +53,45 @@ def _thresholds(client: store.Client):
             analyze.DEAD_STOCK_DAYS, analyze.LOW_COVER_DAYS = dead, cover
 
 
+#: Platform images (trade backdrops, the landing hero). Served from disk rather
+#: than inlined: the browser caches them, and the *client* dashboard still never
+#: references them — that file stays self-contained, and a test enforces it.
+app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"),
+          name="static")
+
+#: Reachable without a session. Everything else is closed by the middleware
+#: below, so a new route is private by default — the safe direction to forget in.
+PUBLIC = {"/", "/login", "/signup", "/logout"}
+
+#: Prefixes open to anyone holding the URL. ``/w/`` is a shared workspace link,
+#: which carries its own PIN check; ``/static/`` is decoration.
+PUBLIC_PREFIXES = ("/static/", "/w/")
+
+
+@app.middleware("http")
+async def require_login(request: Request, call_next):
+    """One gate for the whole app.
+
+    Guarding each route by hand means a route added later is public until
+    somebody remembers. Here the default is the other way round: unknown path,
+    no session, no entry.
+    """
+    path = request.url.path
+    request.state.principal = principal = auth.current(request)
+    # Kept for the many handlers that only ever deal with a logged-in account.
+    request.state.account = principal
+    if principal is None and path not in PUBLIC \
+            and not path.startswith(PUBLIC_PREFIXES):
+        return RedirectResponse("/login", status_code=303)
+    return await call_next(request)
+
+
+def _acct(request: Request) -> auth.Account:
+    """The logged-in account. Only ever called on a route the middleware closed,
+    so it cannot be None by the time a handler runs."""
+    return request.state.account
+
+
 def _redirect(url: str) -> RedirectResponse:
     return RedirectResponse(url, status_code=303)
 
@@ -66,73 +106,257 @@ def _msg(text: str) -> str:
 
 # ------------------------------------------------------------------- portfolio
 
-def _tenant_client(settings) -> store.Client | None:
-    """The single business a tenant install owns, or None if not set up yet.
+def _tenant_client(account) -> store.Client | None:
+    """The single business a tenant account owns, or None if not set up yet.
 
-    Deliberately strict: no falling back to "whatever client exists". An install
+    Deliberately strict: no falling back to "whatever client exists". An account
     that has not named its own business must show setup, never adopt a record
     that might belong to somebody else.
     """
-    if not settings.tenant_slug:
+    if not account.tenant_slug:
         return None
-    return store.get_client(settings.tenant_slug)
+    return store.get_client(account.tenant_slug, account.id)
 
 
-def _deny_tenant(settings) -> RedirectResponse | None:
+def _deny_guest(account) -> RedirectResponse | None:
+    """Deployment credentials are the operator's, not the guest's.
+
+    A shared-link guest is the owner of *their* business, not of this install,
+    so the WhatsApp/SMTP/Claude keys are none of their business — and letting
+    them overwrite the keys would break every other client's sends.
+    """
+    if getattr(account, "is_guest", False):
+        return _redirect("/?m=That+is+not+part+of+your+workspace.&k=bad")
+    return None
+
+
+def _deny_tenant(account) -> RedirectResponse | None:
     """Operator-only routes. A tenant must never reach portfolio machinery."""
-    if settings.is_tenant:
+    if account.is_tenant:
         return _redirect("/?m=That+is+not+part+of+your+workspace.&k=bad")
     return None
 
 
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
-    settings = config.load()
+    """The front door, which is two different doors.
+
+    Signed out it is the public landing page — the thing you send a prospect.
+    Signed in it is the workspace, in whichever of its two shapes this account
+    chose.
+    """
+    account = request.state.account
+    if account is None:
+        return ui.landing()
+
     msg, kind = _flash(request)
 
-    # Nothing chosen yet — the install fork happens before anything else.
-    if not settings.configured:
-        return ui.choose_install()
+    # Nothing chosen yet — the workspace fork happens before anything else.
+    if not account.configured:
+        return ui.choose_install(account)
 
-    if settings.is_tenant:
-        client = _tenant_client(settings)
+    if account.is_tenant:
+        client = _tenant_client(account)
         if client is None:
-            return ui.tenant_setup()
+            return ui.tenant_setup(account)
         return _redirect(f"/c/{client.slug}")
 
-    clients = store.load_clients()
-    return ui.home(clients, settings, ledger.read(limit=8), ledger.counts(),
-                   flash=msg, flash_kind=kind)
+    clients = store.load_clients(account.id)
+    return ui.home(clients, account, ledger.read(account.id, limit=8),
+                   ledger.counts(account.id), flash=msg, flash_kind=kind)
+
+
+# ------------------------------------------------------------------------ auth
+
+@app.get("/signup", response_class=HTMLResponse)
+def signup_form(request: Request):
+    if request.state.account is not None:
+        return _redirect("/")
+    return ui.signup()
+
+
+@app.post("/signup")
+def signup_submit(request: Request, name: str = Form(""), email: str = Form(...),
+                  password: str = Form(...)):
+    try:
+        account = auth.create(email, name, password)
+    except auth.SignupError as exc:
+        return HTMLResponse(ui.signup(flash=str(exc), email=email, name=name))
+
+    ledger.log("account.created", f"{account.email} signed up", owner=account.id,
+               channel="settings")
+    resp = _redirect("/")
+    _set_session(resp, request, account)
+    return resp
+
+
+@app.get("/login", response_class=HTMLResponse)
+def login_form(request: Request):
+    if request.state.account is not None:
+        return _redirect("/")
+    return ui.login()
+
+
+@app.post("/login")
+def login_submit(request: Request, email: str = Form(...),
+                 password: str = Form(...)):
+    account = auth.verify(email, password)
+    if account is None:
+        # One message for both causes: which half was wrong is not the visitor's
+        # business to learn, and saying so enumerates who has an account.
+        return HTMLResponse(ui.login(flash="That email and password do not match.",
+                                     email=email))
+    resp = _redirect("/")
+    _set_session(resp, request, account)
+    return resp
+
+
+@app.post("/logout")
+def logout():
+    resp = _redirect("/")
+    resp.delete_cookie(auth.COOKIE, path="/")
+    return resp
+
+
+# ------------------------------------------------- shared workspace (link+PIN)
+
+@app.get("/w/{token}", response_class=HTMLResponse)
+def shared_open(token: str, request: Request):
+    """A workspace link, as sent over WhatsApp.
+
+    Two halves make one key: the token, which nobody can guess, and a four-digit
+    PIN, which makes a forwarded message harmless. Once both are given the device
+    is remembered, so the owner taps the link and is simply *in* from then on.
+    """
+    invite = auth.get_invite(token)
+    if invite is None:
+        return HTMLResponse(ui.link_dead())
+
+    principal = request.state.principal
+    if getattr(principal, "is_guest", False) and principal.token == token:
+        return _redirect(f"/c/{invite.slug}")
+    if invite.locked:
+        return HTMLResponse(ui.pin_gate(
+            invite, flash=f"Too many wrong PINs. Try again in "
+                          f"{invite.locked_for} minutes."))
+    return HTMLResponse(ui.pin_gate(invite))
+
+
+@app.post("/w/{token}")
+def shared_unlock(token: str, request: Request, pin: str = Form(...)):
+    invite = auth.get_invite(token)
+    if invite is None:
+        return HTMLResponse(ui.link_dead())
+
+    if not auth.check_pin(invite, pin):
+        # Say which it was. Somebody who mistyped deserves to know they must
+        # wait, rather than keep guessing at a PIN that is now refused anyway.
+        if invite.locked:
+            ledger.log("share.locked",
+                       f"{invite.org_name}: too many wrong PINs, link paused",
+                       client=invite.slug, owner=invite.owner_id, channel="whatsapp")
+            note = (f"Too many wrong PINs. Try again in {invite.locked_for} minutes, "
+                    "or ask for a new link.")
+        else:
+            note = "That PIN is not right."
+        return HTMLResponse(ui.pin_gate(invite, flash=note))
+
+    ledger.log("share.opened", f"{invite.org_name} opened their workspace",
+               client=invite.slug, owner=invite.owner_id, channel="whatsapp")
+    resp = _redirect(f"/c/{invite.slug}")
+    _set_cookie(resp, request, auth.issue_guest(invite))
+    return resp
+
+
+@app.post("/c/{slug}/share")
+def share_create(slug: str, request: Request,
+                 account: auth.Account = Depends(_acct)):
+    """Mint the link and PIN for a client. Operator-only, by definition."""
+    denied = _deny_tenant(account)
+    if denied:
+        return denied
+    client = store.get_client(slug, account.id)
+    if client is None:
+        return _redirect("/?m=That+client+no+longer+exists.&k=bad")
+
+    invite, pin = auth.create_invite(slug, account.id, client.name)
+    ledger.log("share.created", f"Workspace link issued for {client.name}",
+               client=client, channel="whatsapp")
+    # The PIN is shown exactly once, here, because it is not stored in clear.
+    return _redirect(f"/c/{slug}?tab=settings&pin={pin}&m={_msg('Link ready. Send it with the PIN.')}")
+
+
+@app.post("/c/{slug}/share/revoke")
+def share_revoke(slug: str, account: auth.Account = Depends(_acct)):
+    denied = _deny_tenant(account)
+    if denied:
+        return denied
+    client = store.get_client(slug, account.id)
+    if client is None:
+        return _redirect("/?m=That+client+no+longer+exists.&k=bad")
+    auth.revoke_invite(slug)
+    ledger.log("share.revoked", f"Workspace link revoked for {client.name}",
+               client=client)
+    return _redirect(f"/c/{slug}?tab=settings&m=Link+revoked.")
+
+
+def _over_https(request: Request) -> bool:
+    """Whether this request actually arrived over TLS.
+
+    Checked per request rather than configured, because the same build serves
+    plain localhost during development and HTTPS in front of a proxy. The
+    forwarded header is what a reverse proxy sets; the scheme covers the case
+    where uvicorn terminates TLS itself.
+    """
+    forwarded = request.headers.get("x-forwarded-proto", "").split(",")[0].strip()
+    return (forwarded or request.url.scheme) == "https"
+
+
+def _set_cookie(resp, request: Request, value: str) -> None:
+    """httponly so script cannot read it; samesite=lax so a form post from
+    another site cannot ride along; secure whenever the connection can carry it.
+
+    ``secure`` is deliberately conditional: setting it unconditionally would
+    mean the cookie is never stored over plain localhost, and a session that
+    never persists is worse than one that does.
+    """
+    resp.set_cookie(auth.COOKIE, value, max_age=auth.MAX_AGE, httponly=True,
+                    samesite="lax", secure=_over_https(request), path="/")
+
+
+def _set_session(resp, request: Request, account) -> None:
+    _set_cookie(resp, request, auth.issue(account))
 
 
 @app.post("/install")
-def install_choose(install: str = Form(...)):
-    settings = config.load()
-    settings.install = "tenant" if install == "tenant" else "operator"
-    config.save(settings)
-    ledger.log("settings.changed", f"Install configured as {settings.install}",
-               channel="settings")
+def install_choose(request: Request, install: str = Form(...)):
+    account = request.state.account
+    account.install = "tenant" if install == "tenant" else "operator"
+    auth.update(account)
+    ledger.log("settings.changed", f"Workspace set up as {account.install}",
+               owner=account.id, channel="settings")
     return _redirect("/")
 
 
 @app.get("/onboard", response_class=HTMLResponse)
-def onboard_form(request: Request):
-    settings = config.load()
-    denied = _deny_tenant(settings)
+def onboard_form(request: Request, account: auth.Account = Depends(_acct)):
+    denied = _deny_tenant(account)
     if denied:
         return denied
-    return ui.onboard(settings, *_flash(request))
+    return ui.onboard(config.load(), account, *_flash(request))
 
 
 @app.post("/onboard")
 def onboard_submit(name: str = Form(...), phone: str = Form(""),
-                   data_mode: str = Form("upload"), trade: str = Form("")):
+                   data_mode: str = Form("upload"), trade: str = Form(""),
+                   account: auth.Account = Depends(_acct)):
     """Minimal by design: a name, a number, and how their data arrives."""
     settings = config.load()
-    denied = _deny_tenant(settings)
+    denied = _deny_tenant(account)
     if denied:
         return denied
-    client = store.add_client(name=name.strip(), phone=channels.normalise_phone(phone),
+    client = store.add_client(account.id,
+                              name=name.strip(), phone=channels.normalise_phone(phone),
                               data_mode=data_mode if data_mode in ("upload", "books") else "upload",
                               trade=trade or theme.guess(name))
     ledger.log("client.onboarded", f"{client.name} onboarded", client=client,
@@ -152,27 +376,26 @@ def onboard_submit(name: str = Form(...), phone: str = Form(""),
 
 
 @app.get("/setup", response_class=HTMLResponse)
-def tenant_setup_form():
-    settings = config.load()
-    if not settings.is_tenant:
+def tenant_setup_form(account: auth.Account = Depends(_acct)):
+    if not account.is_tenant:
         return _redirect("/")
-    return ui.tenant_setup()
+    return ui.tenant_setup(account)
 
 
 @app.post("/setup")
 def tenant_setup_submit(name: str = Form(...), trade: str = Form(""),
-                        data_mode: str = Form("books")):
+                        data_mode: str = Form("books"), account: auth.Account = Depends(_acct)):
     """A tenant sets up their own operation — never a client list."""
-    settings = config.load()
-    if not settings.is_tenant:
+    if not account.is_tenant:
         return _redirect("/")
 
     client = store.add_client(
+        account.id,
         name=name.strip(), trade=trade or theme.guess(name),
         data_mode=data_mode if data_mode in ("upload", "books") else "books")
-    settings.org_name = client.name
-    settings.tenant_slug = client.slug
-    config.save(settings)
+    account.org_name = client.name
+    account.tenant_slug = client.slug
+    auth.update(account)
     ledger.log("client.onboarded", f"{client.name} set up their workspace", client=client)
     return _redirect(f"/c/{client.slug}?m={_msg('Welcome. Add your first entry.')}")
 
@@ -180,7 +403,7 @@ def tenant_setup_submit(name: str = Form(...), trade: str = Form(""),
 # ------------------------------------------------------------------- workspace
 
 @app.get("/c/{slug}/cover")
-def cover(slug: str):
+def cover(slug: str, account: auth.Account = Depends(_acct)):
     path = store.covers_dir() / f"{slug}.img"
     if not path.exists():
         return _redirect(f"/c/{slug}")
@@ -188,8 +411,8 @@ def cover(slug: str):
 
 
 @app.post("/c/{slug}/cover")
-def cover_upload(slug: str, file: UploadFile = File(...)):
-    client = store.get_client(slug)
+def cover_upload(slug: str, file: UploadFile = File(...), account: auth.Account = Depends(_acct)):
+    client = store.get_client(slug, account.id)
     if client is None:
         return _redirect("/?m=That+client+no+longer+exists.&k=bad")
     if not (file.content_type or "").startswith("image/"):
@@ -205,15 +428,16 @@ def cover_upload(slug: str, file: UploadFile = File(...)):
 
 
 @app.get("/c/{slug}", response_class=HTMLResponse)
-def client_page(slug: str, request: Request, tab: str = "data"):
-    client = store.get_client(slug)
+def client_page(slug: str, request: Request, tab: str = "data",
+                account: auth.Account = Depends(_acct)):
+    client = store.get_client(slug, account.id)
     if client is None:
         return _redirect("/?m=That+client+no+longer+exists.&k=bad")
 
     settings = config.load()
-    # A tenant install owns exactly one workspace and cannot reach another.
-    if settings.is_tenant:
-        own = _tenant_client(settings)
+    # A tenant account owns exactly one workspace and cannot reach another.
+    if account.is_tenant:
+        own = _tenant_client(account)
         if own is None or own.slug != slug:
             return _redirect("/?m=That+is+not+your+workspace.&k=bad")
     msg, kind = _flash(request)
@@ -237,7 +461,12 @@ def client_page(slug: str, request: Request, tab: str = "data"):
     if client.data_mode == "books" or tab == "books":
         extra["book"] = books.load(slug)
 
-    return ui.client_page(client, tab, settings, ledger.read(limit=40, client=slug),
+    if tab == "settings" and not account.is_guest:
+        extra["invite"] = auth.invite_for(slug)
+        extra["fresh_pin"] = request.query_params.get("pin", "")
+
+    return ui.client_page(client, tab, settings, account,
+                          ledger.read(account.id, limit=40, client=slug),
                           flash=msg, flash_kind=kind, **extra)
 
 
@@ -246,8 +475,9 @@ def client_page(slug: str, request: Request, tab: str = "data"):
 @app.post("/c/{slug}/book/item")
 def book_add_item(slug: str, name: str = Form(...), category: str = Form("Other"),
                   unit: str = Form("piece"), rate: str = Form("0"), cost: str = Form("0"),
-                  stock_qty: str = Form("0"), reorder_level: str = Form("0")):
-    client = store.get_client(slug)
+                  stock_qty: str = Form("0"), reorder_level: str = Form("0"),
+                  account: auth.Account = Depends(_acct)):
+    client = store.get_client(slug, account.id)
     if client is None:
         return _redirect("/?m=That+client+no+longer+exists.&k=bad")
     _, note = books.add_item(slug, name, category, unit, rate, cost, stock_qty, reorder_level)
@@ -259,8 +489,9 @@ def book_add_item(slug: str, name: str = Form(...), category: str = Form("Other"
 @app.post("/c/{slug}/book/sale")
 def book_add_sale(slug: str, sku: str = Form(...), party: str = Form(""),
                   qty: str = Form("1"), rate: str = Form(""), when: str = Form(""),
-                  payment: str = Form("paid"), due_date: str = Form("")):
-    client = store.get_client(slug)
+                  payment: str = Form("paid"), due_date: str = Form(""),
+                  account: auth.Account = Depends(_acct)):
+    client = store.get_client(slug, account.id)
     if client is None:
         return _redirect("/?m=That+client+no+longer+exists.&k=bad")
     _, note, ok = books.record_sale(slug, sku, party, qty, rate, when,
@@ -273,8 +504,8 @@ def book_add_sale(slug: str, sku: str = Form(...), party: str = Form(""),
 
 
 @app.post("/c/{slug}/book/sale/{sale_id}/delete")
-def book_delete_sale(slug: str, sale_id: str):
-    client = store.get_client(slug)
+def book_delete_sale(slug: str, sale_id: str, account: auth.Account = Depends(_acct)):
+    client = store.get_client(slug, account.id)
     if client is None:
         return _redirect("/?m=That+client+no+longer+exists.&k=bad")
     _, note = books.delete_sale(slug, sale_id)
@@ -284,8 +515,8 @@ def book_delete_sale(slug: str, sale_id: str):
 
 
 @app.post("/c/{slug}/book/sale/{sale_id}/paid")
-def book_mark_paid(slug: str, sale_id: str):
-    client = store.get_client(slug)
+def book_mark_paid(slug: str, sale_id: str, account: auth.Account = Depends(_acct)):
+    client = store.get_client(slug, account.id)
     if client is None:
         return _redirect("/?m=That+client+no+longer+exists.&k=bad")
     _, note = books.mark_paid(slug, sale_id)
@@ -295,8 +526,8 @@ def book_mark_paid(slug: str, sale_id: str):
 
 
 @app.post("/c/{slug}/book/item/{sku}/delete")
-def book_delete_item(slug: str, sku: str):
-    client = store.get_client(slug)
+def book_delete_item(slug: str, sku: str, account: auth.Account = Depends(_acct)):
+    client = store.get_client(slug, account.id)
     if client is None:
         return _redirect("/?m=That+client+no+longer+exists.&k=bad")
     _, note = books.delete_item(slug, sku)
@@ -344,28 +575,33 @@ def _rebuild_from_book(client: store.Client) -> None:
         outstanding=float(ins.receivables.get("total") or 0),
     )
     # One rolling run for a manual book — the ledger is the history, not the runs.
-    client = store.get_client(client.slug)
+    client = store.get_client(client.slug, client.owner_id)
     client.runs = [run]
     store.update_client(client)
 
 
 @app.post("/c/{slug}/delete")
-def client_delete(slug: str):
-    client = store.get_client(slug)
+def client_delete(slug: str, account: auth.Account = Depends(_acct)):
+    denied = _deny_guest(account)
+    if denied:
+        return denied
+    client = store.get_client(slug, account.id)
     name = client.name if client else slug
     shutil.rmtree(store.UPLOADS / slug, ignore_errors=True)
     shutil.rmtree(store.DASHBOARDS / slug, ignore_errors=True)
-    store.delete_client(slug)
-    ledger.log("client.deleted", f"{name} was deleted", client=slug)
+    store.delete_client(slug, account.id)
+    ledger.log("client.deleted", f"{name} was deleted", client=slug,
+               owner=account.id)
     return _redirect("/?m=Client+deleted.")
 
 
 @app.post("/c/{slug}/contact")
 def client_contact(slug: str, contact: str = Form(""), phone: str = Form(""),
                    email: str = Form(""), industry: str = Form(""),
-                   dead_stock_days: int = Form(90), low_cover_days: int = Form(14)):
+                   dead_stock_days: int = Form(90), low_cover_days: int = Form(14),
+                   account: auth.Account = Depends(_acct)):
     """Details are optional and filled in later, never demanded at onboarding."""
-    client = store.get_client(slug)
+    client = store.get_client(slug, account.id)
     if client is None:
         return _redirect("/?m=That+client+no+longer+exists.&k=bad")
     client.contact = contact.strip()
@@ -399,8 +635,8 @@ def _reload_insights(client: store.Client, run: store.Run, settings):
 
 
 @app.post("/c/{slug}/upload")
-def upload(slug: str, file: UploadFile = File(...)):
-    client = store.get_client(slug)
+def upload(slug: str, file: UploadFile = File(...), account: auth.Account = Depends(_acct)):
+    client = store.get_client(slug, account.id)
     if client is None:
         return _redirect("/?m=That+client+no+longer+exists.&k=bad")
 
@@ -466,14 +702,14 @@ def upload(slug: str, file: UploadFile = File(...)):
         ledger.log("run.failed", f"{name}: {run.error}", client=client)
         msg, kind = f"Could not read {name}. {run.error[:110]}", "bad"
 
-    store.add_run(slug, run)
+    store.add_run(slug, account.id, run)
     tab = "alerts" if run.status == "ok" and run.alert_count else "data"
     return _redirect(f"/c/{slug}?tab={tab}&m={_msg(msg)}&k={kind}")
 
 
 @app.get("/c/{slug}/dashboard")
-def dashboard(slug: str):
-    client = store.get_client(slug)
+def dashboard(slug: str, account: auth.Account = Depends(_acct)):
+    client = store.get_client(slug, account.id)
     if client is None or not client.latest or not client.latest.dashboard:
         return _redirect(f"/c/{slug}?m=No+dashboard+yet.&k=bad")
     path = store.DASHBOARDS / client.latest.dashboard
@@ -485,8 +721,8 @@ def dashboard(slug: str):
 # --------------------------------------------------------------------- exports
 
 @app.get("/c/{slug}/export/{fmt}")
-def export(slug: str, fmt: str):
-    client = store.get_client(slug)
+def export(slug: str, fmt: str, account: auth.Account = Depends(_acct)):
+    client = store.get_client(slug, account.id)
     if client is None or not client.latest or client.latest.status != "ok":
         return _redirect(f"/c/{slug}?m=Nothing+to+export+yet.&k=bad")
 
@@ -521,8 +757,9 @@ def export(slug: str, fmt: str):
 
 
 @app.post("/c/{slug}/email")
-def email_send(slug: str, subject: str = Form(...), body: str = Form(...)):
-    client = store.get_client(slug)
+def email_send(slug: str, subject: str = Form(...), body: str = Form(...),
+               account: auth.Account = Depends(_acct)):
+    client = store.get_client(slug, account.id)
     if client is None:
         return _redirect("/?m=That+client+no+longer+exists.&k=bad")
 
@@ -538,8 +775,8 @@ def email_send(slug: str, subject: str = Form(...), body: str = Form(...)):
 
 
 @app.post("/c/{slug}/whatsapp")
-def whatsapp_send(slug: str, text: str = Form(...)):
-    client = store.get_client(slug)
+def whatsapp_send(slug: str, text: str = Form(...), account: auth.Account = Depends(_acct)):
+    client = store.get_client(slug, account.id)
     if client is None:
         return _redirect("/?m=That+client+no+longer+exists.&k=bad")
 
@@ -555,18 +792,45 @@ def whatsapp_send(slug: str, text: str = Form(...)):
 # -------------------------------------------------------------------- activity
 
 @app.get("/activity", response_class=HTMLResponse)
-def activity(request: Request, client: str = "", kind: str = ""):
+def activity(request: Request, client: str = "", kind: str = "",
+             account: auth.Account = Depends(_acct)):
     kinds = {kind} if kind else None
-    return ui.activity(ledger.read(limit=300, client=client, kinds=kinds),
-                       ledger.counts(), store.load_clients(), client, kind,
-                       config.load())
+    return ui.activity(ledger.read(account.id, limit=300, client=client, kinds=kinds),
+                       ledger.counts(account.id), store.load_clients(account.id),
+                       client, kind, account)
 
 
 # -------------------------------------------------------------------- settings
 
 @app.get("/settings", response_class=HTMLResponse)
-def settings_page(request: Request):
-    return ui.settings(config.load(), *_flash(request))
+def settings_page(request: Request, account: auth.Account = Depends(_acct)):
+    denied = _deny_guest(account)
+    if denied:
+        return denied
+    return ui.settings(config.load(), account, *_flash(request))
+
+
+@app.post("/password")
+def password_change(request: Request, current_password: str = Form(...),
+                    new_password: str = Form(...),
+                    account: auth.Account = Depends(_acct)):
+    """A guest has no password to change — their key is the link and the PIN."""
+    denied = _deny_guest(account)
+    if denied:
+        return denied
+    try:
+        auth.change_password(account, current_password, new_password)
+    except auth.SignupError as exc:
+        return _redirect(f"/settings?m={_msg(str(exc))}&k=bad")
+
+    ledger.log("account.password", "Password changed", owner=account.id,
+               channel="settings")
+    # Changing the salt invalidates nothing on its own — the session is signed
+    # over the account id — so re-issue deliberately, which is also what makes
+    # "change my password" a usable answer to "I think somebody has my laptop".
+    resp = _redirect("/settings?m=Password+changed.")
+    _set_session(resp, request, account)
+    return resp
 
 
 @app.post("/settings")
@@ -579,9 +843,12 @@ def settings_save(
     anthropic_key: str = Form(""),
     smtp_host: str = Form(""), smtp_port: int = Form(587),
     smtp_user: str = Form(""), smtp_password: str = Form(""), smtp_from: str = Form(""),
+    account: auth.Account = Depends(_acct),
 ):
+    denied = _deny_guest(account)
+    if denied:
+        return denied
     current = config.load()
-    current.mode = mode if mode in ("agency", "self") else "agency"
     current.whatsapp_provider = whatsapp_provider
     current.meta_phone_number_id = meta_phone_number_id.strip()
     current.meta_template = meta_template.strip()
@@ -600,5 +867,6 @@ def settings_save(
             setattr(current, field_name, value.strip())
 
     config.save(current)
-    ledger.log("settings.changed", "Platform settings updated", channel="settings")
+    ledger.log("settings.changed", "Platform settings updated", owner=account.id,
+               channel="settings")
     return _redirect("/settings?m=Settings+saved.")

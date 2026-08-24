@@ -30,6 +30,7 @@ LEDGER = DATA / "activity.jsonl"
 
 #: Every kind that can appear, with the label the UI renders and its accent.
 KINDS = {
+    "account.created":   ("Account created", "ok"),
     "client.onboarded":  ("Client onboarded", "ok"),
     "client.deleted":    ("Client deleted", "dim"),
     "source.received":   ("File received", "info"),
@@ -41,6 +42,11 @@ KINDS = {
     "alert.sent":        ("Brief sent", "ok"),
     "alert.send_failed": ("Brief not sent", "crit"),
     "export.created":    ("Export generated", "info"),
+    "share.created":     ("Workspace link issued", "info"),
+    "share.opened":      ("Owner opened workspace", "ok"),
+    "share.revoked":     ("Workspace link revoked", "dim"),
+    "share.locked":      ("Link paused after wrong PINs", "warn"),
+    "account.password":  ("Password changed", "dim"),
     "settings.changed":  ("Settings changed", "dim"),
 }
 
@@ -49,6 +55,11 @@ KINDS = {
 class Entry:
     ts: str
     kind: str
+    #: The account this event belongs to. One file still holds every account's
+    #: history — it is append-only and must stay that way — so the scoping is a
+    #: filter on read. Entries written before accounts existed have no owner and
+    #: are shown to nobody.
+    owner: str = ""
     client: str = ""            # slug, blank for platform-level events
     client_name: str = ""
     summary: str = ""
@@ -68,11 +79,17 @@ class Entry:
         return self.ts.replace("T", " ")[:16]
 
 
-def log(kind: str, summary: str, client=None, channel: str = "", **detail) -> Entry:
-    """Append one event. Never raises — a ledger failure must not fail the action."""
+def log(kind: str, summary: str, client=None, channel: str = "", owner: str = "",
+        **detail) -> Entry:
+    """Append one event. Never raises — a ledger failure must not fail the action.
+
+    ``owner`` is taken from the client when one is passed, so the ordinary call
+    sites did not have to change; platform-level events pass it explicitly.
+    """
     entry = Entry(
         ts=datetime.now().isoformat(timespec="seconds"),
         kind=kind,
+        owner=owner or getattr(client, "owner_id", ""),
         client=getattr(client, "slug", "") or (client if isinstance(client, str) else ""),
         client_name=getattr(client, "name", ""),
         summary=summary,
@@ -88,8 +105,14 @@ def log(kind: str, summary: str, client=None, channel: str = "", **detail) -> En
     return entry
 
 
-def read(limit: int = 200, client: str = "", kinds: set[str] | None = None) -> list[Entry]:
-    """Newest first. A malformed line is skipped rather than killing the read."""
+def read(owner: str, limit: int = 200, client: str = "",
+         kinds: set[str] | None = None) -> list[Entry]:
+    """One account's history, newest first.
+
+    ``owner`` is required for the same reason ``store`` requires it: a reader
+    that forgets to scope should fail, not quietly show somebody else's files.
+    A malformed line is skipped rather than killing the read.
+    """
     if not LEDGER.exists():
         return []
     out: list[Entry] = []
@@ -107,6 +130,8 @@ def read(limit: int = 200, client: str = "", kinds: set[str] | None = None) -> l
             entry = Entry(**row)
         except (json.JSONDecodeError, TypeError):
             continue
+        if entry.owner != owner:
+            continue
         if client and entry.client != client:
             continue
         if kinds and entry.kind not in kinds:
@@ -117,9 +142,9 @@ def read(limit: int = 200, client: str = "", kinds: set[str] | None = None) -> l
     return out
 
 
-def counts() -> dict:
-    """Headline numbers for the activity view."""
-    entries = read(limit=10_000)
+def counts(owner: str) -> dict:
+    """Headline numbers for the activity view, for one account."""
+    entries = read(owner, limit=10_000)
     by_kind: dict[str, int] = {}
     for e in entries:
         by_kind[e.kind] = by_kind.get(e.kind, 0) + 1
