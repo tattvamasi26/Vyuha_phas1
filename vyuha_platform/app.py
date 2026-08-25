@@ -810,6 +810,29 @@ def settings_page(request: Request, account: auth.Account = Depends(_acct)):
     return ui.settings(config.load(), account, *_flash(request))
 
 
+@app.post("/settings/test-whatsapp")
+def settings_test_whatsapp(to: str = Form(...),
+                           account: auth.Account = Depends(_acct)):
+    """Prove the credentials work, against a real number, before a client sees it.
+
+    Reports whatever the provider actually said. A test that quietly succeeds
+    when nothing was delivered is worse than no test, so a link-only fallback is
+    reported as *not sent* even though a usable link comes back with it.
+    """
+    denied = _deny_guest(account)
+    if denied:
+        return denied
+
+    settings = config.load()
+    result = whatsapp.send_test(settings, to)
+    ledger.log("alert.sent" if result.ok else "alert.send_failed",
+               f"Connection test via {result.provider}: {result.detail}",
+               owner=account.id, channel="whatsapp", provider=result.provider)
+
+    note = result.detail + (" " + result.needs_action if result.needs_action else "")
+    return _redirect(f"/settings?m={_msg(note)}&k={'ok' if result.ok else 'bad'}")
+
+
 @app.post("/password")
 def password_change(request: Request, current_password: str = Form(...),
                     new_password: str = Form(...),

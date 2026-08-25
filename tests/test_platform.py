@@ -676,6 +676,50 @@ def test_a_guest_has_no_password_to_change():
     assert auth.verify(ACCOUNT.email, "test-password-1") is not None
 
 
+def test_whatsapp_checklist_tracks_what_is_actually_configured():
+    """The settings page has to answer 'what am I still missing', not describe."""
+    from vyuha_platform import config, ui
+
+    s = config.Settings(whatsapp_provider="twilio")
+    blank = ui.whatsapp_checklist(s)
+    assert blank.count("wstep off") >= 1, "nothing was flagged as missing"
+
+    s.twilio_sid = "AC" + "0" * 30
+    filled = ui.whatsapp_checklist(s)
+    assert filled.count("wstep ok") > blank.count("wstep ok"), "a ticked step did not tick"
+
+    # The join-the-sandbox step is a human action nothing here can verify, so it
+    # must never render as done just because credentials exist.
+    assert "wstep manual" in filled
+    assert "join" in filled
+
+    meta = ui.whatsapp_checklist(config.Settings(whatsapp_provider="meta"))
+    assert "131047" in meta, "the 24-hour template trap is not explained"
+    assert "already active on regular WhatsApp" in meta or "regular WhatsApp" in meta
+
+
+def test_the_connection_test_reports_failure_honestly():
+    """With no provider connected the test must say 'not sent', not 'sent'."""
+    resp = client.post("/settings/test-whatsapp", data={"to": "98765 43210"})
+    assert resp.status_code == 200
+    assert "k=bad" in str(resp.url) or "deep+link" in str(resp.url) or "wa.me" in resp.text \
+        or "Connect Twilio" in resp.text, str(resp.url)
+
+    from vyuha_platform import ledger
+    kinds = [e.kind for e in ledger.read(ACCOUNT.id, limit=20)]
+    assert "alert.send_failed" in kinds, "the failed test was not recorded"
+
+
+def test_a_guest_cannot_spend_the_operators_whatsapp_credit():
+    slug = _onboard("Zeta Notest Co", mode="books", phone="")
+    token, pin = _share(slug)
+    guest = TestClient(app_mod.app, follow_redirects=True)
+    guest.post(f"/w/{token}", data={"pin": pin})
+
+    resp = guest.post("/settings/test-whatsapp", data={"to": "98765 43210"})
+    assert "Anthropic" not in resp.text and "Twilio" not in resp.text
+
+
 def test_a_pin_is_never_stored_in_readable_form():
     slug = _onboard("Zeta Pinsafe Co", mode="books", phone="")
     _, pin = _share(slug)

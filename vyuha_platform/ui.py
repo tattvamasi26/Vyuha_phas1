@@ -244,6 +244,18 @@ tr:last-child td{border-bottom:0}
   border-radius:999px;color:var(--ink-2);background:rgba(255,255,255,.04);
   border:1px solid var(--line-2);border-left:3px solid var(--c)}
 
+.wsteps{display:flex;flex-direction:column;gap:2px;margin-bottom:20px}
+.wstep{display:flex;gap:12px;align-items:flex-start;padding:12px 15px;border-radius:10px;
+  background:var(--card-2);border:1px solid var(--line)}
+.wmark{flex:none;width:20px;height:20px;border-radius:50%;display:grid;place-items:center;
+  font-size:11px;font-weight:800;margin-top:1px}
+.wstep.ok .wmark{background:rgba(52,211,153,.18);color:var(--ok);
+  border:1px solid rgba(52,211,153,.45)}
+.wstep.off .wmark{background:rgba(255,255,255,.05);color:var(--ink-3);
+  border:1px solid var(--line-2)}
+.wstep.manual .wmark{background:rgba(124,92,255,.16);color:var(--accent);
+  border:1px solid rgba(124,92,255,.4)}
+.wtitle{font-size:13.5px;font-weight:800;margin-bottom:3px}
 .pin-show{border:1px solid var(--accent);border-radius:12px;padding:14px 18px;
   background:rgba(124,92,255,.10);text-align:center}
 .pin-val{font-family:'JetBrains Mono',monospace;font-size:34px;letter-spacing:.34em;
@@ -769,6 +781,57 @@ def activity(entries, counts, clients, sel_client: str, sel_kind: str, account) 
 
 # -------------------------------------------------------------------- settings
 
+#: What each WhatsApp route actually demands of a human before a message can
+#: leave the machine. Rendered as a live checklist rather than documentation,
+#: because "what am I still missing" is the only question this page has to
+#: answer, and prose in a README cannot tick its own boxes.
+WA_STEPS = {
+    "twilio": [
+        ("twilio_sid", "A Twilio account",
+         "Free trial is enough. The Account SID and Auth Token are on the console dashboard."),
+        ("twilio_from", "The sandbox sender",
+         "Twilio's shared sandbox number, already filled in. No business verification needed."),
+        ("", "The recipient joins the sandbox",
+         "From the phone that will receive alerts, WhatsApp the join code "
+         "(\"join <two-words>\", shown in your Twilio console) to the sandbox number. Once only. "
+         "This is the step people forget, and it is why a send comes back 63015."),
+    ],
+    "meta": [
+        ("", "A Meta Business Account",
+         "Business Manager, plus an app at developers.facebook.com with the WhatsApp product added."),
+        ("meta_phone_number_id", "A dedicated phone number",
+         "It must NOT already be active on regular WhatsApp or the WhatsApp Business app — "
+         "delete it from those first, or Meta refuses to register it."),
+        ("meta_token", "An access token",
+         "The 24-hour test token gets you sending today. For anything lasting, create a System "
+         "User in Business Settings and issue a permanent token."),
+        ("meta_template", "An approved template",
+         "Only needed to message someone who has not written to you in the last 24 hours — "
+         "which is every proactive stock alert. Without one, Meta returns 131047."),
+    ],
+    "link": [
+        ("", "Nothing at all",
+         "This is the default and it always works: Vyuha builds a wa.me link with the brief "
+         "pre-typed, and you tap send. No account, no verification, no per-message cost."),
+    ],
+}
+
+
+def whatsapp_checklist(s) -> str:
+    """Tick what is done, name what is not, for the provider actually selected."""
+    steps = WA_STEPS.get(s.whatsapp_provider, WA_STEPS["link"])
+    rows = []
+    for field_name, title, detail in steps:
+        # A step tied to no setting is a human action we cannot verify from here.
+        done = bool(getattr(s, field_name, "")) if field_name else None
+        mark, tone = ({True: ("✓", "ok"), False: ("○", "off"),
+                       None: ("•", "manual")})[done]
+        rows.append(f'<div class="wstep {tone}"><span class="wmark">{mark}</span>'
+                    f'<div><div class="wtitle">{E(title)}</div>'
+                    f'<div class="tiny">{E(detail)}</div></div></div>')
+    return '<div class="wsteps">' + "".join(rows) + "</div>"
+
+
 def settings(s, account, flash: str = "", flash_kind: str = "ok") -> str:
     from .config import mask
 
@@ -779,6 +842,8 @@ def settings(s, account, flash: str = "", flash_kind: str = "ok") -> str:
 
     def sel(value, current):
         return " selected" if value == current else ""
+
+    checklist = whatsapp_checklist(s)
 
     caps = (cap(s.whatsapp_live, "WhatsApp sending",
                 f"Provider: {s.whatsapp_provider}. "
@@ -813,6 +878,8 @@ def settings(s, account, flash: str = "", flash_kind: str = "ok") -> str:
     editable — switching would change who can see what.</div>
 
   <div class="section-h"><h2>WHATSAPP</h2><div class="rule"></div></div>
+  <div class="tiny" style="margin-bottom:14px">What this route still needs from you:</div>
+  {checklist}
   <div class="field"><label>Provider</label>
     <select name="whatsapp_provider">
       <option value="link"{sel('link', s.whatsapp_provider)}>Link only — I tap send myself</option>
@@ -861,6 +928,22 @@ def settings(s, account, flash: str = "", flash_kind: str = "ok") -> str:
 
   <button class="btn primary" type="submit">Save settings</button>
   <div class="tiny" style="margin-top:12px">Leave a secret field blank to keep the stored value.</div>
+</form>
+
+<div class="section-h"><h2>TEST THE CONNECTION</h2><div class="rule"></div></div>
+<form method="post" action="/settings/test-whatsapp" class="card">
+  <div class="muted" style="margin-bottom:14px">Send the real connection message to your own phone
+    through whichever provider is selected above. Whatever the provider says comes back verbatim —
+    including the error code and what to do about it.</div>
+  <div class="row" style="gap:12px;flex-wrap:wrap;align-items:flex-end">
+    <div class="field" style="margin-bottom:0;flex:1;min-width:220px">
+      <label>Your WhatsApp number</label>
+      <input name="to" inputmode="tel" required placeholder="98765 43210"
+             value="{E(s.smtp_from and '' or '')}"></div>
+    <button class="btn primary" type="submit">Send a test →</button>
+  </div>
+  <div class="tiny" style="margin-top:12px">A 10-digit number is assumed to be Indian
+    (+91). Nothing is stored — this is a one-off send.</div>
 </form>
 
 <div class="section-h"><h2>YOUR LOGIN</h2><div class="rule"></div></div>
