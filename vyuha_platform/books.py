@@ -83,6 +83,13 @@ class Sale:
     paid: bool = True            # False = sold on credit, becomes a receivable
     due_date: str = ""
     note: str = ""
+    #: The buyer's WhatsApp number, digits with country code, no plus. Captured
+    #: at the moment of sale because that is the only moment it is ever to hand
+    #: — asking for it later means chasing a customer who has already left. It
+    #: is what makes a receipt, and a payment reminder on a credit sale,
+    #: possible at all.
+    party_phone: str = ""
+    receipt_sent: str = ""       # timestamp, so a receipt is never sent twice
 
 
 @dataclass
@@ -136,6 +143,22 @@ class Book:
         for s in self.sales:
             seen.setdefault(s.party.strip().lower(), s.party.strip())
         return sorted(seen.values())
+
+    def customer_phones(self) -> dict[str, str]:
+        """Name to the last number we were given for them.
+
+        Ramu buys every fortnight; asking for his number every fortnight is the
+        kind of friction that stops a sale being recorded at all. Newest sale
+        wins, so a corrected number replaces an old one.
+        """
+        found: dict[str, str] = {}
+        for s in self.sales:                       # oldest first, later overwrite
+            if s.party_phone:
+                found[s.party.strip()] = s.party_phone
+        return found
+
+    def sale(self, sale_id: str) -> "Sale | None":
+        return next((s for s in self.sales if s.id == sale_id), None)
 
 
 # ------------------------------------------------------------------ persistence
@@ -208,8 +231,17 @@ def add_item(slug: str, name: str, category: str, unit: str, rate, cost,
     return book, f"{name} added."
 
 
+def mark_receipt_sent(slug: str, sale_id: str) -> None:
+    book = load(slug)
+    sale = book.sale(sale_id)
+    if sale is not None:
+        sale.receipt_sent = datetime.now().isoformat(timespec="seconds")
+        save(book)
+
+
 def record_sale(slug: str, sku: str, party: str, qty, rate, when: str = "",
-                paid: bool = True, due_date: str = "", note: str = "") -> tuple[Book, str, bool]:
+                paid: bool = True, due_date: str = "", note: str = "",
+                party_phone: str = "") -> tuple[Book, str, bool]:
     book = load(slug)
     item = book.item(sku)
     if item is None:
@@ -231,6 +263,7 @@ def record_sale(slug: str, sku: str, party: str, qty, rate, when: str = "",
         id=bill, date=when or _today(), party=party, sku=item.sku, item=item.name,
         qty=qty_n, rate=rate_n, amount=round(qty_n * rate_n, 2),
         paid=paid, due_date=due_date, note=note.strip(),
+        party_phone=party_phone,
     ))
     item.stock_qty -= qty_n
     save(book)

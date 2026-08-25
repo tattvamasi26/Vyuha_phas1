@@ -12,6 +12,7 @@ self-contained; that guarantee belongs to ``report.py`` and is tested.
 from __future__ import annotations
 
 import html
+import json
 
 from vyuha import fmt
 
@@ -188,10 +189,10 @@ tr:last-child td{border-bottom:0}
 .cover-edit label:hover{background:rgba(10,12,17,.92)}
 
 /* ---------- the big obvious actions ---------- */
-.acts{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));margin:22px 0 8px}
-.act{display:flex;align-items:center;gap:14px;padding:18px 20px;border-radius:15px;
+.acts{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(232px,1fr));margin:22px 0 8px}
+.act{display:flex;align-items:flex-start;gap:14px;padding:17px 18px;border-radius:15px;
   background:linear-gradient(168deg,var(--card),var(--card-2));border:1px solid var(--line);
-  transition:.18s}
+  transition:.18s;min-height:82px}
 .act:hover{transform:translateY(-3px);border-color:var(--accent);
   box-shadow:0 22px 46px -20px rgba(0,0,0,.9)}
 .act.on{border-color:var(--accent);background:linear-gradient(168deg,
@@ -199,8 +200,11 @@ tr:last-child td{border-bottom:0}
 .act .ic{width:40px;height:40px;border-radius:11px;display:grid;place-items:center;font-size:19px;
   background:color-mix(in srgb,var(--accent) 20%,transparent);
   border:1px solid color-mix(in srgb,var(--accent) 34%,transparent);flex:none}
-.act .t{font-size:14.5px;font-weight:800;line-height:1.25}
-.act .d{font-size:11.5px;color:var(--ink-3);font-weight:600;margin-top:2px}
+.act-txt{display:flex;flex-direction:column;gap:4px;min-width:0}
+.act .t{display:block;font-size:14.5px;font-weight:800;line-height:1.3;
+  color:var(--ink);text-wrap:balance}
+.act .d{display:block;font-size:12px;color:var(--ink-3);font-weight:600;
+  line-height:1.42;text-wrap:pretty}
 
 /* ---------- badges on the top bar ---------- */
 .who{display:flex;align-items:center;gap:8px;padding:6px 12px;border-radius:999px;
@@ -243,6 +247,64 @@ tr:last-child td{border-bottom:0}
 .tchip{font-size:11.5px;font-weight:700;letter-spacing:.02em;padding:7px 13px;
   border-radius:999px;color:var(--ink-2);background:rgba(255,255,255,.04);
   border:1px solid var(--line-2);border-left:3px solid var(--c)}
+
+.support-bar{margin:18px 0 4px;padding:13px 17px;border-radius:12px;font-size:13px;
+  font-weight:600;color:var(--warn);background:rgba(251,191,36,.10);
+  border:1px solid rgba(251,191,36,.34)}
+.support-bar a{color:var(--warn);text-decoration:underline;margin-left:6px}
+
+/* ---- recording a sale: one row, in the order the words come out ---- */
+.sale-card{padding:20px 22px}
+.sale-head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;
+  margin-bottom:16px}
+.sale-total{font-family:'Bebas Neue',sans-serif;font-size:34px;line-height:1;
+  color:var(--accent);letter-spacing:.02em;font-variant-numeric:tabular-nums}
+.sale-row{display:grid;gap:12px;align-items:end;
+  grid-template-columns:minmax(0,2.1fr) minmax(0,.8fr) minmax(0,1.4fr) minmax(0,1.3fr)}
+.sale-row .field{margin-bottom:0}
+.sale-row label .opt{color:var(--ink-3);font-weight:600;text-transform:none;
+  letter-spacing:0;font-size:10.5px}
+.sale-row2{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:16px}
+.seg{position:relative;display:inline-flex}
+.seg input{position:absolute;opacity:0;inset:0;cursor:pointer}
+.seg span{padding:9px 15px;border-radius:11px;border:1px solid var(--line-2);
+  background:var(--card);font-size:13px;font-weight:700;color:var(--ink-2);
+  cursor:pointer;transition:.15s}
+.seg input:checked+span{border-color:var(--accent);color:var(--ink);
+  background:color-mix(in srgb,var(--accent) 18%,var(--card))}
+.seg input:focus-visible+span{outline:2px solid var(--accent);outline-offset:2px}
+.chk{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;
+  color:var(--ink-2);cursor:pointer}
+.sale-more{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
+  margin-top:16px;padding-top:16px;border-top:1px solid var(--line)}
+.sale-more .field{margin-bottom:0}
+@media(max-width:820px){.sale-row{grid-template-columns:1fr 1fr}}
+@media(max-width:520px){.sale-row{grid-template-columns:1fr}}
+
+/* ---- master console ---- */
+.top.master{border-bottom:1px solid color-mix(in srgb,var(--warn) 45%,transparent)}
+.who.master{border-color:color-mix(in srgb,var(--warn) 50%,transparent);
+  color:var(--warn)}
+.mstats{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));
+  margin-top:8px}
+.mstat{background:linear-gradient(168deg,var(--card),var(--card-2));
+  border:1px solid var(--line);border-radius:13px;padding:16px 18px}
+.mv{font-family:'Bebas Neue',sans-serif;font-size:34px;line-height:1;color:var(--ink)}
+.mk{font-size:10.5px;font-weight:800;letter-spacing:.15em;text-transform:uppercase;
+  color:var(--ink-3);margin-top:6px}
+.mowner{padding:16px 20px;border-bottom:1px solid var(--line);background:var(--card-2)}
+.mname{font-size:15px;font-weight:800}
+.scroll-x{overflow-x:auto}
+.mtable{width:100%;border-collapse:collapse;font-size:13.5px}
+.mtable th{text-align:left;padding:11px 16px;font-size:10px;font-weight:800;
+  letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);
+  border-bottom:1px solid var(--line);white-space:nowrap}
+.mtable td{padding:13px 16px;border-bottom:1px solid var(--line);vertical-align:top}
+.mtable tr:last-child td{border-bottom:0}
+.mtable .num{text-align:right;font-family:'JetBrains Mono',monospace;
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.mtable a{color:var(--ink)}
+.mtable a:hover{color:var(--accent)}
 
 .wsteps{display:flex;flex-direction:column;gap:2px;margin-bottom:20px}
 .wstep{display:flex;gap:12px;align-items:flex-start;padding:12px 15px;border-radius:10px;
@@ -309,6 +371,21 @@ def layout(title: str, body: str, active: str = "", account=None,
 
     def nav(href, label, key):
         return f'<a href="{href}" class="{"on" if key == active else ""}">{label}</a>'
+
+    if getattr(account, "is_master", False):
+        links = (nav("/master", "All workspaces", "master")
+                 + nav("/activity", "Activity", "activity")
+                 + nav("/settings", "Settings", "settings"))
+        wordmark, tagline = "VYUHA", "MASTER CONSOLE"
+        badge = ('<span class="who master"><span class="dot on"></span>'
+                 f'{E(account.username or account.name)} · staff</span>')
+        links += ('<form method="post" action="/logout" class="out">'
+                  '<button type="submit">Log out</button></form>')
+        header = f"""<header class="top master"><div class="top-in">
+  <a href="/master" class="brand"><span>{wordmark}</span><small>{tagline}</small></a>
+  <nav>{badge}{links}</nav>
+</div></header>"""
+        return _shell(title, body, header, trade_key, full_bleed)
 
     if tenant:
         # A shared-link guest has no business on the credentials page, so their
@@ -506,7 +583,36 @@ def signup(flash: str = "", flash_kind: str = "bad", email: str = "",
 </form>""")
 
 
-def login(flash: str = "", flash_kind: str = "bad", email: str = "") -> str:
+def login(flash: str = "", flash_kind: str = "bad", email: str = "",
+          master: bool = False) -> str:
+    """One form, two doors.
+
+    Staff used to need their own screen. They do not: the same form, the same
+    session, the same password check — only the label on the field and the way
+    back out differ. Keeping it to one link off the customer login means the
+    master door is not a section of the product that customers have to look at
+    and wonder about.
+    """
+    if master:
+        return _gate("Master login", f"""
+<section class="hero" style="padding-bottom:18px">
+  <div class="eyebrow">Vyuha staff</div>
+  <h1 class="display">Master<br><em>login.</em></h1>
+  <p class="lede">Support access to every workspace on this install. Every workspace you open
+  is written into that client's own activity trail.</p>
+</section>
+<form method="post" action="/login" class="card" style="max-width:520px">
+  {_flash(flash, flash_kind)}
+  <input type="hidden" name="master" value="1">
+  <div class="field"><label>Username</label>
+    <input name="email" value="{E(email)}" required autofocus autocomplete="username"
+           placeholder="vishu"></div>
+  <div class="field"><label>Password</label>
+    <input name="password" type="password" required autocomplete="current-password"></div>
+  <button class="btn primary" type="submit">Enter master console →</button>
+  <div class="tiny" style="margin-top:16px"><a href="/login">← Back to the normal login</a></div>
+</form>""")
+
     return _gate("Log in", f"""
 <section class="hero" style="padding-bottom:18px">
   <div class="eyebrow">Welcome back</div>
@@ -515,12 +621,15 @@ def login(flash: str = "", flash_kind: str = "bad", email: str = "") -> str:
 <form method="post" action="/login" class="card" style="max-width:520px">
   {_flash(flash, flash_kind)}
   <div class="field"><label>Email</label>
-    <input name="email" type="email" value="{E(email)}" required autofocus></div>
+    <input name="email" type="email" value="{E(email)}" required autofocus
+           autocomplete="username"></div>
   <div class="field"><label>Password</label>
-    <input name="password" type="password" required></div>
+    <input name="password" type="password" required autocomplete="current-password"></div>
   <button class="btn primary" type="submit">Log in →</button>
   <div class="tiny" style="margin-top:16px">No account yet? <a href="/signup">Create one</a>.</div>
-</form>""")
+</form>
+<div class="tiny" style="max-width:520px;margin-top:18px;text-align:center">
+  <a href="/login?master=1">Vyuha staff — master login</a></div>""")
 
 
 def cover_hero(c, settings, stats: list[tuple[str, str]]) -> str:
@@ -546,10 +655,17 @@ def cover_hero(c, settings, stats: list[tuple[str, str]]) -> str:
 
 
 def actions(items: list[tuple[str, str, str, str, bool]]) -> str:
-    """The options, always visible. (href, icon, title, detail, active)"""
+    """The options, always visible. (href, icon, title, detail, active)
+
+    The title and detail are stacked in their own flex column. They used to be
+    bare inline spans, which ran together on one line — "Enter sales & stockType
+    in what sold" — because ``margin-top`` does nothing to an inline box.
+    """
     return '<div class="acts">' + "".join(
-        f'<a class="act{" on" if on else ""}" href="{href}"><span class="ic">{ic}</span>'
-        f'<span><span class="t">{E(title)}</span><span class="d">{E(detail)}</span></span></a>'
+        f'<a class="act{" on" if on else ""}" href="{href}">'
+        f'<span class="ic" aria-hidden="true">{ic}</span>'
+        f'<span class="act-txt"><span class="t">{E(title)}</span>'
+        f'<span class="d">{E(detail)}</span></span></a>'
         for href, ic, title, detail, on in items) + "</div>"
 
 
@@ -636,6 +752,119 @@ def trade_picker(current: str, name: str = "trade") -> str:
   <span>{E(t['label'])}</span></label>""" for k, t in theme.TRADES.items()) + "</div>"
 
 
+# -------------------------------------------------------------- master console
+
+def _health(c) -> tuple[str, str, str]:
+    """One glance at whether a client is actually being served.
+
+    Returns (tone, label, detail). The question a support console has to answer
+    first is not "what are their numbers" but "is anything wrong here" — so a
+    client who has never sent a file and a client whose last file failed must
+    not look the same as one that is running fine.
+    """
+    last = c.latest
+    if last is None:
+        return ("dim", "No data yet", "Never sent anything")
+    if last.status == "failed":
+        return ("crit", "Last file failed", last.error[:80] or "Unreadable")
+    when = last.uploaded_at.replace("T", " ")[:16]
+    if last.critical_count:
+        return ("crit", f"{last.critical_count} critical", f"Last run {when}")
+    if last.alert_count:
+        return ("warn", f"{last.alert_count} alert(s)", f"Last run {when}")
+    return ("ok", "Healthy", f"Last run {when}")
+
+
+def master(clients, accounts, invites, account, recent, q: str = "",
+           flash: str = "", flash_kind: str = "ok") -> str:
+    """Every workspace on the install, grouped by the account that owns it."""
+    by_owner: dict[str, list] = {}
+    for c in clients:
+        by_owner.setdefault(c.owner_id, []).append(c)
+
+    total_runs = sum(len(c.runs) for c in clients)
+    live = sum(1 for c in clients if c.latest and c.latest.status == "ok")
+    broken = sum(1 for c in clients if c.latest and c.latest.status == "failed")
+    idle = sum(1 for c in clients if c.latest is None)
+
+    stats = "".join(
+        f'<div class="mstat"><div class="mv">{v}</div><div class="mk">{E(k)}</div></div>'
+        for k, v in [("Businesses", len(clients)), ("Accounts", len(by_owner)),
+                     ("Files read", total_runs), ("Running", live),
+                     ("Broken", broken), ("Never sent", idle)])
+
+    blocks = []
+    for owner_id, owned in sorted(
+            by_owner.items(), key=lambda kv: -len(kv[1])):
+        who = accounts.get(owner_id)
+        handle = (who.username or who.email) if who else "unknown account"
+        kind = "Master" if (who and who.is_master) else (
+            "Single business" if (who and who.is_tenant) else "Operator")
+
+        rows = []
+        for c in sorted(owned, key=lambda c: c.created_at, reverse=True):
+            tone, label, detail = _health(c)
+            last = c.latest
+            shared = "shared" if c.slug in invites else ""
+            money = (f'<td class="num">{short(last.revenue)}</td>'
+                     f'<td class="num">{short(last.stock_value)}</td>'
+                     f'<td class="num">{short(last.outstanding)}</td>'
+                     if last and last.status == "ok" else
+                     '<td class="num">—</td><td class="num">—</td><td class="num">—</td>')
+            rows.append(f"""<tr>
+  <td><a href="/c/{c.slug}"><b>{E(c.name)}</b></a>
+      <div class="tiny">{E(c.trade)} · {E(c.data_mode)}
+        {'· <span class="pill dim">link shared</span>' if shared else ''}</div></td>
+  <td><span class="pill {tone}">{E(label)}</span>
+      <div class="tiny">{E(detail)}</div></td>
+  {money}
+  <td class="num"><a class="btn ghost sm" href="/c/{c.slug}">Open →</a></td>
+</tr>""")
+
+        blocks.append(f"""<div class="card" style="padding:0;overflow:hidden">
+  <div class="mowner">
+    <div><div class="mname">{E(who.name if who else 'Unknown')}</div>
+      <div class="tiny">{E(handle)} · {kind} · {len(owned)} business(es)</div></div>
+  </div>
+  <div class="scroll-x"><table class="mtable">
+    <thead><tr><th>Business</th><th>State</th><th class="num">Revenue</th>
+      <th class="num">Stock</th><th class="num">Outstanding</th><th></th></tr></thead>
+    <tbody>{''.join(rows)}</tbody></table></div>
+</div>""")
+
+    if not blocks:
+        blocks = ['<div class="card empty"><div class="big">Nothing onboarded yet</div>'
+                  '<div class="muted">When somebody signs up and onboards a business, '
+                  'it appears here.</div></div>']
+
+    return layout("Master", f"""
+<section class="hero" style="padding:52px 0 20px">
+  <div class="eyebrow">Vyuha staff · {E(account.username or account.name)}</div>
+  <h1 class="display">Every workspace<br>on this <em>install.</em></h1>
+  <p class="lede">Who is on the platform, what they have sent, and whether it is working. Open any
+  business to see exactly what its owner sees — and to fix it while they are on the phone.</p>
+</section>
+{_flash(flash, flash_kind)}
+<div class="mstats">{stats}</div>
+
+<form method="get" action="/master" class="card" style="margin-top:20px;padding:14px 16px">
+  <div class="row" style="gap:10px">
+    <input name="q" value="{E(q)}" placeholder="Find a business by name" style="flex:1">
+    <button class="btn" type="submit">Search</button>
+    {'<a class="btn ghost" href="/master">Clear</a>' if q else ''}
+  </div>
+</form>
+
+<div class="section-h"><h2>BY ACCOUNT</h2><div class="rule"></div></div>
+<div class="grid" style="grid-template-columns:1fr;gap:16px">{''.join(blocks)}</div>
+
+<div class="section-h"><h2>EVERYTHING HAPPENING</h2><div class="rule"></div></div>
+<div class="card">{_trail(recent) if recent else '<div class="muted">Nothing yet.</div>'}</div>
+<div class="tiny" style="margin-top:14px">This trail spans every account. Opening a client's
+  workspace from here is itself recorded, in that client's own trail.</div>""",
+                  active="master", account=account)
+
+
 # ------------------------------------------------------------------- portfolio
 
 def home(clients, account, recent, counts, flash: str = "", flash_kind: str = "ok") -> str:
@@ -702,7 +931,9 @@ def onboard(settings, account, flash: str = "", flash_kind: str = "ok") -> str:
 <section class="hero" style="padding-bottom:22px">
   <div class="eyebrow">Takes about ten seconds</div>
   <h1 class="display">Onboard a <em>client.</em></h1>
-  <p class="lede">Just the name and a WhatsApp number. Everything else — contact person,
+  <p class="lede">Just the name and a WhatsApp number. <b>That number is where everything goes</b>
+  — stock alerts, the monthly brief, and the private link to their own workspace. Everything else
+  — contact person,
   email, industry, alert thresholds — is optional and can be filled in later from their
   workspace, or never.</p>
 </section>
@@ -1050,28 +1281,94 @@ def books_tab(c, book) -> str:
     item_opts = "".join(
         f'<option value="{E(i.sku)}">{E(i.name)} — {money(i.rate)} '
         f'({i.stock_qty:g} {E(i.unit)} left)</option>' for i in book.items)
-    sale_form = (f"""<form method="post" action="/c/{c.slug}/book/sale" class="card">
-  <div style="font-size:16px;font-weight:800;margin-bottom:14px">Record a sale</div>
-  <div class="field"><label>What was sold</label>
-    <select name="sku" required>{item_opts}</select></div>
-  <div class="two">
-    <div class="field"><label>How many</label>
-      <input name="qty" type="number" step="any" min="0" value="1" required></div>
-    <div class="field"><label>Price each <span style="color:var(--ink-3)">— blank uses the list price</span></label>
-      <input name="rate" type="number" step="any" min="0" placeholder="auto"></div>
+    # ---- Recording a sale is the thing this screen exists for, and it happens
+    # while a customer is standing there. So it is one row, left to right, in
+    # the order the words come out: what, how many, who, their number. Rate,
+    # date and due date are real but rare, and live behind "More". The running
+    # total updates as you type, because the number you say out loud is the
+    # one you have to be able to check before saving.
+    rates = {i.sku: {"rate": i.rate, "unit": i.unit, "stock": i.stock_qty,
+                     "name": i.name} for i in book.items}
+    phones = book.customer_phones()
+
+    sale_form = (f"""<form method="post" action="/c/{c.slug}/book/sale" class="card sale-card"
+      id="saleform">
+  <div class="sale-head">
+    <div style="font-size:16px;font-weight:800">Record a sale</div>
+    <div class="sale-total" id="saletotal">&#8377;0</div>
   </div>
-  <div class="field"><label>Sold to</label>
-    <input name="party" list="parties" placeholder="Walk-in customer">
-    <datalist id="parties">{"".join(f'<option value="{E(p)}">' for p in book.customers())}</datalist></div>
-  <div class="two">
-    <div class="field"><label>Paid or credit</label>
-      <select name="payment"><option value="paid">Paid now</option>
-        <option value="credit">On credit</option></select></div>
-    <div class="field"><label>Date</label><input name="when" type="date"></div>
+
+  <div class="sale-row">
+    <div class="field f-item"><label>What sold</label>
+      <select name="sku" id="sku" required>{item_opts}</select></div>
+    <div class="field f-qty"><label>How many</label>
+      <input name="qty" id="qty" type="number" step="any" min="0" value="1" required></div>
+    <div class="field f-who"><label>Sold to</label>
+      <input name="party" id="party" list="parties" placeholder="Walk-in customer"
+             autocomplete="off"></div>
+    <div class="field f-ph"><label>Their WhatsApp <span class="opt">optional</span></label>
+      <input name="party_phone" id="party_phone" inputmode="tel" placeholder="98765 43210"
+             autocomplete="off"></div>
   </div>
-  <div class="field"><label>If credit, due by</label><input name="due_date" type="date"></div>
-  <button class="btn primary" type="submit">Save sale</button>
-</form>""" if book.items else
+  <datalist id="parties">{"".join(f'<option value="{E(p)}">' for p in book.customers())}</datalist>
+
+  <div class="sale-row2">
+    <label class="seg"><input type="radio" name="payment" value="paid" checked>
+      <span>Paid now</span></label>
+    <label class="seg"><input type="radio" name="payment" value="credit">
+      <span>On credit</span></label>
+    <label class="chk"><input type="checkbox" name="send_receipt" value="1" checked>
+      <span>WhatsApp the bill</span></label>
+    <button class="btn ghost sm" type="button" id="moretoggle">More</button>
+    <button class="btn primary" type="submit" style="margin-left:auto">Save sale</button>
+  </div>
+
+  <div class="sale-more" id="salemore" hidden>
+    <div class="field"><label>Price each — blank uses the list price</label>
+      <input name="rate" id="rate" type="number" step="any" min="0" placeholder="auto"></div>
+    <div class="field"><label>Date — blank means today</label>
+      <input name="when" type="date"></div>
+    <div class="field"><label>If credit, due by</label>
+      <input name="due_date" type="date"></div>
+  </div>
+  <div class="tiny" id="salehint" style="margin-top:12px"></div>
+</form>
+<script>
+(function(){{
+  var R={json.dumps(rates)}, P={json.dumps(phones)};
+  var sku=document.getElementById('sku'), qty=document.getElementById('qty'),
+      rate=document.getElementById('rate'), party=document.getElementById('party'),
+      phone=document.getElementById('party_phone'),
+      total=document.getElementById('saletotal'), hint=document.getElementById('salehint');
+  function money(n){{
+    var s=Math.round(n).toString(), last=s.slice(-3), head=s.slice(0,-3);
+    if(head) last=head.replace(/\\B(?=(\\d{{2}})+(?!\\d))/g,',')+','+last;
+    return '\\u20B9'+last;
+  }}
+  function recalc(){{
+    var it=R[sku.value]||{{}}, q=parseFloat(qty.value)||0;
+    var r=parseFloat(rate && rate.value)||it.rate||0;
+    total.textContent=money(q*r);
+    if(!it.name) return;
+    hint.textContent = q>it.stock
+      ? 'Only '+it.stock+' '+it.unit+' in stock — this will show as '+(it.stock-q)+'.'
+      : it.stock+' '+it.unit+' in stock, '+(it.stock-q)+' left after this.';
+    hint.style.color = q>it.stock ? 'var(--warn)' : 'var(--ink-3)';
+  }}
+  // A returning customer should never be asked for a number twice.
+  party.addEventListener('input', function(){{
+    var known=P[party.value.trim()];
+    if(known && !phone.value) phone.value=known;
+  }});
+  [sku,qty,rate].forEach(function(el){{ if(el){{
+    el.addEventListener('input',recalc); el.addEventListener('change',recalc); }} }});
+  document.getElementById('moretoggle').addEventListener('click',function(){{
+    var m=document.getElementById('salemore');
+    m.hidden=!m.hidden; this.textContent=m.hidden?'More':'Less'; recalc();
+  }});
+  recalc();
+}})();
+</script>""" if book.items else
         '<div class="card empty"><div class="big">Add a product first</div>'
         '<div class="muted">Once something is in the list you can start recording sales.</div></div>')
 
@@ -1213,7 +1510,8 @@ def _share_card(c, invite, fresh_pin: str) -> str:
 def client_page(c, tab: str, settings, account, activity_entries, flash: str = "", flash_kind: str = "ok",
                 wa_text: str = "", wa_link: str = "", mail_link: str = "",
                 email_subject: str = "", email_body: str = "", book=None,
-                invite=None, fresh_pin: str = "") -> str:
+                invite=None, fresh_pin: str = "",
+                viewing_as_master: bool = False) -> str:
     last = c.latest
     manual = c.data_mode == "books"
     if manual and tab == "data":
@@ -1264,19 +1562,33 @@ def client_page(c, tab: str, settings, account, activity_entries, flash: str = "
         alerts = last.alerts if (last and last.status == "ok") else []
         blocks = ""
         if alerts:
-            wa_btn = (f'<a class="btn wa" href="{wa_link}" target="_blank">Open in WhatsApp →</a>'
-                      if c.phone else
-                      '<span class="pill dim">Add a number on the Details tab</span>')
-            auto = (f'<form method="post" action="/c/{c.slug}/whatsapp" style="display:inline">'
-                    f'<input type="hidden" name="text" value="{E(wa_text)}">'
-                    f'<button class="btn primary" type="submit">Send automatically</button></form>'
-                    if settings.whatsapp_live and c.phone else "")
+            # Exactly one primary action, never two. Offering "Send
+            # automatically" and "Open in WhatsApp" side by side made the
+            # operator decide which one was the real button every single time.
+            if not c.phone:
+                action = ('<a class="btn" href="/c/' + c.slug + '?tab=settings">'
+                          'Add their WhatsApp number →</a>')
+                sub = "Alerts go to the number on their Details tab. There isn't one yet."
+            elif settings.whatsapp_live:
+                action = (f'<form method="post" action="/c/{c.slug}/whatsapp">'
+                          f'<input type="hidden" name="text" value="{E(wa_text)}">'
+                          f'<button class="btn primary" type="submit">'
+                          f'Send now to {E(c.name)} →</button></form>')
+                sub = f"Goes straight to +{E(c.phone)}. One click, no new tab."
+            else:
+                action = (f'<a class="btn wa" href="{wa_link}" target="_blank">'
+                          f'Open WhatsApp to send →</a>')
+                sub = ('No provider connected, so this opens WhatsApp with the brief typed out '
+                       'and you tap send. <a href="/settings">Connect one</a> to make it a '
+                       'single click from here.')
+
             blocks += f"""<div class="card" style="margin-top:22px">
-  <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:12px">
-    <div><div style="font-size:16px;font-weight:800">WhatsApp brief</div>
-      <div class="tiny" style="margin-top:5px">{len(wa_text)} of 1024 characters</div></div>
-    <div style="display:flex;gap:9px;flex-wrap:wrap">{auto}{wa_btn}</div></div>
-  <pre class="msg" style="margin-top:17px">{E(wa_text)}</pre></div>"""
+  <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:14px">
+    <div style="max-width:48ch"><div style="font-size:16px;font-weight:800">WhatsApp brief</div>
+      <div class="tiny" style="margin-top:6px">{sub}</div></div>
+    <div>{action}</div></div>
+  <pre class="msg" style="margin-top:17px">{E(wa_text)}</pre>
+  <div class="tiny" style="margin-top:10px">{len(wa_text)} of 1024 characters</div></div>"""
 
             send_btn = ('<button class="btn primary" type="submit">Send email</button>'
                         if settings.email_live and c.email else
@@ -1405,6 +1717,11 @@ def client_page(c, tab: str, settings, account, activity_entries, flash: str = "
   d.addEventListener('drop',ev=>{{f.files=ev.dataTransfer.files;p.textContent='Selected: '+f.files[0].name;}});
 </script>"""
 
-    return layout(c.name, f"{tabs}{_flash(flash, flash_kind)}{inner}",
+    support = ('<div class="support-bar">Vyuha support view &mdash; you are inside a client&#39;s '
+               'workspace. Anything you change here is theirs, and this visit is recorded in '
+               'their activity trail. <a href="/master">Back to all workspaces</a></div>'
+               if viewing_as_master else "")
+
+    return layout(c.name, f"{support}{tabs}{_flash(flash, flash_kind)}{inner}",
                   active="clients", account=account, trade_key=c.trade,
                   full_bleed=cover_hero(c, settings, stats))

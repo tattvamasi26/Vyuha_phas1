@@ -20,7 +20,7 @@ sys.path.insert(0, str(REPO))
 
 from vyuha import sample                                      # noqa: E402
 from vyuha_platform import app as app_mod                     # noqa: E402
-from vyuha_platform import auth, books, channels, sources, store  # noqa: E402
+from vyuha_platform import auth, books, channels, ledger, sources, store  # noqa: E402
 
 client = TestClient(app_mod.app, follow_redirects=True)
 _SLUGS: list[str] = []
@@ -724,6 +724,163 @@ def test_a_pin_is_never_stored_in_readable_form():
     slug = _onboard("Zeta Pinsafe Co", mode="books", phone="")
     _, pin = _share(slug)
     assert pin not in auth.INVITES.read_text(encoding="utf-8")
+
+
+# ------------------------------------------------- recording a sale, and bills
+
+def test_a_sale_captures_the_buyers_number_and_remembers_it():
+    """Ramu buys every fortnight. Asking for his number every time is friction."""
+    slug = _onboard("Zeta Ramu Nursery", mode="books", phone="")
+    client.post(f"/c/{slug}/book/item", data={
+        "name": "Areca Nut", "category": "Plants", "unit": "kg",
+        "rate": "45", "cost": "28", "stock_qty": "200", "reorder_level": "20"})
+    sku = books.load(slug).items[0].sku
+
+    client.post(f"/c/{slug}/book/sale", data={
+        "sku": sku, "party": "Ramu", "qty": "30", "rate": "",
+        "payment": "paid", "party_phone": "98765 43210"})
+
+    sale = books.load(slug).sales[-1]
+    assert sale.party == "Ramu"
+    assert sale.party_phone == "919876543210", sale.party_phone   # +91 assumed
+    assert sale.amount == 30 * 45
+
+    # The number is offered back for the next sale to the same person.
+    assert books.load(slug).customer_phones()["Ramu"] == "919876543210"
+
+    # ...and the entry screen ships it to the browser so it can auto-fill.
+    page = client.get(f"/c/{slug}?tab=books").text
+    assert "919876543210" in page and "Their WhatsApp" in page
+
+
+def test_a_receipt_reports_honestly_when_it_could_not_be_sent():
+    slug = _onboard("Zeta Receipt Co", mode="books", phone="")
+    client.post(f"/c/{slug}/book/item", data={
+        "name": "Pepper Plant", "category": "Plants", "unit": "piece",
+        "rate": "60", "cost": "35", "stock_qty": "100", "reorder_level": "10"})
+    sku = books.load(slug).items[0].sku
+
+    client.post(f"/c/{slug}/book/sale", data={
+        "sku": sku, "party": "Geetha", "qty": "30", "rate": "",
+        "payment": "paid", "party_phone": "98765 11111", "send_receipt": "1"})
+
+    sale = books.load(slug).sales[-1]
+    # No provider is connected in tests, so it must NOT claim to have sent one.
+    assert sale.receipt_sent == "", "a receipt was marked sent with no provider"
+    kinds = [e.kind for e in ledger.read(ACCOUNT.id, limit=30, client=slug)]
+    assert "receipt.failed" in kinds, kinds
+
+
+def test_the_receipt_text_is_a_bill_the_buyer_can_keep():
+    from vyuha_platform import channels
+    sale = books.Sale(id="B-0007", date="2026-08-25", party="Somu", sku="MANURE",
+                      item="Manure", qty=40, rate=25, amount=1000, paid=False,
+                      due_date="2026-09-10", party_phone="919876543210")
+    text = channels.as_receipt("Krishna Nursery", sale)
+    assert "Krishna Nursery" in text
+    assert "Manure x 40" in text
+    assert "1,000" in text, text                 # Indian grouping, not 1000
+    assert "due by 2026-09-10" in text
+    assert "B-0007" in text
+    assert "&#" not in text, "an HTML entity leaked into a WhatsApp message"
+
+
+def test_the_send_button_offers_exactly_one_primary_action():
+    """Two competing send buttons was the thing that read as messy."""
+    slug = _onboard("Zeta OneClick Co")
+    _upload(slug, _sample_workbook())
+    body = client.get(f"/c/{slug}?tab=alerts").text
+
+    assert body.count("Send now to") + body.count("Open WhatsApp to send") == 1, \
+        "the alerts tab offered more than one way to send"
+    assert "Send automatically" not in body
+
+
+# ------------------------------------------------------------ master console
+
+def _master(username: str = "vishu", password: str = "Mookambika@2026"):
+    session = TestClient(app_mod.app, follow_redirects=True)
+    resp = session.post("/login", data={"email": username, "password": password,
+                                        "master": "1"})
+    assert "BY ACCOUNT" in resp.text, "master login did not reach the console"
+    return session
+
+
+def test_both_masters_exist_and_are_seeded_hashed():
+    names = {a.username for a in auth.masters()}
+    assert {"vishu", "rosh"} <= names, names
+    raw = auth.ACCOUNTS.read_text(encoding="utf-8")
+    for secret in ("Mookambika@2026", "Srirama@2026"):
+        assert secret not in raw, "a master password was written in the clear"
+    assert auth.verify("vishu", "Mookambika@2026") is not None
+    assert auth.verify("rosh", "Srirama@2026") is not None
+
+
+def test_seeding_masters_twice_does_not_duplicate_or_reset_them():
+    before = {a.username: a.password_hash for a in auth.masters()}
+    auth.ensure_masters()
+    after = {a.username: a.password_hash for a in auth.masters()}
+    assert before == after, "a restart would have reset a changed master password"
+
+
+def test_the_login_page_offers_a_master_link_not_a_section():
+    plain = TestClient(app_mod.app).get("/login").text
+    assert "/login?master=1" in plain
+    assert "Username" not in plain, "the master field leaked onto the customer login"
+
+    staff = TestClient(app_mod.app).get("/login?master=1").text
+    assert "Username" in staff and "Master" in staff
+
+
+def test_a_customer_cannot_enter_through_the_master_door():
+    body = TestClient(app_mod.app).post(
+        "/login", data={"email": ACCOUNT.email, "password": "test-password-1",
+                        "master": "1"}).text
+    assert "not a master account" in body
+    assert "BY ACCOUNT" not in body, "a customer reached the master console"
+
+
+def test_a_master_sees_every_account_and_a_customer_sees_none_of_it():
+    mine = _onboard("Zeta Master Visible Co")
+    master = _master()
+
+    console = master.get("/master")
+    assert console.status_code == 200
+    assert "Zeta Master Visible Co" in console.text, "the console missed a business"
+    assert "BY ACCOUNT" in console.text
+
+    # ...and an ordinary account cannot reach the console at all.
+    assert "BY ACCOUNT" not in client.get("/master").text
+    assert store.get_client(mine, ACCOUNT.id) is not None
+
+
+def test_a_master_can_open_a_clients_workspace_and_the_visit_is_recorded():
+    slug = _onboard("Zeta Support Case Co", mode="books", phone="")
+    master = _master("rosh", "Srirama@2026")
+
+    page = master.get(f"/c/{slug}")
+    assert "Zeta Support Case Co" in page.text, "a master could not open the workspace"
+    assert "Vyuha support view" in page.text, "no warning that this is somebody else's data"
+
+    # The visit lands in the CLIENT's trail, not the master's, so the account
+    # that was looked at can see that it happened.
+    trail = [e.kind for e in ledger.read(ACCOUNT.id, limit=40, client=slug)]
+    assert "master.viewed" in trail, trail
+
+
+def test_a_master_editing_a_workspace_does_not_steal_it():
+    """Support must fix data in place, never reassign it to the fixer."""
+    slug = _onboard("Zeta Ownership Co", mode="books", phone="")
+    master = _master()
+
+    master.post(f"/c/{slug}/book/item", data={
+        "name": "Support Added Item", "category": "Plants", "unit": "piece",
+        "rate": "100", "cost": "60", "stock_qty": "5", "reorder_level": "2"})
+
+    owned = store.get_client(slug, ACCOUNT.id)
+    assert owned is not None, "the master's edit reassigned the client"
+    assert owned.owner_id == ACCOUNT.id
+    assert any(i.name == "Support Added Item" for i in books.load(slug).items)
 
 
 def _cleanup() -> None:

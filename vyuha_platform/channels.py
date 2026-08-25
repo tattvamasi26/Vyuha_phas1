@@ -106,6 +106,28 @@ def normalise_phone(phone: str, default_cc: str = "91") -> str:
     return digits
 
 
+def as_receipt(client_name: str, sale) -> str:
+    """A bill the buyer can keep, in the shape a shop would hand over.
+
+    Sent at the moment of sale, when the number is to hand and the purchase is
+    fresh. A credit sale says what is owed and by when, because that is the
+    whole reason the buyer needs it in writing.
+    """
+    lines = [f"*{client_name}*", ""]
+    lines.append(f"{sale.item} x {sale.qty:g}")
+    lines.append(f"Rate  {fmt.rupees(sale.rate)}")
+    lines.append(f"Total {fmt.rupees(sale.amount)}")
+    lines.append("")
+    if sale.paid:
+        lines.append("Paid - thank you.")
+    else:
+        due = f" by {sale.due_date}" if sale.due_date else ""
+        lines.append(f"On credit. {fmt.rupees(sale.amount)} due{due}.")
+    lines.append("")
+    lines.append(f"Bill {sale.id} - {sale.date}")
+    return "\n".join(lines)
+
+
 def whatsapp_link(phone: str, text: str) -> str:
     """A wa.me deep link that opens WhatsApp with the brief already typed."""
     number = normalise_phone(phone)

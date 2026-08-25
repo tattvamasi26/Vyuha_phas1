@@ -26,7 +26,7 @@ python -m venv .venv
 .venv/Scripts/python -m vyuha run FILE.xlsx --client "Name" --open
 .venv/Scripts/python -m vyuha check FILE.xlsx   # what was understood, no report written
 .venv/Scripts/python -m tests.test_pipeline     # 13 engine tests, no pytest required
-.venv/Scripts/python -m tests.test_platform     # 43 platform tests, same runner
+.venv/Scripts/python -m tests.test_platform     # 57 platform tests, same runner
 
 .venv/Scripts/python -m vyuha_platform --open   # the web platform on :8000
 ```
@@ -101,7 +101,11 @@ but **not yet declared in `pyproject.toml`**.
   rejected with the action required, never silently.
 - **`books.py`** — for a business with no spreadsheet at all (the nursery/manure case). Keeps a
   small `Item`/`Sale` ledger per client in `vyuha_data/books/<slug>.json`, decrements stock on
-  each sale, and **writes the whole thing out as a workbook whose sheet names and headers
+  each sale. A `Sale` carries the **buyer's own WhatsApp number**, captured at the moment of sale
+  because that is the only moment it is ever to hand; `customer_phones()` offers it back so a
+  returning customer is never asked twice, and `channels.as_receipt()` turns the sale into a bill
+  the buyer can keep. The entry form is one row in the order the words come out — what, how many,
+  who, their number — with a running total, and price/date/due-date behind "More", and **writes the whole thing out as a workbook whose sheet names and headers
   `schema.py` already recognises** (Sales Register / Stock Statement / Outstanding). Typed-in
   entries and uploaded files therefore converge on the same engine, same dead-stock join, same
   alerts. `app._rebuild_from_book()` re-runs the pipeline after every edit.
@@ -186,6 +190,29 @@ no session at all over plain `localhost`, which the same build still serves.
 **Slugs are globally unique**, not per-account, because they name directories on disk
 (`uploads/`, `dashboards/`) that are not partitioned by owner. Two accounts onboarding the same
 business name give the second one `<slug>-2`.
+
+## Master accounts — Vyuha's own staff
+
+`account.role == "master"` is a third principal, added 2026-08-25. Masters sign in with a
+**username** rather than an email, through a link on the ordinary login (`/login?master=1`) rather
+than a section of their own — staff are not a part of the product customers should have to look at.
+`auth.ensure_masters()` seeds them at import, idempotently by username, so a fresh clone always has
+a way in and a password changed later survives every restart. Credentials come from
+`VYUHA_MASTERS` (`user:pass,user:pass`) when set; the built-in pair is a day-one default and is
+meant to be changed.
+
+A master sees every workspace at `/master` — grouped by owning account, with a health verdict per
+client (`ui._health`) answering "is anything wrong here" before "what are their numbers". They can
+open any client and fix it while the owner is on the phone. Three rules make that safe:
+
+- **`store.all_clients()` / `store.find_client()`** are the only unscoped reads, named so they
+  cannot be reached for by accident while meaning `load_clients(owner_id)`.
+- **Every cross-account open is logged** as `master.viewed` into *that client's own* trail, so
+  support access is visible to the account it touched rather than being a silent back door. The
+  workspace also renders a support banner while a master is inside it.
+- **Writes are attributed to the workspace's owner, never the master** — `store.add_run`,
+  `delete_client` and `create_invite` all take `client.owner_id`. A support visit must never
+  silently reassign somebody's data.
 
 ## Operator vs tenant - the product boundary
 

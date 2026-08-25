@@ -34,6 +34,10 @@ from . import (auth, books, channels, config, exports, ledger, sources, store, t
 
 app = FastAPI(title="Vyuha Operations Platform", docs_url=None, redoc_url=None)
 
+# Vyuha's own staff logins exist from the first boot, so a fresh clone is never
+# locked out of its own support console. Idempotent — see auth.ensure_masters.
+auth.ensure_masters()
+
 # analyze.py keeps its thresholds as module constants, so honouring a per-client
 # value means swapping them for the duration of one run. That is process-global
 # state, hence the lock. The clean fix is to thread a Thresholds object through
@@ -118,6 +122,31 @@ def _tenant_client(account) -> store.Client | None:
     return store.get_client(account.tenant_slug, account.id)
 
 
+def _deny_not_master(account) -> RedirectResponse | None:
+    """The support console is Vyuha staff only."""
+    if not getattr(account, "is_master", False):
+        return _redirect("/?m=That+is+not+part+of+your+workspace.&k=bad")
+    return None
+
+
+def _client_for(account, slug: str) -> store.Client | None:
+    """Resolve a client for whoever is asking.
+
+    Everybody sees only what they own. A master sees any workspace, because the
+    whole point of the role is fixing a client's dashboard while they are on the
+    phone — and **every one of those reads is written to that client's own
+    activity trail**, so support access is visible to the account it touched
+    rather than being a silent back door.
+    """
+    if getattr(account, "is_master", False):
+        client = store.find_client(slug)
+        if client is not None and client.owner_id != account.id:
+            ledger.log("master.viewed", f"Vyuha support opened {client.name}",
+                       client=client, channel="settings", master=account.username)
+        return client
+    return store.get_client(slug, account.id)
+
+
 def _deny_guest(account) -> RedirectResponse | None:
     """Deployment credentials are the operator's, not the guest's.
 
@@ -148,6 +177,8 @@ def home(request: Request):
     account = request.state.account
     if account is None:
         return ui.landing()
+    if account.is_master:
+        return _redirect("/master")
 
     msg, kind = _flash(request)
 
@@ -164,6 +195,28 @@ def home(request: Request):
     clients = store.load_clients(account.id)
     return ui.home(clients, account, ledger.read(account.id, limit=8),
                    ledger.counts(account.id), flash=msg, flash_kind=kind)
+
+
+# -------------------------------------------------------------- master console
+
+@app.get("/master", response_class=HTMLResponse)
+def master_console(request: Request, q: str = "", account: auth.Account = Depends(_acct)):
+    denied = _deny_not_master(account)
+    if denied:
+        return denied
+
+    clients = store.all_clients()
+    if q:
+        needle = q.lower()
+        clients = [c for c in clients
+                   if needle in c.name.lower() or needle in c.slug.lower()]
+
+    # Group by the account that owns them, so the console reads as "who is on
+    # this install and how are they doing" rather than one flat list.
+    accounts = {a.id: a for a in auth._load_all()}
+    invites = {i.slug: i for i in auth._load_invites() if not i.revoked}
+    return ui.master(clients, accounts, invites, account,
+                     ledger.read_all(limit=40), q, *_flash(request))
 
 
 # ------------------------------------------------------------------------ auth
@@ -191,22 +244,35 @@ def signup_submit(request: Request, name: str = Form(""), email: str = Form(...)
 
 
 @app.get("/login", response_class=HTMLResponse)
-def login_form(request: Request):
+def login_form(request: Request, master: str = ""):
     if request.state.account is not None:
         return _redirect("/")
-    return ui.login()
+    return ui.login(master=bool(master))
 
 
 @app.post("/login")
 def login_submit(request: Request, email: str = Form(...),
-                 password: str = Form(...)):
+                 password: str = Form(...), master: str = Form("")):
+    is_master_form = bool(master)
     account = auth.verify(email, password)
     if account is None:
         # One message for both causes: which half was wrong is not the visitor's
         # business to learn, and saying so enumerates who has an account.
-        return HTMLResponse(ui.login(flash="That email and password do not match.",
-                                     email=email))
-    resp = _redirect("/")
+        note = ("That username and password do not match." if is_master_form
+                else "That email and password do not match.")
+        return HTMLResponse(ui.login(flash=note, email=email, master=is_master_form))
+
+    # A customer account cannot be smuggled in through the staff door, and staff
+    # are sent to their own console rather than a portfolio they do not have.
+    if is_master_form and not account.is_master:
+        return HTMLResponse(ui.login(flash="That is not a master account.",
+                                     email=email, master=True))
+
+    ledger.log("account.login",
+               f"{account.username or account.email} signed in"
+               + (" (master)" if account.is_master else ""),
+               owner=account.id, channel="settings")
+    resp = _redirect("/master" if account.is_master else "/")
     _set_session(resp, request, account)
     return resp
 
@@ -275,11 +341,11 @@ def share_create(slug: str, request: Request,
     denied = _deny_tenant(account)
     if denied:
         return denied
-    client = store.get_client(slug, account.id)
+    client = _client_for(account, slug)
     if client is None:
         return _redirect("/?m=That+client+no+longer+exists.&k=bad")
 
-    invite, pin = auth.create_invite(slug, account.id, client.name)
+    invite, pin = auth.create_invite(slug, client.owner_id, client.name)
     ledger.log("share.created", f"Workspace link issued for {client.name}",
                client=client, channel="whatsapp")
     # The PIN is shown exactly once, here, because it is not stored in clear.
@@ -291,7 +357,7 @@ def share_revoke(slug: str, account: auth.Account = Depends(_acct)):
     denied = _deny_tenant(account)
     if denied:
         return denied
-    client = store.get_client(slug, account.id)
+    client = _client_for(account, slug)
     if client is None:
         return _redirect("/?m=That+client+no+longer+exists.&k=bad")
     auth.revoke_invite(slug)
@@ -412,7 +478,7 @@ def cover(slug: str, account: auth.Account = Depends(_acct)):
 
 @app.post("/c/{slug}/cover")
 def cover_upload(slug: str, file: UploadFile = File(...), account: auth.Account = Depends(_acct)):
-    client = store.get_client(slug, account.id)
+    client = _client_for(account, slug)
     if client is None:
         return _redirect("/?m=That+client+no+longer+exists.&k=bad")
     if not (file.content_type or "").startswith("image/"):
@@ -430,7 +496,7 @@ def cover_upload(slug: str, file: UploadFile = File(...), account: auth.Account 
 @app.get("/c/{slug}", response_class=HTMLResponse)
 def client_page(slug: str, request: Request, tab: str = "data",
                 account: auth.Account = Depends(_acct)):
-    client = store.get_client(slug, account.id)
+    client = _client_for(account, slug)
     if client is None:
         return _redirect("/?m=That+client+no+longer+exists.&k=bad")
 
@@ -461,12 +527,15 @@ def client_page(slug: str, request: Request, tab: str = "data",
     if client.data_mode == "books" or tab == "books":
         extra["book"] = books.load(slug)
 
+    extra["viewing_as_master"] = (account.is_master
+                                  and client.owner_id != account.id)
+
     if tab == "settings" and not account.is_guest:
         extra["invite"] = auth.invite_for(slug)
         extra["fresh_pin"] = request.query_params.get("pin", "")
 
     return ui.client_page(client, tab, settings, account,
-                          ledger.read(account.id, limit=40, client=slug),
+                          ledger.read(client.owner_id, limit=40, client=slug),
                           flash=msg, flash_kind=kind, **extra)
 
 
@@ -477,7 +546,7 @@ def book_add_item(slug: str, name: str = Form(...), category: str = Form("Other"
                   unit: str = Form("piece"), rate: str = Form("0"), cost: str = Form("0"),
                   stock_qty: str = Form("0"), reorder_level: str = Form("0"),
                   account: auth.Account = Depends(_acct)):
-    client = store.get_client(slug, account.id)
+    client = _client_for(account, slug)
     if client is None:
         return _redirect("/?m=That+client+no+longer+exists.&k=bad")
     _, note = books.add_item(slug, name, category, unit, rate, cost, stock_qty, reorder_level)
@@ -490,22 +559,61 @@ def book_add_item(slug: str, name: str = Form(...), category: str = Form("Other"
 def book_add_sale(slug: str, sku: str = Form(...), party: str = Form(""),
                   qty: str = Form("1"), rate: str = Form(""), when: str = Form(""),
                   payment: str = Form("paid"), due_date: str = Form(""),
+                  party_phone: str = Form(""), send_receipt: str = Form(""),
                   account: auth.Account = Depends(_acct)):
-    client = store.get_client(slug, account.id)
+    client = _client_for(account, slug)
     if client is None:
         return _redirect("/?m=That+client+no+longer+exists.&k=bad")
-    _, note, ok = books.record_sale(slug, sku, party, qty, rate, when,
-                                    paid=(payment == "paid"), due_date=due_date)
+    phone = channels.normalise_phone(party_phone)
+    book, note, ok = books.record_sale(slug, sku, party, qty, rate, when,
+                                       paid=(payment == "paid"), due_date=due_date,
+                                       party_phone=phone)
     if not ok:
         return _redirect(f"/c/{slug}?tab=books&m={_msg(note)}&k=bad")
     ledger.log("source.received", note, client=client, channel="manual")
     _rebuild_from_book(client)
+
+    # The buyer's number is only ever to hand at this moment, so the receipt
+    # goes out now or realistically never.
+    if phone and send_receipt and book.sales:
+        note += " " + _send_receipt(client, book.sales[-1])
     return _redirect(f"/c/{slug}?tab=books&m={_msg(note)}")
+
+
+def _send_receipt(client: store.Client, sale) -> str:
+    """Deliver a bill to the buyer, and say plainly whether it left the machine."""
+    settings = config.load()
+    text = channels.as_receipt(client.name, sale)
+    result = whatsapp.send(settings, sale.party_phone, text)
+
+    ledger.log("receipt.sent" if result.ok else "receipt.failed",
+               f"Receipt for {sale.id} to {sale.party}: {result.detail}",
+               client=client, channel="whatsapp", provider=result.provider,
+               bill=sale.id)
+    if result.ok:
+        books.mark_receipt_sent(client.slug, sale.id)
+        return f"Receipt sent to {sale.party}."
+    return result.needs_action or result.detail
+
+
+@app.post("/c/{slug}/book/sale/{sale_id}/receipt")
+def book_send_receipt(slug: str, sale_id: str,
+                      account: auth.Account = Depends(_acct)):
+    client = _client_for(account, slug)
+    if client is None:
+        return _redirect("/?m=That+client+no+longer+exists.&k=bad")
+    sale = books.load(slug).sale(sale_id)
+    if sale is None:
+        return _redirect(f"/c/{slug}?tab=books&m=That+bill+is+gone.&k=bad")
+    if not sale.party_phone:
+        return _redirect(f"/c/{slug}?tab=books&m="
+                         f"{_msg('No number was taken for ' + sale.party + '.')}&k=bad")
+    return _redirect(f"/c/{slug}?tab=books&m={_msg(_send_receipt(client, sale))}")
 
 
 @app.post("/c/{slug}/book/sale/{sale_id}/delete")
 def book_delete_sale(slug: str, sale_id: str, account: auth.Account = Depends(_acct)):
-    client = store.get_client(slug, account.id)
+    client = _client_for(account, slug)
     if client is None:
         return _redirect("/?m=That+client+no+longer+exists.&k=bad")
     _, note = books.delete_sale(slug, sale_id)
@@ -516,7 +624,7 @@ def book_delete_sale(slug: str, sale_id: str, account: auth.Account = Depends(_a
 
 @app.post("/c/{slug}/book/sale/{sale_id}/paid")
 def book_mark_paid(slug: str, sale_id: str, account: auth.Account = Depends(_acct)):
-    client = store.get_client(slug, account.id)
+    client = _client_for(account, slug)
     if client is None:
         return _redirect("/?m=That+client+no+longer+exists.&k=bad")
     _, note = books.mark_paid(slug, sale_id)
@@ -527,7 +635,7 @@ def book_mark_paid(slug: str, sale_id: str, account: auth.Account = Depends(_acc
 
 @app.post("/c/{slug}/book/item/{sku}/delete")
 def book_delete_item(slug: str, sku: str, account: auth.Account = Depends(_acct)):
-    client = store.get_client(slug, account.id)
+    client = _client_for(account, slug)
     if client is None:
         return _redirect("/?m=That+client+no+longer+exists.&k=bad")
     _, note = books.delete_item(slug, sku)
@@ -585,11 +693,11 @@ def client_delete(slug: str, account: auth.Account = Depends(_acct)):
     denied = _deny_guest(account)
     if denied:
         return denied
-    client = store.get_client(slug, account.id)
+    client = _client_for(account, slug)
     name = client.name if client else slug
     shutil.rmtree(store.UPLOADS / slug, ignore_errors=True)
     shutil.rmtree(store.DASHBOARDS / slug, ignore_errors=True)
-    store.delete_client(slug, account.id)
+    store.delete_client(slug, client.owner_id)
     ledger.log("client.deleted", f"{name} was deleted", client=slug,
                owner=account.id)
     return _redirect("/?m=Client+deleted.")
@@ -601,7 +709,7 @@ def client_contact(slug: str, contact: str = Form(""), phone: str = Form(""),
                    dead_stock_days: int = Form(90), low_cover_days: int = Form(14),
                    account: auth.Account = Depends(_acct)):
     """Details are optional and filled in later, never demanded at onboarding."""
-    client = store.get_client(slug, account.id)
+    client = _client_for(account, slug)
     if client is None:
         return _redirect("/?m=That+client+no+longer+exists.&k=bad")
     client.contact = contact.strip()
@@ -636,7 +744,7 @@ def _reload_insights(client: store.Client, run: store.Run, settings):
 
 @app.post("/c/{slug}/upload")
 def upload(slug: str, file: UploadFile = File(...), account: auth.Account = Depends(_acct)):
-    client = store.get_client(slug, account.id)
+    client = _client_for(account, slug)
     if client is None:
         return _redirect("/?m=That+client+no+longer+exists.&k=bad")
 
@@ -702,14 +810,14 @@ def upload(slug: str, file: UploadFile = File(...), account: auth.Account = Depe
         ledger.log("run.failed", f"{name}: {run.error}", client=client)
         msg, kind = f"Could not read {name}. {run.error[:110]}", "bad"
 
-    store.add_run(slug, account.id, run)
+    store.add_run(slug, client.owner_id, run)
     tab = "alerts" if run.status == "ok" and run.alert_count else "data"
     return _redirect(f"/c/{slug}?tab={tab}&m={_msg(msg)}&k={kind}")
 
 
 @app.get("/c/{slug}/dashboard")
 def dashboard(slug: str, account: auth.Account = Depends(_acct)):
-    client = store.get_client(slug, account.id)
+    client = _client_for(account, slug)
     if client is None or not client.latest or not client.latest.dashboard:
         return _redirect(f"/c/{slug}?m=No+dashboard+yet.&k=bad")
     path = store.DASHBOARDS / client.latest.dashboard
@@ -722,7 +830,7 @@ def dashboard(slug: str, account: auth.Account = Depends(_acct)):
 
 @app.get("/c/{slug}/export/{fmt}")
 def export(slug: str, fmt: str, account: auth.Account = Depends(_acct)):
-    client = store.get_client(slug, account.id)
+    client = _client_for(account, slug)
     if client is None or not client.latest or client.latest.status != "ok":
         return _redirect(f"/c/{slug}?m=Nothing+to+export+yet.&k=bad")
 
@@ -759,7 +867,7 @@ def export(slug: str, fmt: str, account: auth.Account = Depends(_acct)):
 @app.post("/c/{slug}/email")
 def email_send(slug: str, subject: str = Form(...), body: str = Form(...),
                account: auth.Account = Depends(_acct)):
-    client = store.get_client(slug, account.id)
+    client = _client_for(account, slug)
     if client is None:
         return _redirect("/?m=That+client+no+longer+exists.&k=bad")
 
@@ -776,7 +884,7 @@ def email_send(slug: str, subject: str = Form(...), body: str = Form(...),
 
 @app.post("/c/{slug}/whatsapp")
 def whatsapp_send(slug: str, text: str = Form(...), account: auth.Account = Depends(_acct)):
-    client = store.get_client(slug, account.id)
+    client = _client_for(account, slug)
     if client is None:
         return _redirect("/?m=That+client+no+longer+exists.&k=bad")
 

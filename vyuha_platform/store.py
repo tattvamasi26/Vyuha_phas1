@@ -140,6 +140,21 @@ def load_clients(owner_id: str) -> list[Client]:
     return [c for c in _load_all() if c.owner_id == owner_id]
 
 
+def all_clients() -> list[Client]:
+    """**Every client on the install, ignoring ownership.**
+
+    Master console only. Named to be impossible to call by accident while
+    reaching for the scoped ``load_clients(owner_id)`` — if you are reading this
+    from a customer-facing route, you want that one instead.
+    """
+    return _load_all()
+
+
+def find_client(slug: str) -> Client | None:
+    """One client, **ignoring ownership**. Master console only — see above."""
+    return next((c for c in _load_all() if c.slug == slug), None)
+
+
 def get_client(slug: str, owner_id: str) -> Client | None:
     """One client, **only** if this account owns it.
 

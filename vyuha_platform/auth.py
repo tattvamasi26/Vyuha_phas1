@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import hmac
 import json
+import os
 import re
 import secrets
 from dataclasses import asdict, dataclass, field
@@ -77,6 +78,10 @@ class Account:
     password_hash: str
     created_at: str = field(default_factory=_now)
     last_login: str = ""
+    #: Masters sign in with a short username rather than an address, because
+    #: they are staff and not customers. Blank for everybody else, who sign in
+    #: with the email they registered.
+    username: str = ""
 
     #: "operator" - this account onboards and manages several businesses.
     #: "tenant"   - this account *is* one business and sees only itself.
@@ -97,8 +102,19 @@ class Account:
     def configured(self) -> bool:
         return bool(self.install)
 
+    #: "master" — Vyuha's own staff. Sees every account's clients, so that a
+    #: client reporting a broken dashboard can be looked at directly rather than
+    #: talked through it over the phone. Deliberately a role on an ordinary
+    #: account rather than a separate table: one login path, one session
+    #: mechanism, one place where a password is checked.
+    role: str = ""
+
     #: An account is never a guest. See :class:`Guest` for the other principal.
     is_guest = False
+
+    @property
+    def is_master(self) -> bool:
+        return self.role == "master"
 
     @property
     def initials(self) -> str:
@@ -172,6 +188,9 @@ class Guest:
     is_tenant = True
     configured = True
     is_guest = True
+    is_master = False
+    role = ""
+    username = ""
     email = ""
 
     @property
@@ -298,6 +317,58 @@ def by_email(email: str) -> Account | None:
     return next((a for a in _load_all() if a.email == email), None)
 
 
+def by_login(identifier: str) -> Account | None:
+    """Find an account by whichever handle it signs in with.
+
+    One login form serves both: customers type the address they registered,
+    masters type a username. Matching on both here keeps a single verification
+    path rather than a second, subtly different one for staff.
+    """
+    handle = normalise_email(identifier)
+    return next((a for a in _load_all()
+                 if a.email == handle or (a.username and a.username == handle)), None)
+
+
+def masters() -> list[Account]:
+    return [a for a in _load_all() if a.is_master]
+
+
+def ensure_masters() -> None:
+    """Seed Vyuha's own staff logins, once, at startup.
+
+    Idempotent by username: an existing master is never overwritten, so a
+    password changed from the settings page survives every restart. Credentials
+    come from ``VYUHA_MASTERS`` (``user:password,user:password``) when set, which
+    is how this should be fed in any real deployment; the built-in pair exists so
+    a fresh clone has a way in on day one and is expected to be changed.
+    """
+    seed = os.environ.get("VYUHA_MASTERS", "").strip()
+    if seed:
+        pairs = [tuple(p.split(":", 1)) for p in seed.split(",") if ":" in p]
+    else:
+        pairs = [("vishu", "Mookambika@2026"), ("rosh", "Srirama@2026")]
+
+    existing = {a.username for a in _load_all() if a.username}
+    fresh = []
+    for username, password in pairs:
+        username = normalise_email(username)
+        if not username or username in existing:
+            continue
+        salt = secrets.token_hex(16)
+        fresh.append(Account(
+            id=secrets.token_hex(8),
+            email=f"{username}@vyuha.internal",
+            username=username,
+            name=username.title(),
+            salt=salt,
+            password_hash=_hash(password, salt),
+            role="master",
+            install="operator",       # never show a master the first-run fork
+        ))
+    if fresh:
+        _save_all(_load_all() + fresh)
+
+
 def count() -> int:
     return len(_load_all())
 
@@ -343,9 +414,12 @@ def create(email: str, name: str, password: str) -> Account:
     return account
 
 
-def verify(email: str, password: str) -> Account | None:
-    """The account if the password matches, else None. Constant-time compare."""
-    account = by_email(email)
+def verify(identifier: str, password: str) -> Account | None:
+    """The account if the password matches, else None. Constant-time compare.
+
+    ``identifier`` is an email for customers and a username for masters.
+    """
+    account = by_login(identifier)
     if account is None:
         # Spend the same work anyway, so a missing email and a wrong password
         # cannot be told apart by how long the answer takes.

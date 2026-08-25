@@ -47,6 +47,10 @@ KINDS = {
     "share.revoked":     ("Workspace link revoked", "dim"),
     "share.locked":      ("Link paused after wrong PINs", "warn"),
     "account.password":  ("Password changed", "dim"),
+    "master.viewed":     ("Vyuha support opened it", "warn"),
+    "account.login":     ("Signed in", "dim"),
+    "receipt.sent":      ("Receipt sent to buyer", "ok"),
+    "receipt.failed":    ("Receipt not sent", "warn"),
     "settings.changed":  ("Settings changed", "dim"),
 }
 
@@ -137,6 +141,33 @@ def read(owner: str, limit: int = 200, client: str = "",
         if kinds and entry.kind not in kinds:
             continue
         out.append(entry)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def read_all(limit: int = 200) -> list[Entry]:
+    """**Every account's events.** Master console only.
+
+    Named apart from :func:`read` on purpose: the scoped one is what customer
+    routes want, and mixing them up is exactly the mistake the required ``owner``
+    argument exists to prevent.
+    """
+    if not LEDGER.exists():
+        return []
+    out: list[Entry] = []
+    try:
+        lines = LEDGER.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    for line in reversed(lines):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            out.append(Entry(**json.loads(line)))
+        except (json.JSONDecodeError, TypeError):
+            continue
         if len(out) >= limit:
             break
     return out
