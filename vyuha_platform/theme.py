@@ -141,6 +141,41 @@ TRADES: dict[str, dict] = {
         "fallback": _svg(_shelves("#22d3ee", "#0d3f4d")),
         "words": ("items", "stock", "bills"),
     },
+    "farming": {
+        "label": "Farming & agri produce",
+        "accent": "#84cc16", "accent2": "#4ade80", "ink": "#0b1206",
+        "backdrop": _photo("trade-nursery.jpg"),
+        "fallback": _svg(_leaves("#84cc16", "#1a3d10")),
+        "words": ("crops", "stock", "sales"),
+    },
+    "dairy": {
+        "label": "Dairy & milk",
+        "accent": "#38bdf8", "accent2": "#a5b4fc", "ink": "#04121c",
+        "backdrop": _photo("trade-nursery.jpg"),
+        "fallback": _svg(_shelves("#38bdf8", "#0c3a52")),
+        "words": ("products", "stock", "rounds"),
+    },
+    "kirana": {
+        "label": "Kirana & grocery",
+        "accent": "#fb923c", "accent2": "#fbbf24", "ink": "#170b02",
+        "backdrop": _photo("trade-retail.jpg"),
+        "fallback": _svg(_shelves("#fb923c", "#4a2408")),
+        "words": ("items", "stock", "bills"),
+    },
+    "textiles": {
+        "label": "Textiles & garments",
+        "accent": "#f472b6", "accent2": "#c084fc", "ink": "#1a0713",
+        "backdrop": _photo("trade-retail.jpg"),
+        "fallback": _svg(_shelves("#f472b6", "#4a1130")),
+        "words": ("pieces", "stock", "bills"),
+    },
+    "pharmacy": {
+        "label": "Pharmacy & medical",
+        "accent": "#2dd4bf", "accent2": "#60a5fa", "ink": "#041512",
+        "backdrop": _photo("trade-retail.jpg"),
+        "fallback": _svg(_shelves("#2dd4bf", "#0a3f39")),
+        "words": ("medicines", "stock", "bills"),
+    },
     "general": {
         "label": "Something else",
         "accent": "#7c5cff", "accent2": "#22d3ee", "ink": "#0a0a12",
@@ -164,8 +199,13 @@ def guess(name: str, industry: str = "") -> str:
     """Pick a sensible trade from what they typed, so nobody has to choose twice."""
     text = f"{name} {industry}".lower()
     for key, words in (
-        ("nursery", ("nursery", "plant", "garden", "manure", "fertil", "seed",
-                     "compost", "agri", "flor", "landscap")),
+        ("nursery", ("nursery", "plant", "garden", "compost", "flor", "landscap")),
+        ("farming", ("farm", "agri", "krishi", "estate", "plantation", "areca",
+                     "coffee", "spice", "paddy", "harvest", "grower")),
+        ("dairy", ("dairy", "milk", "creamery", "amul", "ghee")),
+        ("pharmacy", ("pharma", "medical", "chemist", "drug", "clinic")),
+        ("textiles", ("textile", "garment", "saree", "cloth", "fabric", "handloom")),
+        ("kirana", ("kirana", "grocer", "provision", "super", "general store")),
         ("manufacturing", ("manufact", "engineer", "spare", "bearing", "machin",
                            "fabricat", "industr", "tool", "auto")),
         ("retail", ("retail", "hardware", "shop", "store", "mart", "electric")),

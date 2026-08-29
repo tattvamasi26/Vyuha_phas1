@@ -82,6 +82,9 @@ class Account:
     #: they are staff and not customers. Blank for everybody else, who sign in
     #: with the email they registered.
     username: str = ""
+    #: Their own WhatsApp number, taken at signup. Every account here belongs to
+    #: a business we are going to have to reach — this is how.
+    phone: str = ""
 
     #: "operator" - this account onboards and manages several businesses.
     #: "tenant"   - this account *is* one business and sees only itself.
@@ -388,8 +391,15 @@ class SignupError(ValueError):
     """Why the form could not be accepted, in words the person can act on."""
 
 
-def create(email: str, name: str, password: str) -> Account:
-    """Register a new account. Raises :class:`SignupError` with a usable reason."""
+def create(email: str, name: str, password: str, phone: str = "",
+           install: str = "tenant") -> Account:
+    """Register a new account. Raises :class:`SignupError` with a usable reason.
+
+    ``install`` defaults to ``tenant`` because everybody who signs up here is a
+    business setting up their own shop. The portfolio view that used to be the
+    other half of a first-run choice now belongs to master accounts, so there is
+    no longer a fork to put in front of somebody on their first screen.
+    """
     email = normalise_email(email)
     name = name.strip()
 
@@ -407,6 +417,8 @@ def create(email: str, name: str, password: str) -> Account:
         name=name or email.split("@")[0],
         salt=salt,
         password_hash=_hash(password, salt),
+        phone=phone,
+        install=install,
     )
     accounts = _load_all()
     accounts.append(account)
