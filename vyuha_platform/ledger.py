@@ -52,6 +52,11 @@ KINDS = {
     "receipt.sent":      ("Receipt sent to buyer", "ok"),
     "receipt.failed":    ("Receipt not sent", "warn"),
     "settings.changed":  ("Settings changed", "dim"),
+    # -- the console (stock, ask, follow-ups, money, people)
+    "agent.asked":       ("Question asked", "info"),
+    "followup.handled":  ("Follow-up handled", "ok"),
+    "money.recorded":    ("Payment recorded", "info"),
+    "people.changed":    ("Branches or staff changed", "dim"),
 }
 
 

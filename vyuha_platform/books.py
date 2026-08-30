@@ -58,6 +58,8 @@ class Item:
     stock_qty: float = 0.0       # what is left, right now
     reorder_level: float = 0.0
     added_at: str = field(default_factory=_today)
+    #: Where this stock sits. Same contract as Sale.branch.
+    branch: str = ""
 
     @property
     def value(self) -> float:
@@ -90,6 +92,11 @@ class Sale:
     #: possible at all.
     party_phone: str = ""
     receipt_sent: str = ""       # timestamp, so a receipt is never sent twice
+    #: Which branch rang this up (``people.Branch.id``). Empty for a
+    #: single-branch business and for every row written before branches
+    #: existed, which is why people.performance() reports those under
+    #: "Unassigned" rather than guessing.
+    branch: str = ""
 
 
 @dataclass
@@ -176,10 +183,16 @@ def load(slug: str) -> Book:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
         return Book(slug=slug)
+    def build(cls, rows):
+        # Drop unknown keys rather than raising: a data file written by a newer
+        # build must not stop an older one from starting.
+        return [cls(**{k: v for k, v in r.items() if k in cls.__dataclass_fields__})
+                for r in rows]
+
     return Book(
         slug=slug,
-        items=[Item(**i) for i in raw.get("items", [])],
-        sales=[Sale(**s) for s in raw.get("sales", [])],
+        items=build(Item, raw.get("items", [])),
+        sales=build(Sale, raw.get("sales", [])),
         next_bill=raw.get("next_bill", 1),
     )
 
@@ -241,7 +254,7 @@ def mark_receipt_sent(slug: str, sale_id: str) -> None:
 
 def record_sale(slug: str, sku: str, party: str, qty, rate, when: str = "",
                 paid: bool = True, due_date: str = "", note: str = "",
-                party_phone: str = "") -> tuple[Book, str, bool]:
+                party_phone: str = "", branch: str = "") -> tuple[Book, str, bool]:
     book = load(slug)
     item = book.item(sku)
     if item is None:
@@ -263,13 +276,118 @@ def record_sale(slug: str, sku: str, party: str, qty, rate, when: str = "",
         id=bill, date=when or _today(), party=party, sku=item.sku, item=item.name,
         qty=qty_n, rate=rate_n, amount=round(qty_n * rate_n, 2),
         paid=paid, due_date=due_date, note=note.strip(),
-        party_phone=party_phone,
+        party_phone=party_phone, branch=branch,
     ))
     item.stock_qty -= qty_n
     save(book)
 
     left = f"{item.stock_qty:g} {item.unit} left"
     return book, f"{bill}: {qty_n:g} × {item.name} to {party}. {left}.{warn}", True
+
+
+def receive_stock(slug: str, sku: str, qty, cost="", note: str = "",
+                  when: str = "") -> tuple[Book, str, bool]:
+    """Stock coming in — a delivery, a return, a correction upward.
+
+    Sales already move stock *out*; without this the only way a number ever
+    went up was editing the item, which is why an inventory that starts
+    accurate drifts within a week. A cost supplied here **replaces** the item's
+    cost, because the price of the last delivery is the one that should drive
+    margin from now on.
+    """
+    book = load(slug)
+    item = book.item(sku)
+    if item is None:
+        return book, "Pick an item from the list.", False
+
+    qty_n = _num(qty)
+    if qty_n <= 0:
+        return book, "How many came in? It has to be more than zero.", False
+
+    before = item.stock_qty
+    item.stock_qty += qty_n
+    cost_n = _num(cost)
+    priced = ""
+    if cost_n > 0 and cost_n != item.cost:
+        item.cost = cost_n
+        priced = f" Cost now ₹{cost_n:,.0f}."
+    save(book)
+    return (book,
+            f"{qty_n:g} {item.unit} of {item.name} received. "
+            f"{before:g} → {item.stock_qty:g}.{priced}", True)
+
+
+def adjust_stock(slug: str, sku: str, counted, note: str = "") -> tuple[Book, str, bool]:
+    """Set stock to what was physically counted.
+
+    Separate from receive_stock on purpose: "twelve arrived" and "there are
+    twelve on the shelf" are different claims, and conflating them is how a
+    stock-take quietly doubles the shelf.
+    """
+    book = load(slug)
+    item = book.item(sku)
+    if item is None:
+        return book, "Pick an item from the list.", False
+
+    counted_n = _num(counted, default=-1)
+    if counted_n < 0:
+        return book, "Enter the counted quantity.", False
+
+    before = item.stock_qty
+    item.stock_qty = counted_n
+    save(book)
+    delta = counted_n - before
+    direction = "up" if delta > 0 else "down" if delta < 0 else "unchanged"
+    return (book, f"{item.name} counted at {counted_n:g} {item.unit} "
+                  f"({direction} {abs(delta):g} from {before:g}).", True)
+
+
+def set_reorder(slug: str, levels: dict[str, str]) -> tuple[Book, str]:
+    """Bulk-edit reorder levels — the whole table in one save.
+
+    Setting them one at a time means nobody sets them at all, and a reorder
+    level of zero is why ``Item.low`` never fires for most clients.
+    """
+    book = load(slug)
+    changed = 0
+    for sku, raw in levels.items():
+        item = book.item(sku)
+        if item is None:
+            continue
+        value = _num(raw, default=-1)
+        if value < 0 or value == item.reorder_level:
+            continue
+        item.reorder_level = value
+        changed += 1
+    if changed:
+        save(book)
+        return book, f"Reorder level updated on {changed} item(s)."
+    return book, "Nothing changed."
+
+
+def set_branch(slug: str, sku: str, branch: str) -> tuple[Book, str]:
+    """Move an item to a branch."""
+    book = load(slug)
+    item = book.item(sku)
+    if item is None:
+        return book, "That item is gone."
+    item.branch = branch
+    save(book)
+    return book, f"{item.name} is now held at that branch."
+
+
+def movement(book: Book, sku: str, limit: int = 20) -> list[dict]:
+    """Everything that happened to one SKU, newest first.
+
+    Only sales are dated individually, so receipts are not in the history yet —
+    an honest gap, and the reason the console labels this "sales history"
+    rather than "stock ledger".
+    """
+    rows = [{"date": s.date, "kind": "sold", "qty": -s.qty, "party": s.party,
+             "amount": s.amount, "ref": s.id}
+            for s in book.sales if s.sku == sku]
+    rows.sort(key=lambda r: r["date"], reverse=True)
+    return rows[:limit]
 
 
 def delete_sale(slug: str, sale_id: str) -> tuple[Book, str]:

@@ -29,8 +29,8 @@ from fastapi.staticfiles import StaticFiles
 
 from vyuha import analyze, pipeline
 
-from . import (auth, books, channels, config, exports, ledger, sources, store, theme,
-               ui, whatsapp)
+from . import (agent, auth, books, channels, config, console, decks, exports, followup,
+               ledger, money, people, sources, store, theme, ui, whatsapp)
 
 app = FastAPI(title="Vyuha Operations Platform", docs_url=None, redoc_url=None)
 
@@ -1001,3 +1001,289 @@ def settings_save(
     ledger.log("settings.changed", "Platform settings updated", owner=account.id,
                channel="settings")
     return _redirect("/settings?m=Settings+saved.")
+
+
+# =====================================================================
+# ---- vishak · the console: stock, ask, follow-ups, money, deck, people
+#
+# Six features, one page (see console.py for why). Routes only — every one of
+# these is a thin shell over a module that holds the actual logic, so this
+# block stays readable no matter how much the console grows.
+#
+# Two conventions worth keeping:
+#   * Mutations redirect back with ?panel= so the page reopens where it was.
+#   * Reads that produce something transient (an answer, a deck outline) render
+#     the page directly instead, because a redirect would throw the result away.
+# =====================================================================
+
+#: The last brief per client, so the download links rebuild the same deck.
+#: In-process and deliberately small — a deck is cheap to rebuild and the LLM
+#: cache makes the rebuild free, so losing this on restart costs nothing.
+_DECK_BRIEFS: dict[str, tuple[str, str]] = {}
+
+
+def _console_state(client: store.Client) -> dict:
+    """Everything the console page needs, loaded once.
+
+    ``purse``, not ``ledger``: this module already imports the *activity*
+    ledger under that name, and shadowing it here would silently break event
+    logging in whichever handler did it.
+    """
+    book = books.load(client.slug)
+    purse = money.load(client.slug)
+    org = people.load(client.slug)
+    return {
+        "book": book,
+        "ledger": purse,
+        "org": org,
+        "queue": followup.queue(client.slug, book),
+        "settings": config.load(),
+    }
+
+
+def _console(client: store.Client, account, panel: str = "stock", **extra) -> HTMLResponse:
+    state = _console_state(client)
+    state.update(extra)
+    return HTMLResponse(console.page(client, account=account, panel=panel, **state))
+
+
+def _console_back(slug: str, panel: str, note: str = "") -> RedirectResponse:
+    tail = f"&m={_msg(note)}" if note else ""
+    return _redirect(f"/c/{slug}/console?panel={panel}{tail}")
+
+
+def _console_client(account, slug: str):
+    """Resolve and authorise in one step — every handler below starts with it.
+
+    Returns the client, or the redirect to send instead. A tenant reaching for
+    somebody else's slug gets the same answer a typo gets, so a URL cannot be
+    used to discover which workspaces exist.
+    """
+    client = _client_for(account, slug)
+    if client is None:
+        return None, _redirect("/?m=That+client+no+longer+exists.&k=bad")
+    if account.is_tenant:
+        own = _tenant_client(account)
+        if own is None or own.slug != slug:
+            return None, _redirect("/?m=That+is+not+your+workspace.&k=bad")
+    return client, None
+
+
+@app.get("/c/{slug}/console", response_class=HTMLResponse)
+def console_page(slug: str, request: Request, panel: str = "stock",
+                 account: auth.Account = Depends(_acct)):
+    client, bail = _console_client(account, slug)
+    if bail is not None:
+        return bail
+    msg, kind = _flash(request)
+    return _console(client, account, panel, flash=msg, flash_kind=kind)
+
+
+# ---------------------------------------------------------------- 02 · stock
+
+@app.post("/c/{slug}/stock/receive")
+def stock_receive(slug: str, sku: str = Form(...), qty: str = Form("0"),
+                  cost: str = Form(""), account: auth.Account = Depends(_acct)):
+    client, bail = _console_client(account, slug)
+    if bail is not None:
+        return bail
+    _, note, ok = books.receive_stock(slug, sku, qty, cost)
+    if ok:
+        ledger.log("source.received", note, client=client, channel="manual")
+        _rebuild_from_book(client)
+    return _console_back(slug, "stock", note)
+
+
+@app.post("/c/{slug}/stock/count")
+def stock_count(slug: str, sku: str = Form(...), counted: str = Form(""),
+                branch: str = Form(""), account: auth.Account = Depends(_acct)):
+    client, bail = _console_client(account, slug)
+    if bail is not None:
+        return bail
+    _, note, ok = books.adjust_stock(slug, sku, counted)
+    if ok:
+        if branch:
+            books.set_branch(slug, sku, branch)
+        ledger.log("source.received", note, client=client, channel="manual")
+        _rebuild_from_book(client)
+    return _console_back(slug, "stock", note)
+
+
+@app.post("/c/{slug}/stock/reorder")
+async def stock_reorder(slug: str, request: Request,
+                        account: auth.Account = Depends(_acct)):
+    """Bulk reorder-level save.
+
+    The field names are dynamic — one per SKU — so this reads the raw form
+    rather than declaring parameters it cannot know in advance.
+    """
+    client, bail = _console_client(account, slug)
+    if bail is not None:
+        return bail
+    form = await request.form()
+    levels = {k[4:]: str(v) for k, v in form.items() if k.startswith("lvl_")}
+    _, note = books.set_reorder(slug, levels)
+    if "updated" in note:
+        ledger.log("source.received", note, client=client, channel="manual")
+        _rebuild_from_book(client)
+    return _console_back(slug, "stock", note)
+
+
+# ------------------------------------------------------------------ 03 · ask
+
+@app.post("/c/{slug}/ask", response_class=HTMLResponse)
+def console_ask(slug: str, question: str = Form(""),
+                account: auth.Account = Depends(_acct)):
+    client, bail = _console_client(account, slug)
+    if bail is not None:
+        return bail
+
+    state = _console_state(client)
+    reply = agent.ask(question, client, state["book"], state["settings"],
+                      ledger=state["ledger"], org=state["org"])
+    ledger.log("agent.asked", f"Asked: {question[:90]}", client=client,
+               channel="agent", answered_by=reply.source, ok=reply.ok)
+    return _console(client, account, "ask", reply=reply, question=question)
+
+
+# ----------------------------------------------------------- 07 · follow-ups
+
+@app.post("/c/{slug}/followup")
+def console_followup(slug: str, key: str = Form(...), status: str = Form("done"),
+                     days: int = Form(7), account: auth.Account = Depends(_acct)):
+    client, bail = _console_client(account, slug)
+    if bail is not None:
+        return bail
+    note = followup.mark(slug, key, status, days)
+    ledger.log("followup.handled", f"{status}: {key}", client=client, channel="followup")
+    return _console_back(slug, "followups", note)
+
+
+# ---------------------------------------------------------------- 08 · money
+
+@app.post("/c/{slug}/expense")
+def console_expense(slug: str, category: str = Form("Other"), party: str = Form(""),
+                    amount: str = Form("0"), when: str = Form(""),
+                    due_date: str = Form(""), branch: str = Form(""),
+                    unpaid: str = Form(""), account: auth.Account = Depends(_acct)):
+    client, bail = _console_client(account, slug)
+    if bail is not None:
+        return bail
+    _, note = money.add_expense(slug, category, party, amount, when=when,
+                                paid=not bool(unpaid), due_date=due_date, branch=branch)
+    ledger.log("money.recorded", note, client=client, channel="money")
+    return _console_back(slug, "money", note)
+
+
+@app.post("/c/{slug}/expense/{expense_id}/paid")
+def console_expense_paid(slug: str, expense_id: str,
+                         account: auth.Account = Depends(_acct)):
+    client, bail = _console_client(account, slug)
+    if bail is not None:
+        return bail
+    _, note = money.mark_paid(slug, expense_id)
+    ledger.log("money.recorded", note, client=client, channel="money")
+    return _console_back(slug, "money", note)
+
+
+@app.post("/c/{slug}/expense/{expense_id}/delete")
+def console_expense_delete(slug: str, expense_id: str,
+                           account: auth.Account = Depends(_acct)):
+    client, bail = _console_client(account, slug)
+    if bail is not None:
+        return bail
+    _, note = money.delete_expense(slug, expense_id)
+    return _console_back(slug, "money", note)
+
+
+# ----------------------------------------------------------------- 09 · deck
+
+def _deck_outline(client: store.Client, brief: str, kind: str, state: dict):
+    facts = agent.facts(client, state["book"], state["ledger"], state["org"])
+    return decks.outline(brief, kind, client, facts, state["settings"])
+
+
+@app.post("/c/{slug}/deck", response_class=HTMLResponse)
+def console_deck(slug: str, brief: str = Form(""), kind: str = Form("review"),
+                 account: auth.Account = Depends(_acct)):
+    client, bail = _console_client(account, slug)
+    if bail is not None:
+        return bail
+
+    state = _console_state(client)
+    outline = _deck_outline(client, brief, kind, state)
+    _DECK_BRIEFS[slug] = (brief, kind)
+    ledger.log("export.created", f"Deck outlined: {outline.title}", client=client,
+               channel="deck", written_by=outline.source, slides=len(outline.slides))
+    return _console(client, account, "deck", outline=outline, brief=brief, deck_kind=kind)
+
+
+@app.get("/c/{slug}/deck/{fmt}")
+def console_deck_download(slug: str, fmt: str, account: auth.Account = Depends(_acct)):
+    client, bail = _console_client(account, slug)
+    if bail is not None:
+        return bail
+    if fmt not in {"pptx", "pdf"}:
+        return _console_back(slug, "deck", "That format is not available.")
+
+    brief, kind = _DECK_BRIEFS.get(slug, ("", "review"))
+    state = _console_state(client)
+    outline = _deck_outline(client, brief, kind, state)
+
+    out = store.DATA / "exports" / f"{slug}-deck.{fmt}"
+    if fmt == "pptx":
+        decks.to_pptx(outline, client.name, out)
+        media = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    else:
+        decks.to_pdf(outline, client.name, out)
+        media = "application/pdf"
+
+    ledger.log("export.created", f"Deck downloaded as {fmt.upper()}", client=client,
+               channel=fmt)
+    return FileResponse(out, media_type=media, filename=f"{slug}-{kind}.{fmt}")
+
+
+# ---------------------------------------------------------------- 10 · people
+
+@app.post("/c/{slug}/branch")
+def console_branch(slug: str, name: str = Form(...), place: str = Form(""),
+                   manager: str = Form(""), account: auth.Account = Depends(_acct)):
+    client, bail = _console_client(account, slug)
+    if bail is not None:
+        return bail
+    _, note = people.add_branch(slug, name, place, manager=manager)
+    ledger.log("people.changed", note, client=client, channel="people")
+    return _console_back(slug, "people", note)
+
+
+@app.post("/c/{slug}/branch/{branch_id}/delete")
+def console_branch_delete(slug: str, branch_id: str,
+                          account: auth.Account = Depends(_acct)):
+    client, bail = _console_client(account, slug)
+    if bail is not None:
+        return bail
+    _, note = people.delete_branch(slug, branch_id)
+    ledger.log("people.changed", note, client=client, channel="people")
+    return _console_back(slug, "people", note)
+
+
+@app.post("/c/{slug}/staff")
+def console_staff(slug: str, name: str = Form(...), role: str = Form("Salesperson"),
+                  branch: str = Form(""), phone: str = Form(""),
+                  account: auth.Account = Depends(_acct)):
+    client, bail = _console_client(account, slug)
+    if bail is not None:
+        return bail
+    _, note = people.add_staff(slug, name, role, branch, phone)
+    ledger.log("people.changed", note, client=client, channel="people")
+    return _console_back(slug, "people", note)
+
+
+@app.post("/c/{slug}/staff/{staff_id}/delete")
+def console_staff_delete(slug: str, staff_id: str,
+                         account: auth.Account = Depends(_acct)):
+    client, bail = _console_client(account, slug)
+    if bail is not None:
+        return bail
+    _, note = people.delete_staff(slug, staff_id)
+    return _console_back(slug, "people", note)

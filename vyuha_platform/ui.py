@@ -1530,6 +1530,9 @@ def client_page(c, tab: str, settings, account, activity_entries, flash: str = "
         (f"/c/{c.slug}?tab=alerts", "➤", "Send & download",
          f"{last.alert_count} alert(s) ready" if has_data else "Add data first",
          tab == "alerts"),
+        (f"/c/{c.slug}/console", "◈", "Open the console",
+         "Stock, questions, follow-ups, money, decks and branches — one page",
+         False),
         (f"/c/{c.slug}?tab=settings", "⚙", "Setup",
          "Contact, photo, and when to warn you", tab == "settings"),
     ]

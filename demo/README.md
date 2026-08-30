@@ -32,6 +32,9 @@ and a stock register kept in Excel by the owner's son.
 This is the definition of done. Tick a box when the beat runs end to end with
 nobody touching a terminal.
 
+`[x]` runs today. `[~]` half-runs — the machinery is built but it is waiting on
+the other lane. Last checked 2026-08-30.
+
 - [ ] **08:00 — The morning brief arrives on WhatsApp.** Three items below
       reorder, cash locked in dead stock, overdue past 60 days. He has not
       opened a computer. — *item 04, 02*
@@ -45,18 +48,18 @@ nobody touching a terminal.
       confidence mark on anything guessed. — *item 05*
 - [ ] **09:32 — Tap "Quote".** Prices from the catalogue, margin visible to the
       operator only, PDF back on WhatsApp in the same thread. — *item 06*
-- [ ] **11:00 — The owner asks a question in his own words.** "Who owes me most
+- [x] **11:00 — The owner asks a question in his own words.** "Who owes me most
       and since when?" Answered from his numbers, with the figure and where it
       came from. — *item 03*
-- [ ] **15:00 — The money screen.** Cash in, cash out, due this week, margin by
+- [x] **15:00 — The money screen.** Cash in, cash out, due this week, margin by
       category. — *item 08*
 - [ ] **19:00 — The evening report.** Today's sales, week to date vs last week,
       three suggestions. — *item 04*
-- [ ] **+7d — The quote never converted.** A follow-up is drafted and waiting,
+- [~] **+7d — The quote never converted.** A follow-up is drafted and waiting,
       referencing that quote. Approved in one tap. — *item 07*
-- [ ] **— Switch branch.** Same screens, different numbers. The Hubballi
+- [x] **— Switch branch.** Same screens, different numbers. The Hubballi
       manager sees his branch only; the owner sees both. — *item 10*
-- [ ] **— "Make me a case study on this client."** A deck falls out, same
+- [x] **— "Make me a case study on this client."** A deck falls out, same
       numbers as every other screen. — *item 09*
 
 ---
@@ -86,51 +89,55 @@ end to end, read `CLAUDE.md` end to end, then commit the `Quote` stub.
 
 ---
 
-## 4. The split — by owned files, not by feature number
+## 4. The split — re-cut 2026-08-30
 
-"You take 1-5, I take 6-10" puts us both in the same two files every day.
-Each lane owns its modules outright. The other person opens a PR, never an edit.
+Agreed on the call: **Vishak takes 2, 3, 7, 8, 9, 10 — all on one page.
+Roshan takes 1, 4, 5, 6.** This supersedes the module-ownership split first
+written here; the reasoning below still holds, the boundary just moved.
 
-### Lane A — Vishak — the spine and the brain
+### Lane A — Vishak — the console  ✅ built
 
-Owns: `vyuha/`, `llm.py`, `agent.py`, `automate.py`, `inbox.py`, `sources.py`,
-`ui/agent.py`, `ui/inbox.py`
+One page at `/c/<slug>/console`, six panels, no reload between them
+(`console.py`). Reachable from the workspace as "Open the console".
 
-- **01 Intake adapters** — Tally / Busy / Marg export shapes and Google Sheets,
-  as aliases in `schema.py` plus converters in `sources.py`.
-- **03 Business agent** — tools over `Insights` and `Book`. Answers with the
-  figure and its source; says "not in your data" rather than improvising.
-- **04 Automations** — morning brief, PO draft, evening report, suggestions.
-  Scheduler is a `/cron/{key}` route hit by Windows Task Scheduler. Do not add
-  a job runner for a demo.
-- **05 Inbound orders** — Twilio sandbox webhook, IMAP poller, LLM parse to
-  order lines, orders panel. Hardest item in the ten; assume all of week two.
+| # | Feature | Module | State |
+|---|---|---|---|
+| 02 | Inventory & understock | `books.py` (extended) | done |
+| 03 | Business agent | `agent.py` + `llm.py` | done |
+| 07 | Customer follow-up | `followup.py` | done |
+| 08 | Financial tracking | `money.py` | done |
+| 09 | PDF / PPT generator | `decks.py` | done |
+| 10 | People & branches | `people.py` | done |
 
-### Lane B — Roshan — the counter and the paperwork
+Owns: `console.py`, `agent.py`, `llm.py`, `money.py`, `followup.py`,
+`people.py`, `decks.py`, `books.py`, plus the `# ---- vishak` route block at
+the bottom of `app.py`.
 
-Owns: `books.py`, `catalog.py`, `quotes.py`, `followup.py`, `money.py`,
-`people.py`, `decks.py`, `exports.py`, `ui/inventory.py`, `ui/quotes.py`,
-`ui/money.py`, `ui/people.py`
+### Lane B — Roshan — intake, automation, orders, quotes
 
-- **02 Inventory screen** — stock in/out, bulk reorder-level edit, movement
-  history, low-stock board using `catalog.glyph()` pictures. The landing view.
-- **06 Quotation** — build from catalogue or from an inbox order, margin
-  operator-only, quote PDF, WhatsApp send.
-- **07 Follow-up** — a due queue keyed on `quote.id` and `quote.status`.
-  Roshan owns the queue; Vishak's scheduler pulls it.
-- **08 Financial tracking** — purchases and expenses in, cash-flow statement,
-  margin by category, dues this week.
-- **09 Deck generator** — brief to outline to PPTX, through `llm.ask` and the
-  existing `to_pptx`. Never call `anthropic` directly.
-- **10 Branches & staff** — branch on the client, staff accounts under one
-  business, per-branch numbers, comparison view. First on the cut list, so
-  start it last.
+| # | Feature | Suggested module | State |
+|---|---|---|---|
+| 01 | Data intake study + adapters | `sources.py`, `schema.py` | partly built |
+| 04 | Morning / evening automations | `automate.py` (new) | not started |
+| 05 | Inbound orders | `inbox.py` (new) | not started |
+| 06 | Quotation | `quotes.py` (new) | not started |
 
-### Shared, with rules
+Owns: `sources.py`, `schema.py`, `vyuha/` engine internals, `automate.py`,
+`inbox.py`, `quotes.py`, and his own route block in `app.py`.
 
-`app.py`, `store.py`, `theme.py`, `ui/shell.py`, `CLAUDE.md` belong to neither
-lane. In `app.py`: routes only, appended inside your own marked block
-(`# ---- vishak` / `# ---- roshan`). Business logic in `app.py` is a bug.
+### Where the two lanes touch
+
+Three seams, all already stubbed so neither side blocks:
+
+- **`llm.ask(prompt, settings, system=, schema=)`** — built and in use. The
+  order parser (item 05) must go through it, never `anthropic` directly: it
+  carries the disk cache and the `VYUHA_LLM=offline` switch the demo depends on.
+- **`followup.from_quotes(quotes)`** — built, and does nothing until item 06
+  lands. It takes the list rather than importing `quotes.py`, so `Quote` only
+  needs `id`, `party`, `status`, `amount` and a date field. Nothing to
+  coordinate beyond those five names.
+- **`money.Expense`** — item 04's purchase-order flow should write one of these
+  when a PO is raised, so an ordered-but-unpaid PO shows in "still to pay".
 
 ### Joint, week one, evenings
 
@@ -140,22 +147,22 @@ what they would hand over first. Highest-leverage thing either of us does this
 month — it decides which adapters are worth building, and it is the same
 conversation that gets us clients.
 
----
+## 5. The shapes, and who writes them
 
-## 5. The seam — five shapes, frozen day 2
+A shape changes only by **adding a keyword field with a default** — the
+precedent is in the repo: `Alert.code` and `Alert.entities` were added without
+touching seven call sites or thirteen tests. `books.load()` and every loader in
+the new modules now drop unknown keys too, so an older build never chokes on a
+data file written by a newer one.
 
-The only places the lanes meet. Agree the field names, commit the stub, build
-behind it. A shape changes only by **adding a keyword field with a default** —
-the precedent is in the repo: `Alert.code` and `Alert.entities` were added
-without touching seven call sites or thirteen tests.
-
-| Shape | Written by | Read by | Stub due |
+| Shape | Written by | Read by | State |
 |---|---|---|---|
-| `Insights` | Vishak | Roshan — money, decks | exists |
-| `Book` / `Item` / `Sale` | Roshan | Vishak — agent, automations | exists |
-| `Quote` | Roshan | Vishak — follow-up trigger | day 2 |
-| `Order` | Vishak | Roshan — quote builder | day 5 |
-| `llm.ask()` | Vishak | Roshan — decks | day 1 |
+| `Insights` | engine | both lanes | exists |
+| `Book` / `Item` / `Sale` | Vishak | Roshan — automations, orders | exists (`Sale.branch` added) |
+| `money.Expense` | Vishak | Roshan — PO flow (item 04) | exists |
+| `llm.Answer` | Vishak | Roshan — order parser (item 05) | exists |
+| `Quote` | Roshan | Vishak — `followup.from_quotes()` | **not yet — needs 5 field names** |
+| `Order` | Roshan | Roshan — quote builder | not yet |
 
 ---
 

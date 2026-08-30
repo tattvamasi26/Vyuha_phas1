@@ -27,6 +27,7 @@ python -m venv .venv
 .venv/Scripts/python -m vyuha check FILE.xlsx   # what was understood, no report written
 .venv/Scripts/python -m tests.test_pipeline     # 13 engine tests, no pytest required
 .venv/Scripts/python -m tests.test_platform     # 57 platform tests, same runner
+.venv/Scripts/python -m tests.test_console      # 29 console tests, runs VYUHA_LLM=offline
 
 .venv/Scripts/python -m vyuha_platform --open   # the web platform on :8000
 ```
@@ -123,11 +124,72 @@ but **not yet declared in `pyproject.toml`**.
   write-only in the UI (masked on render, blank means "keep"). One WhatsApp sender, one SMTP
   account, one Claude key for the machine; anything that varies per logged-in account lives on
   `auth.Account` instead. `install` / `org_name` / `tenant_slug` moved there on 2026-08-23.
+- **`console.py`** — **six features on one page** (`/c/<slug>/console`), added
+  2026-08-30: stock, ask, follow-ups, money, deck, people. One request renders
+  all six; switching panels is a class toggle, not a round trip, which is why
+  the nav can carry live counts ("3 overdue") — the whole reason somebody opens
+  a panel they were not already thinking about. Mutating forms POST and redirect
+  with `?panel=` so the page reopens where it was left; reads that produce
+  something transient (an answer, a deck outline) render the page directly
+  instead, because a redirect would throw the result away. Console-only CSS
+  lives in `console.EXTRA`, not `ui.CSS`, so this file owns its own look and the
+  other lane can edit `ui.py` without ever meeting a conflict here.
+- **`llm.py`** — the single entry point for every Claude call outside
+  `sources.py`. Buys three things: a **disk cache** (pre-warm it and a live demo
+  never waits on the API), an **offline mode** (`VYUHA_LLM=offline` refuses to
+  call out, so a caller with a fallback still answers), and **errors as values**
+  — `ask()` never raises; a missing key, a rejected key, a rate limit and a
+  refusal all return an `Answer` with `ok=False` and something a human can act
+  on. Cached on the whole request (model + system + prompt + schema), so
+  changing any of them is a different question.
+- **`agent.py`** — the business agent. Two rules: **the model never sees the raw
+  book** (`facts()` builds a compact summary of already-computed totals, so
+  every number in an answer came from Python, not from a language model), and
+  **there is always an answer** — `rules()` handles what an owner actually asks
+  by pattern matching over the same facts, so no key and no network still
+  answers. `Reply.source` says which path answered, because a rule-based answer
+  and a reasoned one are different claims. A guard refuses speculation
+  ("what will the monsoon do to my sales next year") *before* the keyword
+  branches, since that question contains "sales" and would otherwise be answered
+  with last year's revenue — which reads as a forecast.
+- **`money.py`** — cash flow, which needed the half the product lacked. `Sale`
+  already recorded everything coming *in*; this owns exactly one new thing, the
+  `Expense`, and computes the statement by putting it beside the sales that
+  already exist. Keeps two distinctions apart that an owner cares about far more
+  than an accountant does: **earned vs collected** (a credit sale is revenue,
+  not cash) and **committed vs paid** (an unpaid purchase is a bill, not an
+  outflow). `position()` therefore reports four numbers, not two.
+- **`followup.py`** — who to chase. The queue is **computed from the book every
+  time, never stored**: a stored list means the day a customer pays, the
+  reminder to chase him is still sitting there, and one wrong chase costs more
+  than ten right ones earn. Only the *decision* persists, keyed on a stable
+  `key`, so "dismissed" survives the queue being rebuilt. `from_quotes()` takes
+  the list rather than importing `quotes.py` — that module is the other lane's
+  item 06 and does not exist yet, and this one must not fail to import for it.
+- **`people.py`** — branches and staff, deliberately **optional and additive**.
+  `Sale.branch` / `Expense.branch` default to empty, so a business that never
+  creates a branch sees nothing about branches anywhere and every existing row
+  stays valid. Rows written before branches existed report under **Unassigned**
+  rather than being attributed to whichever branch happens to be first —
+  guessing there would corrupt the one number the feature exists to produce.
+  `Staff` is a directory, not a login: real identity stays in `auth.py`.
+- **`decks.py`** — a deck from a sentence. Separates *what to say* (an `Outline`
+  Claude writes from a brief plus the same facts the agent reads) from *how it
+  looks* (`to_pptx` / `to_pdf`, which know nothing about where the outline came
+  from). That split is what makes the offline path honest rather than degraded:
+  `_fallback()` builds a real outline with no model and renders through exactly
+  the same code. Every figure is a **string already formatted by Python** — the
+  model selects and arranges, never calculates.
 - **`app.py`** — routes: `/` (landing when signed out, portfolio when signed in),
   `GET|POST /signup`, `GET|POST /login`, `POST /logout`, `POST /install`, `/onboard`, `/setup`,
   `/settings`, `/activity`, `/c/{slug}?tab=data|books|dashboard|alerts|settings`,
   `POST /c/{slug}/upload`, `POST /c/{slug}/book/item|sale`,
-  `/c/{slug}/export/{pdf|pptx|html}`, `POST /c/{slug}/email|whatsapp|delete`.
+  `/c/{slug}/export/{pdf|pptx|html}`, `POST /c/{slug}/email|whatsapp|delete`,
+  and the console block (`# ---- vishak`) at the foot of the file:
+  `/c/{slug}/console`, `POST /c/{slug}/ask|followup|expense|deck|branch|staff`,
+  `POST /c/{slug}/stock/{receive|count|reorder}`, `GET /c/{slug}/deck/{pptx|pdf}`.
+  Every console handler starts with `_console_client()`, which resolves and
+  authorises in one step.
   A single `require_login` **middleware** closes everything outside `PUBLIC =
   {"/", "/login", "/signup", "/logout"}`, so a route added later is private by default —
   the safe direction to forget in. Handlers take the account via
