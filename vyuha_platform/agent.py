@@ -264,8 +264,16 @@ def rules(question: str, f: dict) -> Reply:
                                "Add a branch on the People panel to split these numbers.",
                          used=["branches"])
         rows = b["branches"]
-        names = "".join(f"\n• {r['name']} — {_rs(r['revenue'])} from {r['bills']} bill(s), "
-                        f"{int(r['share_of_revenue'] * 100)}% of revenue" for r in rows)
+        def line(r):
+            # A row with no revenue is company-wide cost sitting in Unassigned
+            # (salary, for one). Reporting it by revenue reads as a dead branch;
+            # dropping it would hide real money. So report what it actually is.
+            if not r["revenue"]:
+                return f"\n• {r['name']} — no sales, {_rs(r['spend'])} of shared cost"
+            return (f"\n• {r['name']} — {_rs(r['revenue'])} from {r['bills']} bill(s), "
+                    f"{int(r['share_of_revenue'] * 100)}% of revenue")
+
+        names = "".join(line(r) for r in rows)
         return Reply(True, f"{b['branch_count']} branch(es), {b['staff_count']} people."
                            f"{names}", used=["branches"])
 

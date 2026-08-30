@@ -30,6 +30,7 @@ python -m venv .venv
 .venv/Scripts/python -m tests.test_console      # 29 console tests, runs VYUHA_LLM=offline
 
 .venv/Scripts/python -m vyuha_platform --open   # the web platform on :8000
+.venv/Scripts/python -m vyuha_platform seed     # rebuild the demo workspace, then exit
 ```
 
 `pip install -e .` also puts a `vyuha` console script on PATH. Dependencies are just `pandas` and `openpyxl`; there is no lint tooling. `out/` is gitignored — it holds generated workbooks and dashboards.
@@ -180,6 +181,14 @@ but **not yet declared in `pyproject.toml`**.
   `_fallback()` builds a real outline with no model and renders through exactly
   the same code. Every figure is a **string already formatted by Python** — the
   model selects and arranges, never calculates.
+- **`demo_seed.py`** — `python -m vyuha_platform seed` builds **Shree Agro &
+  Hardware, Belagavi** from nothing: 20 items, 2 branches, 6 staff, ~200 bills
+  over nine months, 16 expenses across 7 heads. Every beat's evidence is
+  planted deliberately (4 below reorder, 1 out, 3 never sold, 3 overdue bills at
+  different ages, 1 customer gone quiet), and a fixed `SEED` plus dates relative
+  to today make it **deterministic** — the same command on two machines gives
+  the same numbers, and re-running it after a messy rehearsal puts it back.
+  Idempotent: it wipes the account's workspaces first. Never demo off live data.
 - **`app.py`** — routes: `/` (landing when signed out, portfolio when signed in),
   `GET|POST /signup`, `GET|POST /login`, `POST /logout`, `POST /install`, `/onboard`, `/setup`,
   `/settings`, `/activity`, `/c/{slug}?tab=data|books|dashboard|alerts|settings`,

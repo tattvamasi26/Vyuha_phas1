@@ -14,7 +14,14 @@ def main() -> None:
     ap.add_argument("--port", type=int, default=8000)
     ap.add_argument("--open", action="store_true", help="open a browser once it is up")
     ap.add_argument("--reload", action="store_true", help="auto-reload on code change")
+    ap.add_argument("command", nargs="?", default="serve", choices=["serve", "seed"],
+                    help="'seed' rebuilds the demo workspace, then exits")
     args = ap.parse_args()
+
+    if args.command == "seed":
+        from .demo_seed import main as seed
+        seed()
+        return
 
     url = f"http://{args.host}:{args.port}"
     print(f"\n  Vyuha Operations Platform  ->  {url}\n  Ctrl-C to stop.\n")
