@@ -29,7 +29,8 @@ from datetime import date
 
 from vyuha import fmt
 
-from . import agent, books, catalog, decks, finance, followup, money, people, ui
+from . import (agent, books, catalog, decks, finance, followup, invoice,
+               money, people, ui)
 
 E = ui.E
 
@@ -47,6 +48,7 @@ PANELS = [
     ("ask", "Ask", "✦"),
     ("followups", "Follow-ups", "↩"),
     ("money", "Money", "₹"),
+    ("bills", "Bills", "▤"),
     ("deck", "Deck", "◫"),
     ("people", "People", "⌂"),
 ]
@@ -204,6 +206,28 @@ details.levels summary{cursor:pointer;font-size:13px;font-weight:600;color:var(-
 details.levels summary::-webkit-details-marker{display:none}
 details.levels summary::before{content:"▸ ";color:var(--ink-3)}
 details.levels[open] summary::before{content:"▾ "}
+
+/* --- bills -------------------------------------------------------- */
+.inv{display:flex;gap:14px;padding:14px 0;border-top:1px solid var(--line);
+  align-items:center;flex-wrap:wrap}
+.inv:first-child{border-top:0}
+.inv .no{font-family:var(--num);font-size:13px;font-weight:600;min-width:132px}
+.inv .who{flex:1;min-width:140px;font-size:13.5px;font-weight:600}
+.inv .amt{font-family:var(--num);font-size:14px;font-variant-numeric:tabular-nums;
+  text-align:right;min-width:104px}
+.pickable{display:grid;gap:8px;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));
+  max-height:260px;overflow-y:auto;padding:2px;margin-top:12px}
+.psale{display:flex;gap:10px;align-items:flex-start;background:var(--card-2);
+  border:1px solid var(--line);border-radius:var(--r-sm);padding:10px 12px;
+  cursor:pointer;transition:.14s}
+.psale:hover{border-color:var(--ink-3)}
+.psale input{width:auto;margin:2px 0 0;flex:none;padding:0}
+.psale:has(input:checked){border-color:var(--accent);background:var(--card-3)}
+.psale .t{font-size:12.5px;font-weight:600;line-height:1.3}
+.psale .m{font-family:var(--num);font-size:10.5px;color:var(--ink-3);margin-top:3px}
+.tpl{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+.gaps{border-left:3px solid var(--warn);padding:10px 0 10px 14px;margin-top:14px;
+  font-size:12.5px;color:var(--ink-2);line-height:1.6}
 """
 
 JS = """
@@ -857,6 +881,146 @@ def _money(c, book, ledger, org, period: str = "all") -> str:
             + form + recent)
 
 
+# --------------------------------------------------------------- 03b · bills
+
+def _bills(c, book, invoices) -> str:
+    """Raise a proper tax invoice from sales already on the book.
+
+    Billing is not the same job as recording a sale, which is why it is its own
+    panel: a sale is one line typed while a customer waits, an invoice is a
+    document raised afterwards — often covering several sales at once — that has
+    to satisfy somebody's accountant.
+    """
+    gaps = invoice.missing(c)
+    billed = {sid for inv in invoices for sid in inv.sale_ids}
+    unbilled = [s for s in reversed(book.sales) if s.id not in billed][:40]
+
+    tiles = "".join([
+        _stat("Invoices raised", str(len(invoices)),
+              f"next is {invoice.next_number(c)[0]}"),
+        _stat("Invoiced", short(sum(i.rounded for i in invoices)),
+              "including tax"),
+        _stat("Not yet billed", str(len([s for s in book.sales if s.id not in billed])),
+              "sales with no invoice against them"),
+        _stat("Tax collected", short(sum(i.tax for i in invoices)),
+              "CGST, SGST and IGST"),
+    ])
+
+    gap_note = ""
+    if gaps:
+        gap_note = (f'<div class="gaps"><b>These print as a bill of supply, not a '
+                    f'tax invoice.</b><br>Missing: {E(", ".join(gaps))}. '
+                    f'Fill them in below and every invoice from then on carries them.'
+                    f'</div>')
+
+    # --- pick the sales to bill
+    if unbilled:
+        picks = "".join(
+            f'<label class="psale"><input type="checkbox" name="sale_ids" '
+            f'value="{E(s.id)}">'
+            f'<span><span class="t">{E(s.item)}</span>'
+            f'<span class="m">{E(s.party or "Cash")} · {s.qty:g} × {rs(s.rate)} '
+            f'= {rs(s.amount)}</span>'
+            f'<span class="m">{E(s.date)} · {E(s.id)}</span></span></label>'
+            for s in unbilled)
+        raise_card = f"""<div class="card">
+  <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:12px">
+    <div><div style="font-size:16px;font-weight:700">Raise an invoice</div>
+      <div class="tiny" style="margin-top:6px">Tick everything going on one bill —
+        a customer who bought three things gets one invoice, not three.</div></div>
+  </div>
+  <form method="post" action="/c/{c.slug}/invoice">
+    <div class="pickable">{picks}</div>
+    <div class="two" style="margin-top:16px">
+      <div class="field"><input name="party_gstin" placeholder="Buyer's GSTIN (optional)"></div>
+      <div class="field"><select name="party_state" aria-label="Buyer's state">
+        <option value="">Same state as you</option>
+        {"".join(f'<option value="{E(k)}">{E(v)}</option>' for k, v in sorted(invoice.STATES.items(), key=lambda kv: kv[1]))}
+      </select><div class="tiny" style="margin-top:5px">Another state means IGST
+        instead of CGST + SGST</div></div>
+    </div>
+    <div class="field"><input name="party_address" placeholder="Buyer's address (optional)"></div>
+    <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:12px">
+      <div class="tiny">Numbering is sequential and gap-free. A cancelled
+        invoice keeps its number used.</div>
+      <button class="btn primary" type="submit">Raise invoice</button></div>
+  </form></div>"""
+    else:
+        raise_card = _empty("Everything is billed",
+                            "Every sale on the book already has an invoice against it.")
+
+    # --- what has been raised
+    listed = ""
+    if invoices:
+        rows = "".join(
+            f'<div class="inv"><span class="no">{E(i.number)}</span>'
+            f'<span class="who">{E(i.party)}'
+            f'<div class="tiny" style="margin-top:3px">{E(i.date)} · '
+            f'{len(i.lines)} line(s)'
+            + (f" · tax {short(i.tax)}" if i.taxed else " · no tax")
+            + f'</div></span>'
+            f'<span class="pill {"ok" if i.paid else "warn"}">'
+            f'{"paid" if i.paid else "due"}</span>'
+            f'<span class="amt">{rs(i.rounded)}</span>'
+            f'<span class="row" style="gap:7px">'
+            f'<a class="btn sm" href="/c/{c.slug}/invoice/{E(i.id)}" target="_blank" '
+            f'rel="noopener">Open</a>'
+            f'<a class="btn sm ghost" href="/c/{c.slug}/invoice/{E(i.id)}/pdf">PDF</a>'
+            f'<form method="post" action="/c/{c.slug}/invoice/{E(i.id)}/delete" '
+            f'style="display:inline"><button class="btn sm danger" type="submit">'
+            f'×</button></form></span></div>' for i in invoices[:30])
+        listed = (f'<div class="card" style="margin-top:16px">'
+                  f'<div style="font-size:16px;font-weight:700;margin-bottom:6px">'
+                  f'Invoices raised</div>'
+                  f'<div class="tiny" style="margin-bottom:8px">Open prints from the '
+                  f'browser — that page is self-contained, so it works with no '
+                  f'internet.</div>{rows}</div>')
+
+    # --- who you are, on the bill
+    tpl = "".join(
+        f'<label class="seg"><input type="radio" name="invoice_template" '
+        f'value="{E(k)}"{" checked" if (c.invoice_template or "classic") == k else ""}>'
+        f'<span>{E(label)}</span></label>'
+        for k, (label, _why) in invoice.TEMPLATES.items())
+    state_opts = "".join(
+        f'<option value="{E(k)}"{" selected" if c.state == k else ""}>{E(v)}</option>'
+        for k, v in sorted(invoice.STATES.items(), key=lambda kv: kv[1]))
+
+    identity = f"""<div class="card" style="margin-top:16px">
+  <div style="font-size:16px;font-weight:700">What prints at the top</div>
+  <div class="tiny" style="margin:7px 0 15px">Set once. Every invoice from then
+    on carries it.</div>
+  <form method="post" action="/c/{c.slug}/invoice/identity">
+    <div style="margin-bottom:6px">{tpl}</div>
+    <div class="tiny" style="margin-bottom:16px">
+      {E(invoice.TEMPLATES.get(c.invoice_template or "classic", ("", ""))[1])}</div>
+    <div class="two">
+      <div class="field"><input name="gstin" value="{E(c.gstin)}" placeholder="Your GSTIN"></div>
+      <div class="field"><select name="state" aria-label="Your state">
+        <option value="">Your state…</option>{state_opts}</select></div>
+    </div>
+    <div class="field"><textarea name="address" rows="3"
+      placeholder="Business address as it should print">{E(c.address)}</textarea></div>
+    <div class="two">
+      <div class="field"><input name="bank_name" value="{E(c.bank_name)}"
+        placeholder="Bank and branch"></div>
+      <div class="field"><input name="bank_account" value="{E(c.bank_account)}"
+        placeholder="Account number"></div>
+    </div>
+    <div class="two">
+      <div class="field"><input name="bank_ifsc" value="{E(c.bank_ifsc)}"
+        placeholder="IFSC"></div>
+      <div class="field"><input name="invoice_terms" value="{E(c.invoice_terms)}"
+        placeholder="Terms printed at the foot"></div>
+    </div>
+    <button class="btn primary" type="submit">Save</button>
+  </form></div>"""
+
+    return (_head("Bills") + f'<div class="grid g4">{tiles}</div>'
+            + gap_note + '<div style="height:16px"></div>'
+            + raise_card + listed + identity)
+
+
 # ------------------------------------------------------------------- 09 · deck
 
 def _deck(c, outline, brief: str, kind: str) -> str:
@@ -1012,7 +1176,7 @@ def _people(c, org, book, ledger) -> str:
 
 def page(c, *, book, ledger, org, queue, settings, account, panel: str = "stock",
          reply=None, question: str = "", outline=None, brief: str = "",
-         deck_kind: str = "review", period: str = "all",
+         deck_kind: str = "review", period: str = "all", invoices=None,
          flash: str = "", flash_kind: str = "ok") -> str:
     """Everything, once, in one document."""
     panel = panel if panel in {p for p, _, _ in PANELS} else "stock"
@@ -1023,6 +1187,7 @@ def page(c, *, book, ledger, org, queue, settings, account, panel: str = "stock"
         "ask": 0,
         "followups": len(queue),
         "money": len([e for e in ledger.expenses if not e.paid]),
+        "bills": len(invoices or []),
         "deck": 0,
         "people": len([b for b in org.branches if b.active]),
     }
@@ -1041,6 +1206,7 @@ def page(c, *, book, ledger, org, queue, settings, account, panel: str = "stock"
         "ask": _ask(c, reply, question, settings),
         "followups": _followups(c, queue, settings),
         "money": _money(c, book, ledger, org, period),
+        "bills": _bills(c, book, invoices if invoices is not None else []),
         "deck": _deck(c, outline, brief, deck_kind),
         "people": _people(c, org, book, ledger),
     }

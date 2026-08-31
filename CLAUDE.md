@@ -29,6 +29,7 @@ python -m venv .venv
 .venv/Scripts/python -m tests.test_platform     # 57 platform tests, same runner
 .venv/Scripts/python -m tests.test_console      # 41 console tests, runs VYUHA_LLM=offline
 .venv/Scripts/python -m tests.test_intake       # 23 intake tests, over the demo corpus
+.venv/Scripts/python -m tests.test_invoice      # 19 invoice tests: tax, numbering, document
 .venv/Scripts/python demo/make_samples.py       # regenerate the nine messy sample files
 
 .venv/Scripts/python -m vyuha_platform --open   # the web platform on :8000

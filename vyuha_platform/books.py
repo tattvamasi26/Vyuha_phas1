@@ -62,6 +62,11 @@ class Item:
     added_at: str = field(default_factory=_today)
     #: Where this stock sits. Same contract as Sale.branch.
     branch: str = ""
+    #: HSN/SAC code and GST rate, needed on a tax invoice line. Defaulted, so a
+    #: business that does not charge GST is unaffected and its invoices simply
+    #: show no tax columns. `gst_rate` is a percentage: 5 means 5%.
+    hsn: str = ""
+    gst_rate: float = 0.0
 
     @property
     def value(self) -> float:

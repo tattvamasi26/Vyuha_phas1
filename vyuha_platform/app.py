@@ -29,8 +29,9 @@ from fastapi.staticfiles import StaticFiles
 
 from vyuha import analyze, pipeline
 
-from . import (agent, auth, books, channels, config, console, decks, exports, followup,
-               ledger, money, people, sources, store, theme, ui, whatsapp)
+from . import (agent, auth, books, channels, config, console, decks, exports,
+               followup, invoice, invoice_render, ledger, money, people,
+               sources, store, theme, ui, whatsapp)
 
 app = FastAPI(title="Vyuha Operations Platform", docs_url=None, redoc_url=None)
 
@@ -1043,6 +1044,7 @@ def _console_state(client: store.Client) -> dict:
         "ledger": purse,
         "org": org,
         "queue": followup.queue(client.slug, book),
+        "invoices": invoice.load_all(client.slug),
         "settings": config.load(),
     }
 
@@ -1297,3 +1299,112 @@ def console_staff_delete(slug: str, staff_id: str,
         return bail
     _, note = people.delete_staff(slug, staff_id)
     return _console_back(slug, "people", note)
+
+
+# ---------------------------------------------------------------- 03b · bills
+
+@app.post("/c/{slug}/invoice")
+async def invoice_raise(slug: str, request: Request,
+                        account: auth.Account = Depends(_acct)):
+    """Raise one invoice over the ticked sales.
+
+    Reads the raw form because `sale_ids` is a repeated checkbox field, and a
+    declared parameter would collapse it to the last value — silently billing
+    one line of a five-line order.
+    """
+    client, bail = _console_client(account, slug)
+    if bail is not None:
+        return bail
+
+    form = await request.form()
+    sale_ids = [str(v) for v in form.getlist("sale_ids")]
+    if not sale_ids:
+        return _console_back(slug, "bills", "Tick at least one sale to bill.")
+
+    try:
+        inv, note = invoice.issue(
+            client, books.load(slug), sale_ids,
+            party_gstin=str(form.get("party_gstin", "")).strip(),
+            party_state=str(form.get("party_state", "")).strip(),
+            party_address=str(form.get("party_address", "")).strip())
+    except ValueError as exc:
+        return _console_back(slug, "bills", str(exc))
+
+    ledger.log("invoice.raised", note, client=client, channel="invoice",
+               number=inv.number, total=inv.rounded, lines=len(inv.lines))
+    return _console_back(slug, "bills", note)
+
+
+@app.get("/c/{slug}/invoice/{invoice_id}", response_class=HTMLResponse)
+def invoice_view(slug: str, invoice_id: str, account: auth.Account = Depends(_acct)):
+    """The printable document. Self-contained, so it works with no internet."""
+    client, bail = _console_client(account, slug)
+    if bail is not None:
+        return bail
+    inv = invoice.get(slug, invoice_id)
+    if inv is None:
+        return _console_back(slug, "bills", "That invoice no longer exists.")
+    return HTMLResponse(invoice_render.render_html(inv, client))
+
+
+@app.get("/c/{slug}/invoice/{invoice_id}/pdf")
+def invoice_pdf(slug: str, invoice_id: str, account: auth.Account = Depends(_acct)):
+    client, bail = _console_client(account, slug)
+    if bail is not None:
+        return bail
+    inv = invoice.get(slug, invoice_id)
+    if inv is None:
+        return _console_back(slug, "bills", "That invoice no longer exists.")
+
+    safe = inv.number.replace("/", "-")
+    out = store.DATA / "exports" / f"{slug}-{safe}.pdf"
+    invoice_render.to_pdf(inv, client, out)
+    ledger.log("export.created", f"{inv.number} downloaded as PDF", client=client,
+               channel="pdf")
+    return FileResponse(out, media_type="application/pdf", filename=f"{safe}.pdf")
+
+
+@app.post("/c/{slug}/invoice/{invoice_id}/delete")
+def invoice_cancel(slug: str, invoice_id: str, account: auth.Account = Depends(_acct)):
+    client, bail = _console_client(account, slug)
+    if bail is not None:
+        return bail
+    note = invoice.delete(slug, invoice_id)
+    ledger.log("invoice.cancelled", note, client=client, channel="invoice")
+    return _console_back(slug, "bills", note)
+
+
+@app.post("/c/{slug}/invoice/identity")
+def invoice_identity(slug: str, gstin: str = Form(""), state: str = Form(""),
+                     address: str = Form(""), bank_name: str = Form(""),
+                     bank_account: str = Form(""), bank_ifsc: str = Form(""),
+                     invoice_terms: str = Form(""),
+                     invoice_template: str = Form("classic"),
+                     account: auth.Account = Depends(_acct)):
+    """What prints at the top of every bill from now on.
+
+    Deliberately does not touch invoices already raised — a document that has
+    been sent to somebody must not change afterwards.
+    """
+    client, bail = _console_client(account, slug)
+    if bail is not None:
+        return bail
+
+    client.gstin = gstin.strip()
+    client.state = state.strip().upper()
+    client.address = address.strip()
+    client.bank_name = bank_name.strip()
+    client.bank_account = bank_account.strip()
+    client.bank_ifsc = bank_ifsc.strip()
+    if invoice_terms.strip():
+        client.invoice_terms = invoice_terms.strip()
+    if invoice_template in invoice.TEMPLATES:
+        client.invoice_template = invoice_template
+    store.update_client(client)
+
+    gaps = invoice.missing(client)
+    note = ("Saved. Invoices now print as tax invoices." if not gaps
+            else "Saved. Still missing: " + ", ".join(gaps) + ".")
+    ledger.log("settings.changed", "Invoice details updated", client=client,
+               channel="invoice")
+    return _console_back(slug, "bills", note)

@@ -96,6 +96,32 @@ class Client:
     # a definition of "dead".
     dead_stock_days: int = 90
     low_cover_days: int = 14
+
+    # --- what a tax invoice must carry.
+    # A GST invoice without a GSTIN, an address and a place of supply is not a
+    # tax invoice — the buyer's accountant will reject it and the buyer cannot
+    # claim input credit, which is the whole reason they want a printed bill.
+    # All defaulted: a business that does not issue tax invoices still works,
+    # and the invoice screen says plainly which of these are missing.
+    address: str = ""
+    gstin: str = ""
+    #: Two-letter state code, e.g. "KA". Decides CGST+SGST (within the state)
+    #: against IGST (across it) — the one field that changes the arithmetic.
+    state: str = ""
+    bank_name: str = ""
+    bank_account: str = ""
+    bank_ifsc: str = ""
+    invoice_terms: str = "Payment due within 30 days. Goods once sold are not returnable."
+    #: Which of the invoice looks to print. See invoice.TEMPLATES.
+    invoice_template: str = "classic"
+    #: Last number issued, **per financial year**. A single counter plus a
+    #: "current year" field looks equivalent and is not: bill a March sale, then
+    #: an April one, then March again, and the counter resets each time the year
+    #: flips — reissuing numbers already used. Keyed by FY, it cannot.
+    #: A cancelled invoice does not give its number back, so the series has
+    #: gaps but never a reuse, which is the safe direction.
+    invoice_seq_by_fy: dict = field(default_factory=dict)
+
     runs: list[Run] = field(default_factory=list)
 
     @property

@@ -57,6 +57,8 @@ KINDS = {
     "followup.handled":  ("Follow-up handled", "ok"),
     "money.recorded":    ("Payment recorded", "info"),
     "people.changed":    ("Branches or staff changed", "dim"),
+    "invoice.raised":    ("Invoice raised", "ok"),
+    "invoice.cancelled": ("Invoice cancelled", "warn"),
 }
 
 

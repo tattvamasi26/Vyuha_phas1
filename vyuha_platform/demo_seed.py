@@ -49,6 +49,23 @@ def _ahead(days: int) -> str:
     return (date.today() + timedelta(days=days)).isoformat()
 
 
+#: HSN code and GST rate per item. Real rates: fertiliser is 5%, most seed is
+#: nil, tools and hardware are 18%. A demo invoice with one flat rate on every
+#: line hides the only complication that matters — the tax summary a mixed-rate
+#: bill needs.
+GST: dict[str, tuple[str, float]] = {
+    "Urea 50kg": ("31021000", 5), "DAP 50kg": ("31053000", 5),
+    "Potash 50kg": ("31042000", 5), "Gypsum 5kg": ("25202010", 5),
+    "Neem Cake 10kg": ("23064100", 5), "Vermicompost 25kg": ("31010099", 5),
+    "Cattle Feed 50kg": ("23099010", 0), "Paddy Seed 5kg": ("10061010", 0),
+    "Tomato Seed 100g": ("12099130", 0), "Chilli Seed 100g": ("12099130", 0),
+    "Sprayer 16L": ("84242000", 18), "Pruning Shears": ("82016000", 18),
+    "Spade": ("82011000", 18), "HDPE Pipe 1in 10m": ("39172390", 18),
+    "Drip Emitter 100pc": ("84248200", 18), "GI Wire 5kg": ("72171090", 18),
+    "Tarpaulin 12x15": ("63062200", 18), "Soil Test Kit": ("90271000", 18),
+    "Mango Sapling": ("06022090", 0), "Organic Pesticide 1L": ("38089199", 18),
+}
+
 #: (name, category, unit, rate, cost, stock, reorder)
 CATALOGUE = [
     ("Urea 50kg",            "Fertiliser", "bag",   320,  268,  62,  20),
@@ -179,10 +196,18 @@ def build(quiet: bool = False) -> tuple[str, str]:
     _wipe(account.id)
 
     # --- the workspace
-    client = store.add_client(account.id, name=BUSINESS, phone="919845000111",
-                              contact="Vishwanath Patil", email="shreeagro@example.com",
-                              industry="Agri-inputs & hardware", trade="hardware",
-                              data_mode="books", dead_stock_days=90, low_cover_days=14)
+    client = store.add_client(
+        account.id, name=BUSINESS, phone="919845000111",
+        contact="Vishwanath Patil", email="shreeagro@example.com",
+        industry="Agri-inputs & hardware", trade="hardware",
+        data_mode="books", dead_stock_days=90, low_cover_days=14,
+        # Without these an invoice is only a bill of supply, and the demo cannot
+        # show the thing a buyer's accountant actually wants.
+        address="Plot 14, APMC Yard Road\nTilakwadi, Belagavi 590006\nKarnataka",
+        gstin="29ABCDE1234F1Z5", state="KA",
+        bank_name="Karnataka Bank, Belagavi Main",
+        bank_account="0472500101234501", bank_ifsc="KARB0000472",
+        invoice_template="classic")
     slug = client.slug
     say(f"  workspace  {BUSINESS}  ->  /c/{slug}/console")
 
@@ -202,10 +227,15 @@ def build(quiet: bool = False) -> tuple[str, str]:
         people.add_staff(slug, name, role, branch)
     say(f"  branches   2, staff 6")
 
-    # --- the catalogue
+    # --- the catalogue, with tax details
     for name, cat, unit, rate, cost, stock, reorder in CATALOGUE:
         books.add_item(slug, name, cat, unit, rate, cost, stock, reorder)
-    say(f"  items      {len(CATALOGUE)}")
+    book = books.load(slug)
+    for i in book.items:
+        i.hsn, i.gst_rate = GST.get(i.name, ("", 0.0))
+    books.save(book)
+    rates = sorted({r for _h, r in GST.values()})
+    say(f"  items      {len(CATALOGUE)} across GST rates {rates}")
 
     # --- nine months of sales
     book = books.load(slug)
