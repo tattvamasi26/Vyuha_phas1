@@ -1071,12 +1071,13 @@ def _console_client(account, slug: str):
 
 @app.get("/c/{slug}/console", response_class=HTMLResponse)
 def console_page(slug: str, request: Request, panel: str = "stock",
-                 account: auth.Account = Depends(_acct)):
+                 period: str = "all", account: auth.Account = Depends(_acct)):
     client, bail = _console_client(account, slug)
     if bail is not None:
         return bail
     msg, kind = _flash(request)
-    return _console(client, account, panel, flash=msg, flash_kind=kind)
+    return _console(client, account, panel, period=period,
+                    flash=msg, flash_kind=kind)
 
 
 # ---------------------------------------------------------------- 02 · stock

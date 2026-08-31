@@ -84,24 +84,67 @@ CUSTOMERS = [
     ("Cash sale",             "",             "daily",    False),
 ]
 
-EXPENSES = [
-    ("Purchase",  "Coromandel Distributors", 78000, 210, True,  ""),
-    ("Purchase",  "Coromandel Distributors", 56000, 120, True,  ""),
-    ("Purchase",  "Nagarjuna Agrichem",       34000,  74, True,  ""),
-    ("Purchase",  "Coromandel Distributors",  42000,  35, True,  ""),
-    ("Purchase",  "Nagarjuna Agrichem",       28000,   4, False, 11),   # bill owed
-    ("Purchase",  "Kaveri Seeds",             19000,   2, False, 5),    # bill owed
-    ("Rent",      "Shop landlord",            18000,  32, True,  ""),
-    ("Rent",      "Shop landlord",            18000,   2, True,  ""),
-    ("Salary",    "Staff wages",              46000,  31, True,  ""),
-    ("Salary",    "Staff wages",              46000,   1, True,  ""),
-    ("Transport", "Mahesh Tempo Service",      8600,  18, True,  ""),
-    ("Transport", "Mahesh Tempo Service",      7200,   6, True,  ""),
-    ("Utilities", "HESCOM",                    4300,  12, True,  ""),
-    ("Utilities", "HESCOM",                    3950,  42, True,  ""),
-    ("Repairs",   "Godown shutter",            5400,  22, True,  ""),
-    ("Tax",       "GST — quarterly",          31000,   9, False, 3),    # due soon
+#: How the running costs of a distributor split, as a share of the operating
+#: expense budget. Salary dominates because six people do; the rest follow from
+#: what a two-branch operation actually pays for.
+OPEX_SPLIT = [
+    ("Salary",    "Staff wages",             0.46, 9),
+    ("Rent",      "Godown & shop rent",      0.14, 9),
+    ("Transport", "Mahesh Tempo Service",    0.11, 6),
+    ("Tax",       "GST — quarterly",         0.16, 3),
+    ("Utilities", "HESCOM",                  0.06, 5),
+    ("Repairs",   "Godown & vehicle",        0.07, 3),
 ]
+
+#: Net margin the demo business should land on. Agri-input distribution is a
+#: thin-margin, high-volume trade; 6% after everything is healthy and credible,
+#: where 20% would invite the question of why he needs software at all.
+TARGET_NET_MARGIN = 0.06
+
+#: Purchases run slightly ahead of what was sold — a distributor restocks before
+#: the shelf empties. This is why cash out can exceed cost of goods in a period.
+RESTOCK_AHEAD = 1.06
+
+
+def _expenses(revenue: float, cogs: float, rng) -> list[tuple]:
+    """Build the expense table from the revenue that was actually generated.
+
+    Hand-picked figures cannot hold: the first version of this seed paired a 13%
+    gross margin with Rs 1.88L of running costs, producing a business that lost
+    money on every statement. Deriving them means the demo is always coherent,
+    whatever the sales happen to come out at.
+
+    Returns rows of (category, party, amount, days_ago, paid, due_in_days).
+    """
+    gross = revenue - cogs
+    opex_budget = max(gross - revenue * TARGET_NET_MARGIN, revenue * 0.04)
+
+    rows: list[tuple] = []
+
+    # Purchases, in lumps, across the period. Two are still owed, which is what
+    # gives the payables ageing something to show.
+    purchase_total = cogs * RESTOCK_AHEAD
+    lumps = [0.26, 0.22, 0.19, 0.15, 0.10, 0.08]
+    ages = [232, 188, 141, 96, 52, 14]
+    suppliers = ["Coromandel Distributors", "Nagarjuna Agrichem",
+                 "Coromandel Distributors", "Kaveri Seeds",
+                 "Nagarjuna Agrichem", "Coromandel Distributors"]
+    for i, (share, age) in enumerate(zip(lumps, ages)):
+        owed = i >= len(lumps) - 2          # the two newest are unpaid
+        rows.append(("Purchase", suppliers[i], round(purchase_total * share, -2),
+                     age, not owed, (9 if i == len(lumps) - 1 else 21) if owed else ""))
+
+    # Running costs, spread over the period so the monthly trend is not a spike.
+    for category, party, share, count in OPEX_SPLIT:
+        each = opex_budget * share / count
+        for n in range(count):
+            age = int(14 + n * (250 / max(count, 1)))
+            # One tax instalment is still due, so the money panel has a bill
+            # landing this week rather than a tidy all-paid ledger.
+            owed = category == "Tax" and n == count - 1
+            rows.append((category, party, round(each, -2), age, not owed,
+                         4 if owed else ""))
+    return rows
 
 
 def _wipe(owner_id: str) -> None:
@@ -180,7 +223,10 @@ def build(quiet: bool = False) -> tuple[str, str]:
         day = 270
         while day > stop:
             item = rng.choice(sellable)
-            qty = rng.choice([1, 2, 2, 3, 5, 5, 10])
+            # Distributor volumes. A two-branch agri dealer moves bags by the
+            # tens; the old 1-to-10 range produced a corner shop whose turnover
+            # could not carry six staff, and every ratio said so.
+            qty = rng.choice([10, 15, 20, 20, 25, 30, 40, 50, 60, 80, 100])
             branch = main_id if rng.random() < 0.62 else second_id
             # Credit older than ~45 days was settled long ago. Leaving every
             # historic credit sale open would put 17 names in the chase queue,
@@ -200,10 +246,10 @@ def build(quiet: bool = False) -> tuple[str, str]:
     # --- two deliberately overdue bills, so Follow-ups has a known top row
     urea = next(i for i in books.load(slug).items if i.name == "Urea 50kg")
     dap = next(i for i in books.load(slug).items if i.name == "DAP 50kg")
-    books.record_sale(slug, urea.sku, "Ramu Stores", 40, urea.rate, when=_ago(96),
+    books.record_sale(slug, urea.sku, "Ramu Stores", 260, urea.rate, when=_ago(96),
                       paid=False, due_date=_ago(66), party_phone=phones["Ramu Stores"],
                       branch=main_id)
-    books.record_sale(slug, dap.sku, "Basavaraj Agri Centre", 12, dap.rate, when=_ago(48),
+    books.record_sale(slug, dap.sku, "Basavaraj Agri Centre", 95, dap.rate, when=_ago(48),
                       paid=False, due_date=_ago(18),
                       party_phone=phones["Basavaraj Agri Centre"], branch=second_id)
     sales += 2
@@ -217,12 +263,18 @@ def build(quiet: bool = False) -> tuple[str, str]:
             item.stock_qty = stock
     books.save(book)
 
-    # --- money out
-    for category, party, amount, days, paid, due in EXPENSES:
+    # --- money out, sized from the revenue that was actually generated
+    book = books.load(slug)
+    by_sku = {i.sku: i for i in book.items}
+    revenue = book.earned
+    cogs = sum((by_sku[s.sku].cost if s.sku in by_sku else 0) * s.qty
+               for s in book.sales)
+    rows = _expenses(revenue, cogs, rng)
+    for category, party, amount, days, paid, due in rows:
         money.add_expense(slug, category, party, amount, when=_ago(days), paid=paid,
                           due_date=_ahead(due) if due != "" else "",
-                          branch=main_id if category != "Salary" else "")
-    say(f"  expenses   {len(EXPENSES)} across {len({e[0] for e in EXPENSES})} heads")
+                          branch=main_id if category not in {"Salary", "Tax"} else "")
+    say(f"  expenses   {len(rows)} across {len({r[0] for r in rows})} heads")
 
     # --- what the demo should now show
     b, ledger = books.load(slug), money.load(slug)
@@ -236,6 +288,10 @@ def build(quiet: bool = False) -> tuple[str, str]:
         f"   net Rs {pos['net']:,.0f}")
     say(f"  stock      {len(b.low_stock)} below reorder, {len(b.out_of_stock)} out, "
         f"{len([i for i in b.items if i.name in dead])} never sold")
+    from . import finance
+    pl = finance.profit_and_loss(b, ledger)
+    say(f"  P&L        gross Rs {pl['gross_profit']:,.0f} ({pl['gross_margin_pct']:.1f}%)"
+        f"   net Rs {pl['net_profit']:,.0f} ({pl['net_margin_pct']:.1f}%)")
     say(f"  to chase   {len(queue)} "
         f"({sum(1 for f in queue if f.kind == 'payment')} overdue, "
         f"{sum(1 for f in queue if f.kind == 'dormant')} gone quiet)")

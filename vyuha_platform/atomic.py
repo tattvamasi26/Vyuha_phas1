@@ -30,7 +30,16 @@ import json
 import os
 import tempfile
 import threading
+import time
 from pathlib import Path
+
+#: Windows refuses os.replace while another handle is open on the target, and
+#: on this machine the repo lives inside a OneDrive folder, so the sync client
+#: takes exactly such a handle whenever it scans. Antivirus does the same. The
+#: lock is transient — tens of milliseconds — so the fix is to wait and retry
+#: rather than to abandon the write. POSIX never hits this path.
+_RETRIES = 6
+_BACKOFF = 0.06
 
 #: One lock for every JSON file this module writes. Coarse on purpose: these
 #: files are small, writes are rare, and a per-path lock table would be more
@@ -53,7 +62,15 @@ def write_json(path: Path, data, indent: int = 2) -> None:
                 fh.write(payload)
                 fh.flush()
                 os.fsync(fh.fileno())      # survive a power cut, not just a crash
-            os.replace(tmp, path)
+            last: OSError | None = None
+            for attempt in range(_RETRIES):
+                try:
+                    os.replace(tmp, path)
+                    return
+                except PermissionError as exc:      # a sync client or scanner
+                    last = exc
+                    time.sleep(_BACKOFF * (2 ** attempt))
+            raise last if last is not None else OSError("replace failed")
         except BaseException:
             Path(tmp).unlink(missing_ok=True)
             raise

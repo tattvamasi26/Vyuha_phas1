@@ -25,7 +25,7 @@ REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
 from vyuha_platform import (agent, app as app_mod, auth, books, config,  # noqa: E402
-                            decks, followup, llm, money, people, store)
+                            decks, finance, followup, llm, money, people, store)
 
 client = TestClient(app_mod.app, follow_redirects=True)
 _SLUGS: list[str] = []
@@ -423,6 +423,158 @@ def test_the_offline_switch_actually_stops_the_call():
     answer = llm.ask("anything at all", config.load())
     assert not answer.ok
     assert answer.source == "offline"
+
+
+# =================================================== 08 money · the statements
+
+def _traded(name: str):
+    """A shop with known figures: 10 urea at 320 (cost 268) plus running costs."""
+    slug, c = _shop(name)
+    sku = _sku(slug, "urea")
+    books.record_sale(slug, sku, "Cash Buyer", 10, 320)
+    return slug, c
+
+
+def test_gross_profit_uses_item_cost_not_purchases():
+    """Purchases are lumpy; a container bought in March is not a March loss."""
+    slug, _ = _traded("Gross Margin Traders")
+    client.post(f"/c/{slug}/expense", data={
+        "category": "Purchase", "party": "Supplier", "amount": "100000"})
+
+    pl = finance.profit_and_loss(books.load(slug), money.load(slug))
+    assert pl["revenue"] == 3200
+    assert pl["cogs"] == 2500, pl["cogs"]          # 10 x cost 250, not the 100000
+    assert pl["gross_profit"] == 700
+    # The purchase is reported, just not as cost of goods sold.
+    assert pl["purchases_in_period"] == 100000
+    assert pl["opex"] == 0, "a purchase is not an operating expense"
+
+
+def test_the_pl_says_how_much_of_it_is_actually_costed():
+    """Gross margin is only as good as the cost prices behind it."""
+    slug, _ = _shop("Coverage Traders")
+    books.add_item(slug, "Loose Item", "Other", "piece", 100, 0, 10, 0)
+    sku = _sku(slug, "loose")
+    books.record_sale(slug, sku, "Buyer", 1, 100)
+    books.record_sale(slug, _sku(slug, "urea"), "Buyer", 1, 320)
+
+    pl = finance.profit_and_loss(books.load(slug), money.load(slug))
+    assert pl["lines_uncosted"] == 1
+    assert pl["cost_coverage_pct"] == 50.0
+
+
+def test_cash_and_accrual_are_reported_separately():
+    slug, _ = _shop("Basis Traders")
+    sku = _sku(slug, "urea")
+    books.record_sale(slug, sku, "Paid Buyer", 5, 320)
+    books.record_sale(slug, sku, "Credit Buyer", 5, 320, paid=False,
+                      due_date=_days_ago(-10))
+
+    b, l = books.load(slug), money.load(slug)
+    pl, cf = finance.profit_and_loss(b, l), finance.cash_flow(b, l)
+    assert pl["revenue"] == 3200, "accrual counts everything billed"
+    assert cf["received"] == 1600, "cash counts only what arrived"
+    assert cf["billed_not_collected"] == 1600
+
+
+def test_a_bill_due_next_week_is_not_overdue():
+    """The bug this guards made a healthy ledger read as entirely late."""
+    slug, _ = _shop("Not Due Traders")
+    client.post(f"/c/{slug}/expense", data={
+        "category": "Purchase", "amount": "5000", "unpaid": "1",
+        "due_date": _days_ago(-7)})
+
+    ap = finance.payables_ageing(money.load(slug))
+    assert ap["total"] == 5000
+    assert ap["overdue"] == 0, "not yet due is not overdue"
+    assert ap["not_due"] == 5000
+    assert dict((b, v) for b, v, _ in ap["buckets"])["Not yet due"] == 5000
+
+
+def test_ageing_buckets_split_by_how_late():
+    slug, _ = _shop("Ageing Traders")
+    sku = _sku(slug, "urea")
+    books.record_sale(slug, sku, "Recent", 1, 320, paid=False, due_date=_days_ago(10))
+    books.record_sale(slug, sku, "Ancient", 1, 320, paid=False, due_date=_days_ago(120))
+
+    ar = finance.receivables_ageing(books.load(slug))
+    buckets = dict((b, v) for b, v, _ in ar["buckets"])
+    assert buckets["0–30 days"] == 320
+    assert buckets["90+ days"] == 320
+    assert ar["overdue"] == 640
+    ancient = next(p for p in ar["parties"] if p["party"] == "Ancient")
+    assert ancient["oldest"] >= 120
+
+
+def test_the_cash_cycle_is_stock_plus_debtor_minus_creditor_days():
+    slug, _ = _traded("Cycle Traders")
+    b, l = books.load(slug), money.load(slug)
+    rows = {r["name"]: r["value"] for r in finance.ratios(b, l)}
+    expected = rows["Stock days (DIO)"] + rows["Debtor days (DSO)"] - rows["Creditor days (DPO)"]
+    assert abs(rows["Cash cycle (CCC)"] - expected) < 0.01
+
+
+def test_every_ratio_carries_a_verdict_and_a_reading():
+    """The UI colours these without re-deriving the judgement, so both must exist."""
+    slug, _ = _traded("Verdict Traders")
+    for r in finance.ratios(books.load(slug), money.load(slug)):
+        assert isinstance(r["good"], bool), r["name"]
+        assert r["note"].endswith("."), f"{r['name']}: the reading must be a sentence"
+        assert len(r["note"]) > 30, f"{r['name']}: the reading must actually explain it"
+        assert r["unit"] in {"%", "days", "x"}, r["name"]
+
+
+def test_one_customer_taking_most_of_revenue_is_flagged():
+    slug, _ = _shop("Concentrated Traders")
+    sku = _sku(slug, "urea")
+    books.record_sale(slug, sku, "The Whale", 90, 320)
+    books.record_sale(slug, sku, "Small Fry", 10, 320)
+
+    co = finance.concentration(books.load(slug), money.load(slug))
+    assert co["risk"] == "high"
+    assert co["customers"][0]["party"] == "The Whale"
+    assert round(co["top_customer_share"], 2) == 0.90
+
+
+def test_the_balance_sheet_declares_what_it_leaves_out():
+    """A statement that silently omits loans and fixed assets will be believed."""
+    slug, _ = _traded("Balance Traders")
+    bs = finance.balance_sheet(books.load(slug), money.load(slug))
+    assert bs["assumptions"], "it must say what it cannot see"
+    assert any("opening balance" in a.lower() for a in bs["assumptions"])
+    assert any("bank balance" in a.lower() for a in bs["assumptions"])
+    assert bs["working_capital"] == bs["current_assets"] - bs["payables"]
+
+
+def test_a_period_filter_excludes_what_is_outside_it():
+    slug, _ = _shop("Period Traders")
+    sku = _sku(slug, "urea")
+    books.record_sale(slug, sku, "Old", 5, 320, when=_days_ago(400))
+    books.record_sale(slug, sku, "New", 5, 320, when=_days_ago(2))
+
+    b, l = books.load(slug), money.load(slug)
+    everything = finance.profit_and_loss(b, l)
+    this_month = finance.statements(b, l, f"month:{date.today().isoformat()[:7]}")
+    assert everything["revenue"] == 3200
+    assert this_month["pl"]["revenue"] == 1600, "the 400-day-old sale is outside the month"
+
+
+def test_the_financial_year_runs_april_to_march():
+    """Indian businesses do not use the calendar year, and a CA report that
+    assumed they did would be wrong for nine months of every twelve."""
+    assert finance.fy_of("2026-04-01") == "2026-27"
+    assert finance.fy_of("2027-03-31") == "2026-27"
+    assert finance.fy_of("2026-03-31") == "2025-26"
+    assert finance.fy_range("2026-27") == ("2026-04-01", "2027-03-31")
+
+
+def test_the_money_panel_renders_every_statement():
+    slug, _ = _traded("Money Panel Traders")
+    page = client.get(f"/c/{slug}/console?panel=money").text
+    for probe in ("Profit &amp; loss", "Cost of goods sold", "Cash flow",
+                  "What you own and owe", "Owed to you, by age", "You owe, by age",
+                  "Break-even", "Every cost head", "Partial, on purpose"):
+        assert probe in page, probe
 
 
 def _cleanup() -> None:
