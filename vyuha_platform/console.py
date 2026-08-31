@@ -29,7 +29,7 @@ from datetime import date
 
 from vyuha import fmt
 
-from . import agent, books, decks, finance, followup, money, people, ui
+from . import agent, books, catalog, decks, finance, followup, money, people, ui
 
 E = ui.E
 
@@ -158,6 +158,52 @@ EXTRA = """
 .assume{font-size:11.5px;color:var(--ink-3);line-height:1.6;margin-top:12px;
   padding-top:12px;border-top:1px dashed var(--line-2)}
 .assume b{color:var(--ink-2);font-weight:600}
+
+/* --- the shelf ---------------------------------------------------- */
+.shelf{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(252px,1fr))}
+.sk{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+  padding:15px 16px;display:flex;flex-direction:column;gap:11px;position:relative;
+  border-top:2px solid var(--line-2);transition:border-color .16s}
+.sk:hover{border-color:var(--ink-3)}
+.sk.out{border-top-color:var(--crit)}
+.sk.low{border-top-color:var(--warn)}
+.sk.dead{border-top-color:var(--accent-2)}
+.sk.ok{border-top-color:var(--ok)}
+.sk-top{display:flex;gap:12px;align-items:flex-start}
+.sk .glyph{width:38px;height:38px;flex:none;color:var(--ink-3)}
+.sk.out .glyph{color:var(--crit)} .sk.low .glyph{color:var(--warn)}
+.sk.dead .glyph{color:var(--accent-2)} .sk.ok .glyph{color:var(--accent)}
+.sk .nm{font-size:14px;font-weight:600;line-height:1.3}
+.sk .cat{font-family:var(--num);font-size:10px;color:var(--ink-3);margin-top:3px;
+  letter-spacing:.06em;text-transform:uppercase}
+.sk .qty{font-family:var(--num);font-size:22px;font-weight:600;line-height:1;
+  font-variant-numeric:tabular-nums}
+.sk .qty small{font-size:11px;font-weight:400;color:var(--ink-3);margin-left:3px}
+.sk-bar{height:5px;border-radius:99px;background:var(--card-3);overflow:hidden;
+  position:relative}
+.sk-bar i{display:block;height:100%;border-radius:99px;background:var(--ok)}
+.sk.low .sk-bar i{background:var(--warn)} .sk.out .sk-bar i{background:var(--crit)}
+.sk.dead .sk-bar i{background:var(--accent-2)}
+.sk-bar u{position:absolute;top:-2px;width:1px;height:9px;background:var(--ink-3);
+  opacity:.7}
+.sk-meta{display:flex;justify-content:space-between;gap:10px;font-family:var(--num);
+  font-size:10.5px;color:var(--ink-3)}
+.sk-act{display:flex;gap:6px;align-items:center;margin-top:2px}
+.sk-act input{flex:1;min-width:0}
+.filters{display:flex;gap:7px;flex-wrap:wrap;margin:0 0 16px}
+.filters button{font-family:var(--num);font-size:11px;padding:6px 12px;border-radius:6px;
+  border:1px solid var(--line-2);background:var(--card);color:var(--ink-3);cursor:pointer;
+  transition:.15s}
+.filters button:hover{color:var(--ink);border-color:var(--ink-3)}
+.filters button[aria-pressed=true]{background:var(--accent);color:#04120F;
+  border-color:var(--accent);font-weight:600}
+.filters button .c{opacity:.75;margin-left:5px}
+.sk[hidden]{display:none}
+details.levels summary{cursor:pointer;font-size:13px;font-weight:600;color:var(--ink-2);
+  padding:12px 0;list-style:none}
+details.levels summary::-webkit-details-marker{display:none}
+details.levels summary::before{content:"▸ ";color:var(--ink-3)}
+details.levels[open] summary::before{content:"▾ "}
 """
 
 JS = """
@@ -174,6 +220,16 @@ JS = """
   }
   buttons.forEach(function(b){
     b.addEventListener('click', function(){ show(b.dataset.go); });
+  });
+  var filters = document.querySelectorAll('.filters button');
+  filters.forEach(function(b){
+    b.addEventListener('click', function(){
+      var want = b.dataset.filter;
+      filters.forEach(function(o){ o.setAttribute('aria-pressed', String(o === b)); });
+      document.querySelectorAll('.sk').forEach(function(card){
+        card.hidden = want !== 'all' && !card.classList.contains(want);
+      });
+    });
   });
   document.querySelectorAll('.qchip').forEach(function(chip){
     chip.addEventListener('click', function(){
@@ -211,7 +267,28 @@ def _head(title: str, right: str = "") -> str:
 
 # ------------------------------------------------------------------ 02 · stock
 
+def _cover(book, item, window: int = 90) -> float | None:
+    """Days of stock left at the recent run rate. None when it has never sold.
+
+    The number an owner actually wants. "Twelve bags left" means nothing on its
+    own — twelve bags is a fortnight of urea and two years of soil test kits.
+    """
+    from datetime import date, timedelta
+    cutoff = (date.today() - timedelta(days=window)).isoformat()
+    moved = sum(s.qty for s in book.sales if s.sku == item.sku and s.date >= cutoff)
+    if moved <= 0:
+        return None
+    per_day = moved / window
+    return item.stock_qty / per_day if per_day else None
+
+
 def _stock(c, book, org) -> str:
+    """The shelf, not a spreadsheet.
+
+    Ordered by how worried to be: out of stock first, then below reorder, then
+    everything else. The old table sorted alphabetically and left the operator
+    to find the problems, which is the opposite of what a stock screen is for.
+    """
     summary = books.summary(book)
     low, gone = summary["low_stock"], summary["out_of_stock"]
     never = summary["never_sold"]
@@ -219,125 +296,149 @@ def _stock(c, book, org) -> str:
 
     tiles = "".join([
         _stat("Stock value", short(summary["stock_value"]),
-              f"{summary['items']} item(s) carried"),
-        _stat("Below reorder", str(len(low)),
-              "Order these before they run out" if low else "Nothing to reorder"),
+              f"{summary['items']} item(s) on the shelf"),
+        _stat("Needs ordering", str(len(gone) + len([i for i in low if i.stock_qty > 0])),
+              "out, or below reorder level"),
         _stat("Out of stock", str(len(gone)),
-              "Losing sales right now" if gone else "Everything in stock"),
-        _stat("Never sold", short(locked), f"{len(never)} item(s), cash tied up"),
+              "losing sales right now" if gone else "nothing is out"),
+        _stat("Dead stock", short(locked), f"{len(never)} item(s) never sold"),
     ])
 
     if not book.items:
         return (_head("Stock")
-                + _empty("No items yet",
-                         "Add what you sell and Vyuha starts watching the levels for you."))
+                + _empty("Nothing on the shelf yet",
+                         "Add what you sell and Vyuha starts watching the levels."))
 
-    # --- what needs ordering, first, because it is the reason to open this page
-    need = gone + [i for i in low if i.stock_qty > 0]
-    if need:
-        rows = "".join(
-            f'<div class="fu"><div class="body">'
-            f'<div class="who">{E(i.name)} '
-            f'<span class="pill {"crit" if i.stock_qty <= 0 else "warn"}">'
-            f'{"out of stock" if i.stock_qty <= 0 else "below reorder"}</span></div>'
-            f'<div class="muted" style="margin-top:5px">'
-            f'{i.stock_qty:g} {E(i.unit)} left · reorder at {i.reorder_level:g} · '
-            f'{E(i.category)}</div></div>'
-            f'<form method="post" action="/c/{c.slug}/stock/receive" class="row" '
-            f'style="gap:8px;align-self:center">'
-            f'<input type="hidden" name="sku" value="{E(i.sku)}">'
-            f'<input class="inline-in" name="qty" placeholder="qty" inputmode="decimal" '
-            f'aria-label="Quantity received for {E(i.name)}">'
-            f'<button class="btn sm primary" type="submit">Received</button></form></div>'
-            for i in need[:12])
-        order_card = (f'<div class="card" style="margin-bottom:16px">'
-                      f'<div class="row" style="justify-content:space-between">'
-                      f'<div style="font-size:16px;font-weight:800">Needs ordering</div>'
-                      f'<span class="pill crit">{len(need)}</span></div>'
-                      f'<div class="tiny" style="margin:8px 0 4px">'
-                      f'Type what arrived and stock goes straight back up.</div>'
-                      f'{rows}</div>')
-    else:
-        order_card = ('<div class="card" style="margin-bottom:16px">'
-                      '<div style="font-size:16px;font-weight:800">Nothing needs ordering</div>'
-                      '<div class="muted" style="margin-top:7px">Every item is above its '
-                      'reorder level. Set levels below on anything showing 0.</div></div>')
+    dead_skus = {i.sku for i in never}
 
-    branch_opts = "".join(f'<option value="{E(b.id)}">{E(b.name)}</option>'
-                          for b in org.branches if b.active)
+    def state_of(i) -> str:
+        if i.stock_qty <= 0:
+            return "out"
+        if i.low:
+            return "low"
+        if i.sku in dead_skus:
+            return "dead"
+        return "ok"
 
-    # --- the full table, with reorder levels editable in place and saved as one
-    body = "".join(
-        f'<tr><td><b>{E(i.name)}</b><div class="tiny" style="margin-top:3px">'
-        f'{E(i.sku)} · {E(i.category)}</div></td>'
-        f'<td class="num">{i.stock_qty:g} <span class="tiny">{E(i.unit)}</span></td>'
+    rank = {"out": 0, "low": 1, "dead": 2, "ok": 3}
+    items = sorted(book.items, key=lambda i: (rank[state_of(i)], -i.value))
+    counts: dict[str, int] = {"out": 0, "low": 0, "dead": 0, "ok": 0}
+    for i in items:
+        counts[state_of(i)] += 1
+
+    cards = ""
+    for i in items:
+        state = state_of(i)
+        cover = _cover(book, i)
+        # The bar reads against the reorder level, not against capacity — the
+        # question is "how close am I to needing to order", and nobody records
+        # what a full shelf looks like.
+        ceiling = max(i.reorder_level * 2, i.stock_qty, 1)
+        fill = min(i.stock_qty / ceiling * 100, 100)
+        marker = (f'<u style="left:{min(i.reorder_level / ceiling * 100, 100):.1f}%"'
+                  f' title="Reorder at {i.reorder_level:g}"></u>'
+                  if i.reorder_level > 0 else "")
+
+        if cover is not None:
+            cover_text = f"{cover:.0f}d cover"
+        elif i.sku in dead_skus:
+            cover_text = "never sold"
+        else:
+            cover_text = "no recent sales"
+
+        label = {"out": "out of stock", "low": "below reorder",
+                 "dead": "never sold", "ok": "in stock"}[state]
+
+        cards += f"""<div class="sk {state}">
+  <div class="sk-top">{catalog.glyph_for(i.name, i.category)}
+    <div style="min-width:0;flex:1">
+      <div class="nm">{E(i.name)}</div>
+      <div class="cat">{E(i.category)} · {E(i.sku)}</div></div>
+    <div style="text-align:right">
+      <div class="qty">{i.stock_qty:g}<small>{E(i.unit)}</small></div></div>
+  </div>
+  <div class="sk-bar"><i style="width:{fill:.1f}%"></i>{marker}</div>
+  <div class="sk-meta"><span>{E(cover_text)}</span><span>{short(i.value)}</span></div>
+  <div class="sk-meta"><span class="pill {_sev({"out": "critical", "low": "warning",
+                                                 "dead": "info"}.get(state, "ok"))}"
+    >{label}</span><span>{rs(i.rate)} each</span></div>
+  <form class="sk-act" method="post" action="/c/{c.slug}/stock/receive">
+    <input type="hidden" name="sku" value="{E(i.sku)}">
+    <input class="inline-in" name="qty" placeholder="qty in" inputmode="decimal"
+           aria-label="Quantity received for {E(i.name)}" style="width:auto">
+    <button class="btn sm{" primary" if state in ("out", "low") else ""}"
+            type="submit">Received</button>
+  </form></div>"""
+
+    filters = f"""<div class="filters">
+  <button type="button" data-filter="all" aria-pressed="true">Everything
+    <span class="c">{len(items)}</span></button>
+  <button type="button" data-filter="out" aria-pressed="false">Out
+    <span class="c">{counts["out"]}</span></button>
+  <button type="button" data-filter="low" aria-pressed="false">Below reorder
+    <span class="c">{counts["low"]}</span></button>
+  <button type="button" data-filter="dead" aria-pressed="false">Never sold
+    <span class="c">{counts["dead"]}</span></button>
+  <button type="button" data-filter="ok" aria-pressed="false">Fine
+    <span class="c">{counts["ok"]}</span></button></div>"""
+
+    rows = "".join(
+        f'<tr><td><b>{E(i.name)}</b></td>'
+        f'<td class="num">{i.stock_qty:g}</td>'
         f'<td class="num"><input class="inline-in" name="lvl_{E(i.sku)}" '
         f'value="{i.reorder_level:g}" inputmode="decimal" '
         f'aria-label="Reorder level for {E(i.name)}"></td>'
-        f'<td class="num">{rs(i.rate)}</td>'
-        f'<td class="num">{short(i.value)}</td>'
-        f'<td>{"<span class=\'pill crit\'>out</span>" if i.stock_qty <= 0 else "<span class=\'pill warn\'>low</span>" if i.low else "<span class=\'pill ok\'>ok</span>"}</td>'
-        f'</tr>'
-        for i in sorted(book.items, key=lambda x: (not x.low, x.name)))
+        f'<td class="num">{rs(i.rate)}</td><td class="num">{rs(i.cost)}</td>'
+        f'<td class="num">{short(i.value)}</td></tr>'
+        for i in sorted(book.items, key=lambda x: x.name))
 
-    table = f"""<form method="post" action="/c/{c.slug}/stock/reorder">
-<div class="card" style="padding:0;overflow:hidden">
-  <div class="row" style="justify-content:space-between;padding:18px 20px">
-    <div><div style="font-size:16px;font-weight:800">Every item</div>
-      <div class="tiny" style="margin-top:5px">Edit reorder levels straight in the
-        table — one save for the lot.</div></div>
-    <button class="btn sm primary" type="submit">Save levels</button></div>
-  <div class="scroll-x"><table class="mtable">
-    <tr><th>Item</th><th>In stock</th><th>Reorder at</th><th>Rate</th>
-        <th>Value</th><th>State</th></tr>
-    {body}</table></div></div></form>"""
+    levels = f"""<details class="levels" style="margin-top:18px">
+  <summary>Edit reorder levels and prices for all {len(book.items)} items</summary>
+  <form method="post" action="/c/{c.slug}/stock/reorder">
+    <div class="card" style="padding:0;overflow:hidden">
+      <div class="row" style="justify-content:space-between;padding:16px 18px">
+        <div class="tiny">A reorder level of 0 means Vyuha will never warn you
+          about that item.</div>
+        <button class="btn sm primary" type="submit">Save levels</button></div>
+      <div class="scroll-x"><table class="mtable">
+        <tr><th>Item</th><th class="num">In stock</th><th class="num">Reorder at</th>
+            <th class="num">Sells at</th><th class="num">Costs</th>
+            <th class="num">Value</th></tr>
+        {rows}</table></div></div></form></details>"""
+
+    branch_opts = "".join(f'<option value="{E(b.id)}">{E(b.name)}</option>'
+                          for b in org.branches if b.active)
+    item_opts = "".join(f'<option value="{E(i.sku)}">{E(i.name)}</option>'
+                        for i in sorted(book.items, key=lambda x: x.name))
 
     forms = f"""<div class="two" style="margin-top:16px">
   <div class="card">
-    <div style="font-size:16px;font-weight:800">Stock came in</div>
-    <div class="tiny" style="margin:7px 0 15px">A delivery, or a customer return.</div>
+    <div style="font-size:16px;font-weight:700">A delivery came in</div>
+    <div class="tiny" style="margin:7px 0 15px">Adds to what is already there.
+      A cost here becomes the new cost price.</div>
     <form method="post" action="/c/{c.slug}/stock/receive">
       <div class="field"><select name="sku" required aria-label="Item">
-        <option value="">Which item…</option>
-        {"".join(f'<option value="{E(i.sku)}">{E(i.name)}</option>' for i in book.items)}
-      </select></div>
+        <option value="">Which item…</option>{item_opts}</select></div>
       <div class="two">
         <div class="field"><input name="qty" placeholder="How many" inputmode="decimal" required></div>
         <div class="field"><input name="cost" placeholder="Cost each (optional)" inputmode="decimal"></div>
       </div>
-      <button class="btn primary" type="submit">Add to stock</button>
-    </form></div>
+      <button class="btn primary" type="submit">Add to stock</button></form></div>
   <div class="card">
-    <div style="font-size:16px;font-weight:800">Stock count</div>
-    <div class="tiny" style="margin:7px 0 15px">Counted the shelf? Set it to what is
-      actually there — this replaces the number, it does not add to it.</div>
+    <div style="font-size:16px;font-weight:700">You counted the shelf</div>
+    <div class="tiny" style="margin:7px 0 15px">Sets the number to what is
+      actually there. This replaces the figure — it does not add to it.</div>
     <form method="post" action="/c/{c.slug}/stock/count">
       <div class="field"><select name="sku" required aria-label="Item">
-        <option value="">Which item…</option>
-        {"".join(f'<option value="{E(i.sku)}">{E(i.name)}</option>' for i in book.items)}
-      </select></div>
+        <option value="">Which item…</option>{item_opts}</select></div>
       <div class="field"><input name="counted" placeholder="Counted quantity"
         inputmode="decimal" required></div>
       {f'<div class="field"><select name="branch" aria-label="Branch"><option value="">Branch (optional)</option>{branch_opts}</select></div>' if branch_opts else ''}
-      <button class="btn" type="submit">Set count</button>
-    </form></div></div>"""
-
-    dead = ""
-    if never:
-        rows = "".join(
-            f'<div class="fu"><div class="body"><div class="who">{E(i.name)}</div>'
-            f'<div class="muted" style="margin-top:5px">{i.stock_qty:g} {E(i.unit)} sitting, '
-            f'{rs(i.value)} tied up · added {E(i.added_at)}</div></div></div>'
-            for i in never[:8])
-        dead = (f'<div class="card" style="margin-top:16px">'
-                f'<div class="row" style="justify-content:space-between">'
-                f'<div style="font-size:16px;font-weight:800">Never sold</div>'
-                f'<span class="pill warn">{short(locked)} tied up</span></div>'
-                f'<div class="tiny" style="margin:8px 0 4px">These have not sold once. '
-                f'Discount them, return them, or stop reordering them.</div>{rows}</div>')
+      <button class="btn" type="submit">Set count</button></form></div></div>"""
 
     return (_head("Stock") + f'<div class="grid g4">{tiles}</div>'
-            + '<div style="height:16px"></div>' + order_card + table + forms + dead)
+            + '<div style="height:18px"></div>' + filters
+            + f'<div class="shelf">{cards}</div>' + levels + forms)
 
 
 # -------------------------------------------------------------------- 03 · ask

@@ -497,6 +497,30 @@ pre.msg{border-radius:var(--r-sm);font-size:12px;line-height:1.7;background:#0B1
 .fade{animation:fade .3s ease both}
 @keyframes fade{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* --- the item picker: a counter, not a form ---------------------- */
+.picker{margin-bottom:14px}
+.picker-search{position:relative;margin-bottom:10px}
+.picker-search input{padding-left:34px}
+.picker-search::before{content:"⌕";position:absolute;left:12px;top:50%;
+  transform:translateY(-50%);color:var(--ink-3);font-size:16px;pointer-events:none}
+.picker-grid{display:grid;gap:8px;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));
+  max-height:236px;overflow-y:auto;padding:2px}
+.pick{background:var(--card-2);border:1px solid var(--line);border-radius:var(--r-sm);
+  padding:10px 11px;cursor:pointer;text-align:left;font:inherit;color:var(--ink);
+  display:flex;flex-direction:column;gap:6px;transition:.14s;position:relative}
+.pick:hover{border-color:var(--ink-3);background:var(--card-3)}
+.pick[aria-pressed=true]{border-color:var(--accent);background:var(--card-3);
+  box-shadow:inset 0 0 0 1px var(--accent)}
+.pick .glyph{width:26px;height:26px;color:var(--ink-3)}
+.pick[aria-pressed=true] .glyph{color:var(--accent)}
+.pick .pn{font-size:12.5px;font-weight:600;line-height:1.25}
+.pick .pr{font-family:var(--num);font-size:11px;color:var(--ink-3);
+  display:flex;justify-content:space-between;gap:6px}
+.pick.gone{opacity:.45}
+.pick.gone .pr b{color:var(--crit)}
+.pick[hidden]{display:none}
+.picker-none{font-size:12.5px;color:var(--ink-3);padding:14px 2px}
 """
 
 E = html.escape
@@ -1452,12 +1476,39 @@ def books_tab(c, book) -> str:
                      "name": i.name} for i in book.items}
     phones = book.customer_phones()
 
+    # A dropdown is the wrong control for the thing this screen does most. The
+    # owner knows what he just sold; making him open a list and read twenty
+    # names to find it is the slowest possible way to say "urea". So: every item
+    # as a tappable card with its picture, price and what is left, and a search
+    # box that filters as he types. The <select> stays and is what actually
+    # submits, so the form contract and its JS are untouched — the picker only
+    # sets its value.
+    from . import catalog as _cat
+    picks = "".join(
+        f'<button type="button" class="pick{" gone" if i.stock_qty <= 0 else ""}" '
+        f'data-sku="{E(i.sku)}" aria-pressed="false" '
+        f'data-hay="{E((i.name + " " + i.category + " " + i.sku).lower())}">'
+        f'{_cat.glyph_for(i.name, i.category)}'
+        f'<span class="pn">{E(i.name)}</span>'
+        f'<span class="pr"><span>{fmt.rupees(i.rate)}</span>'
+        f'<b>{i.stock_qty:g} {E(i.unit)}</b></span></button>'
+        for i in sorted(book.items, key=lambda x: (x.stock_qty <= 0, x.name)))
+
+    picker = (f'<div class="picker"><div class="picker-search">'
+              f'<input id="picksearch" placeholder="Search {len(book.items)} items…" '
+              f'autocomplete="off" aria-label="Search items"></div>'
+              f'<div class="picker-grid" id="pickgrid">{picks}</div>'
+              f'<div class="picker-none" id="picknone" hidden>Nothing matches that.</div>'
+              f'</div>') if book.items else ""
+
     sale_form = (f"""<form method="post" action="/c/{c.slug}/book/sale" class="card sale-card"
       id="saleform">
   <div class="sale-head">
     <div style="font-size:16px;font-weight:800">Record a sale</div>
     <div class="sale-total" id="saletotal">&#8377;0</div>
   </div>
+
+  {picker}
 
   <div class="sale-row">
     <div class="field f-item"><label>What sold</label>
@@ -1516,6 +1567,37 @@ def books_tab(c, book) -> str:
       : it.stock+' '+it.unit+' in stock, '+(it.stock-q)+' left after this.';
     hint.style.color = q>it.stock ? 'var(--warn)' : 'var(--ink-3)';
   }}
+  // The picker drives the select, never the other way round: one control owns
+  // the value, so there is no state to keep in sync.
+  var grid=document.getElementById('pickgrid'),
+      search=document.getElementById('picksearch'),
+      none=document.getElementById('picknone');
+  function markPicked(){{
+    if(!grid) return;
+    grid.querySelectorAll('.pick').forEach(function(b){{
+      b.setAttribute('aria-pressed', String(b.dataset.sku === sku.value));
+    }});
+  }}
+  if(grid){{
+    grid.addEventListener('click', function(e){{
+      var b=e.target.closest('.pick'); if(!b) return;
+      sku.value=b.dataset.sku; markPicked(); recalc();
+      if(qty) qty.focus();
+    }});
+    sku.addEventListener('change', markPicked);
+    markPicked();
+  }}
+  if(search){{
+    search.addEventListener('input', function(){{
+      var q=search.value.trim().toLowerCase(), shown=0;
+      grid.querySelectorAll('.pick').forEach(function(b){{
+        var hit = !q || b.dataset.hay.indexOf(q) !== -1;
+        b.hidden = !hit; if(hit) shown++;
+      }});
+      none.hidden = shown > 0;
+    }});
+  }}
+
   // A returning customer should never be asked for a number twice.
   party.addEventListener('input', function(){{
     var known=P[party.value.trim()];

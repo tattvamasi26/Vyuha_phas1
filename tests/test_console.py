@@ -25,8 +25,8 @@ REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
 from vyuha_platform import (agent, analysis, app as app_mod, auth, books,  # noqa: E402
-                            config, decks, finance, followup, llm, money,
-                            people, store)
+                            catalog, config, decks, finance, followup, llm,
+                            money, people, store, ui)
 
 client = TestClient(app_mod.app, follow_redirects=True)
 _SLUGS: list[str] = []
@@ -765,6 +765,97 @@ def test_the_offline_question_list_is_one_the_rules_can_answer():
     f = agent.facts(c, books.load(slug), money.load(slug), people.load(slug))
     for question in agent.OFFLINE_SUGGESTED:
         assert agent.rules(question, f).ok, question
+
+
+# ================================================= 02 stock · how it reads
+
+def test_the_shelf_sorts_by_how_worried_to_be_not_alphabetically():
+    """A stock screen exists to surface problems, not to be an index."""
+    slug, _ = _shop("Shelf Order Traders")
+    page = client.get(f"/c/{slug}/console?panel=stock").text
+    out_at = page.index("Gypsum 5kg")          # 0 in stock
+    fine_at = page.index("Rose Sapling")       # 25 in stock, level 0
+    assert out_at < fine_at, "the out-of-stock item must come first"
+
+
+def test_every_item_carries_a_state_a_filter_and_a_picture():
+    slug, _ = _shop("Shelf State Traders")
+    # Build all four states deliberately: the fixture starts with none of them,
+    # and a test that only sees the states it happens to get is not testing the
+    # state logic at all.
+    books.record_sale(slug, _sku(slug, "gypsum"), "Buyer", 6, 140)   # -> out
+    books.record_sale(slug, _sku(slug, "urea"), "Buyer", 32, 320)    # -> low (8 of 10)
+    page = client.get(f"/c/{slug}/console?panel=stock").text
+    for cls in ('class="sk out"', 'class="sk low"', 'class="sk dead"'):
+        assert cls in page, cls
+    for f in ('data-filter="out"', 'data-filter="low"', 'data-filter="dead"'):
+        assert f in page, f
+    assert page.count('class="glyph"') >= 3, "items should be drawn, not listed"
+
+
+def test_days_of_cover_is_shown_because_a_bare_quantity_means_nothing():
+    """Twelve bags is a fortnight of urea and two years of soil test kits."""
+    slug, _ = _shop("Cover Traders")
+    sku = _sku(slug, "urea")
+    for n in range(6):
+        books.record_sale(slug, sku, "Steady", 2, 320, when=_days_ago(n * 10 + 1))
+
+    book = books.load(slug)
+    item = book.item(sku)
+    from vyuha_platform.console import _cover
+    cover = _cover(book, item)
+    assert cover is not None and cover > 0
+
+    never = book.item(_sku(slug, "gypsum"))
+    assert _cover(book, never) is None, "an item that never sold has no run rate"
+
+
+def test_the_reorder_marker_only_appears_when_a_level_is_set():
+    slug, _ = _shop("Marker Traders")
+    page = client.get(f"/c/{slug}/console?panel=stock").text
+    # Rose Sapling has reorder_level 0 -- claiming a threshold it does not have
+    # would be a lie drawn on a chart.
+    assert page.count("Reorder at") >= 2
+    assert "Reorder at 0" not in page
+
+
+# ============================================ manual entry · the item picker
+
+def test_the_sale_form_offers_a_tappable_picker_as_well_as_the_select():
+    slug, _ = _shop("Picker Traders")
+    page = ui.books_tab(store.get_client(slug, ACCOUNT.id), books.load(slug))
+    assert 'id="pickgrid"' in page
+    assert 'id="picksearch"' in page
+    # The select still exists and is still what submits -- the picker only sets it.
+    assert 'name="sku"' in page and 'id="sku"' in page
+
+
+def test_out_of_stock_items_sort_last_in_the_picker_and_are_marked():
+    slug, _ = _shop("Picker Order Traders")
+    books.record_sale(slug, _sku(slug, "gypsum"), "Buyer", 6, 140)
+    page = ui.books_tab(store.get_client(slug, ACCOUNT.id), books.load(slug))
+    grid = page[page.index('id="pickgrid"'):page.index('id="picknone"')]
+    assert "pick gone" in grid, "an item with nothing left must look different"
+    assert grid.index("Urea 50kg") < grid.index("Gypsum 5kg")
+
+
+def test_every_item_is_searchable_by_name_category_and_code():
+    slug, _ = _shop("Search Traders")
+    page = ui.books_tab(store.get_client(slug, ACCOUNT.id), books.load(slug))
+    for i in books.load(slug).items:
+        haystack = f'data-hay="{i.name.lower()}'[:24]
+        assert haystack[:20] in page.lower(), i.name
+
+
+def test_an_item_gets_the_right_drawing_from_its_own_name():
+    """Most clients type their own names, so the shape has to be inferable."""
+    assert catalog.kind_for("Urea 50kg", "Fertiliser") == "sack"
+    assert catalog.kind_for("Paddy Seed 5kg", "Seed") == "seed"
+    assert catalog.kind_for("HDPE Pipe 1in", "Hardware") == "pipe"
+    assert catalog.kind_for("Mango Sapling", "Plants") == "sapling"
+    # Nothing recognisable still gets a shape, never a blank.
+    assert catalog.kind_for("Widget 7", "") == "box"
+    assert 'class="glyph"' in catalog.glyph_for("Widget 7", "")
 
 
 def _cleanup() -> None:

@@ -193,3 +193,63 @@ def categories(trade: str) -> list[str]:
         if s.category not in seen:
             seen.append(s.category)
     return seen
+
+
+# ------------------------------------------------- artwork for any item name
+
+#: Word to shape, longest phrase first so "cattle feed" beats "feed". A stock
+#: list is not built from the starter catalogue — most clients type their own
+#: names or arrive with a spreadsheet — so the shape has to be inferable from
+#: the words themselves, or every item on the shelf gets the same box.
+_WORDS: tuple[tuple[tuple[str, ...], str], ...] = (
+    (("sapling", "seedling", "graft"), "sapling"),
+    (("plant", "shrub", "flower", "rose", "tulsi"), "plant"),
+    (("seed", "beej"), "seed"),
+    (("urea", "dap", "potash", "npk", "mop", "ssp", "fertiliser", "fertilizer",
+      "gypsum", "manure", "compost", "cake", "khaad"), "sack"),
+    (("cattle feed", "feed", "chunni", "husk", "bran"), "grain"),
+    (("grain", "rice", "wheat", "paddy", "jowar", "ragi", "maize"), "grain"),
+    (("soil", "cocopeat", "mud", "sand"), "soil"),
+    (("pot", "planter", "grow bag", "tray"), "pot"),
+    (("spray", "sprayer", "pesticide", "insecticide", "herbicide",
+      "fungicide"), "spray"),
+    (("pipe", "hose", "drip", "sprinkler", "tubing"), "pipe"),
+    (("paint", "primer", "enamel", "distemper"), "paint"),
+    (("bolt", "screw", "nail", "nut", "washer", "rivet"), "bolt"),
+    (("wire", "rope", "tarpaulin", "sheet", "cloth", "net", "shade"), "cloth"),
+    (("motor", "pump", "engine", "bearing", "machine"), "gear"),
+    (("tablet", "capsule", "medicine", "vaccine", "tonic"), "pill"),
+    (("bottle", "can", "litre", "oil", "lubricant"), "bottle"),
+    (("milk", "curd", "ghee", "dairy"), "milk"),
+    (("spade", "shovel", "shear", "sickle", "axe", "hammer", "plier",
+      "spanner", "tool", "cutter", "trowel", "khurpi"), "tool"),
+)
+
+#: Category words, used only when the item name gives nothing away.
+_BY_CATEGORY: tuple[tuple[tuple[str, ...], str], ...] = (
+    (("fertilis", "fertiliz", "manure", "crop care"), "sack"),
+    (("seed",), "seed"),
+    (("plant", "nursery"), "plant"),
+    (("tool", "implement"), "tool"),
+    (("hardware", "fitting"), "bolt"),
+    (("feed", "fodder"), "grain"),
+    (("dairy",), "milk"),
+)
+
+
+def glyph_for(name: str, category: str = "", accent: str = "currentColor") -> str:
+    """The right drawing for an item, worked out from what it is called."""
+    return glyph(kind_for(name, category), accent)
+
+
+def kind_for(name: str, category: str = "") -> str:
+    """Which shape an item should wear. Falls back to a plain box, never blank."""
+    text = (name or "").lower()
+    for words, kind in _WORDS:
+        if any(w in text for w in words):
+            return kind
+    cat = (category or "").lower()
+    for words, kind in _BY_CATEGORY:
+        if any(w in cat for w in words):
+            return kind
+    return "box"
