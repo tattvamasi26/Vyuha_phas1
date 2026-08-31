@@ -72,10 +72,18 @@ FIELDS: tuple[FieldSpec, ...] = (
         exact=("party", "partyname", "customer", "customername", "client",
                "clientname", "dealer", "dealername", "buyer", "buyername",
                "ledger", "ledgername", "accountname", "ms", "msname",
-               "distributor", "retailer", "shopname", "firmname", "supplier"),
+               "distributor", "retailer", "shopname", "firmname", "supplier",
+               # Tally, Busy and Marg all head the ledger column "Particulars".
+               # It is the single most common column name in Indian accounting
+               # exports and the engine did not know it.
+               "particulars", "particular", "ledgeraccount", "accountledger",
+               "partyledger", "nameofparty", "customerledger"),
         contains=("partyname", "customername", "dealername", "buyername",
                   "clientname", "ledgername"),
-        veto=("code", "id", "gst", "phone", "mobile", "address", "city"),
+        veto=("code", "id", "gst", "phone", "mobile", "address", "city",
+              # "Dealer Rate" / "Supplier Price" are numbers about money, not
+              # the name of anybody.
+              "rate", "price", "amount", "value", "qty", "discount"),
         aggregate="count",
     ),
     FieldSpec(
@@ -122,7 +130,13 @@ FIELDS: tuple[FieldSpec, ...] = (
         "number",
         exact=("rate", "price", "unitprice", "unitrate", "mrp", "sellingprice",
                "sp", "listprice", "rateperunit", "costprice", "purchaserate",
-               "unitcost"),
+               "unitcost",
+               # A price list's second column is the trade price. Without these,
+               # "Dealer Rate" matched PARTY on the word "dealer" and a rate
+               # column was read as a customer name.
+               "dealerrate", "dealerprice", "tradeprice", "traderate",
+               "wholesalerate", "wholesaleprice", "netrate", "billrate",
+               "salerate", "saleprice", "retailprice"),
         contains=("unitprice", "unitrate", "rateper", "priceperunit", "unitcost"),
         veto=("total", "net", "gross", "amount"),
         aggregate="mean",
@@ -133,7 +147,11 @@ FIELDS: tuple[FieldSpec, ...] = (
         exact=("amount", "amt", "value", "total", "totalamount", "netamount",
                "grossamount", "invoicevalue", "billamount", "salesvalue",
                "netvalue", "linetotal", "taxablevalue", "turnover", "sales",
-               "revenue", "grandtotal"),
+               "revenue", "grandtotal",
+               # Double-entry exports carry the sale in the debit column. Credit
+               # is deliberately NOT here: in a sales register it is the
+               # contra-entry, and reading both would double every total.
+               "debit", "debitamount", "dr", "dramount", "salesamount"),
         contains=("totalamount", "netamount", "invoicevalue", "billamount",
                   "salesvalue", "linetotal", "grossamount"),
         veto=("outstanding", "pending", "due", "balance", "received", "paid",
@@ -145,9 +163,17 @@ FIELDS: tuple[FieldSpec, ...] = (
         exact=("stock", "stockqty", "closingstock", "closingqty", "balanceqty",
                "onhand", "onhandqty", "available", "availableqty", "inventory",
                "inventoryqty", "currentstock", "instock", "physicalstock",
-               "godownstock", "openingstock"),
+               "godownstock", "openingstock",
+               # A rate list writes the quantity column as where the stock is
+               # kept: "In Godown", "Godown Qty", "At Store". Without these the
+               # column resolves to LOCATION, the sheet has no quantity, and no
+               # table rule matches -- the whole file is skipped.
+               "ingodown", "godownqty", "qtyingodown", "stockingodown",
+               "atgodown", "instore", "atstore", "onfloor", "shelfqty",
+               "qtyonhand", "qtyavailable", "qtyinstock", "balqty"),
         contains=("closingstock", "stockqty", "onhand", "availableqty",
-                  "currentstock", "balancestock", "instock"),
+                  "currentstock", "balancestock", "instock", "ingodown",
+                  "godownqty", "qtyinstock"),
         veto=("value", "amount", "reorder", "min", "max", "days"),
     ),
     FieldSpec(
@@ -167,12 +193,14 @@ FIELDS: tuple[FieldSpec, ...] = (
                "closingbalance", "unpaid", "unpaidamount", "overdue",
                "overdueamount", "amountpending"),
         contains=("outstanding", "balancedue", "amountdue", "pendingamount",
-                  "receivable", "unpaid", "overdueamount"),
+                  "receivable", "unpaid", "overdueamount", "closingbalance"),
     ),
     FieldSpec(
         INVOICE_NO,
         "text",
-        exact=("invoiceno", "invoicenumber", "billno", "billnumber", "invno",
+        exact=("vchno", "vchnumber", "vouchernumber", "voucherno", "docno",
+               "documentno", "refno", "referenceno",
+               "invoiceno", "invoicenumber", "billno", "billnumber", "invno",
                "voucherno", "vouchernumber", "docno", "documentno", "orderno",
                "ordernumber", "billref", "reference", "refno"),
         contains=("invoiceno", "billno", "voucherno", "documentno", "orderno"),
@@ -199,6 +227,15 @@ NOISE_HEADERS: frozenset[str] = frozenset({
     "gstin", "gst", "gstno", "pan", "phone", "mobile", "contact", "email",
     "address", "createdby", "enteredby", "salesman", "salesperson", "agent",
     "terms", "mode", "paymentmode", "signature", "attachment",
+    # A unit of measure is a label, not a measurement. "Unit" was being
+    # adopted as a party name on a price list, because it is text and the
+    # value-sniffer had nothing better to do with it.
+    "unit", "units", "uom", "unitofmeasure", "measure", "packing", "pack",
+    # Double-entry scaffolding. "Credit" is the contra-entry of a sale and
+    # would double every total if adopted; opening balance is last period's
+    # closing and belongs to a period this file is not reporting on.
+    "credit", "creditamount", "cr", "opening", "openingbalance", "vchtype",
+    "vouchertype", "entrytype", "dc", "drcr",
 })
 
 NUMERIC_FIELDS = tuple(f.name for f in FIELDS if f.kind == "number")

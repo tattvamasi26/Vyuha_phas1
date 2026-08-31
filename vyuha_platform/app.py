@@ -759,7 +759,13 @@ def upload(slug: str, file: UploadFile = File(...), account: auth.Account = Depe
                channel="upload", bytes=size, file_kind=sources.classify(name))
 
     # Anything that is not a spreadsheet is converted to one first.
-    extraction = sources.prepare(target, store.upload_dir(slug), settings)
+    # The catalogue lets a WhatsApp export be matched against the products this
+    # client actually sells. Every other file type ignores it.
+    catalogue = books.load(slug).items
+    item_names = [i.name for i in catalogue]
+    rates = {i.name: i.rate for i in catalogue}
+    extraction = sources.prepare(target, store.upload_dir(slug), settings,
+                                 item_names, rates)
     if not extraction.ok:
         ledger.log("source.rejected", f"{name}: {extraction.error}", client=client,
                    channel="upload", needs_action=extraction.needs_action)

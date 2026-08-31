@@ -60,6 +60,7 @@ def detect(sheet: RawSheet) -> DetectedTable:
     header_row, header_confidence = find_header_row(sheet.grid)
     frame = _apply_header(sheet.grid, header_row)
     mapping, unmapped = map_columns(frame)
+    mapping = _reread_ledger_particulars(mapping)
     kind, kind_confidence = classify(set(mapping))
     return DetectedTable(
         sheet=sheet.name,
@@ -71,6 +72,33 @@ def detect(sheet: RawSheet) -> DetectedTable:
         header_confidence=round(header_confidence, 2),
         kind_confidence=round(kind_confidence, 2),
     )
+
+
+def _reread_ledger_particulars(mapping: dict) -> dict:
+    """"Particulars" names an item on a stock sheet and a party on a ledger.
+
+    It is the most common column heading in Indian accounting exports and it is
+    genuinely ambiguous, so no alias list can settle it — only the company it
+    keeps can. A sheet that has a voucher number or an outstanding balance, and
+    has neither a quantity nor an item code, is a ledger: its "Particulars"
+    column holds customer names. Left alone, those names are read as products,
+    and the dashboard cheerfully reports that the best-selling item this month
+    was "Ramu Stores".
+
+    Deliberately narrow. It only fires when there is no party column already, so
+    it can never overwrite a real one, and only on the ledger shape.
+    """
+    # mapping is {field: column}, not the reverse.
+    if schema.PARTY in mapping or schema.ITEM not in mapping:
+        return mapping
+    fields = set(mapping)
+    ledgerish = fields & {schema.INVOICE_NO, schema.OUTSTANDING}
+    itemish = fields & {schema.QTY, schema.SKU, schema.STOCK_QTY}
+    if not ledgerish or itemish:
+        return mapping
+    out = dict(mapping)
+    out[schema.PARTY] = out.pop(schema.ITEM)
+    return out
 
 
 # --- 1. header row --------------------------------------------------------

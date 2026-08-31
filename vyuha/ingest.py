@@ -45,6 +45,36 @@ class RawSheet:
         return grid_row + 1
 
 
+#: What a file really is, read from its first bytes rather than its extension.
+#: A renamed file is the most common upload accident there is -- somebody saves
+#: a PDF from their accountant and types .xlsx on the end -- and "File is not a
+#: zip file" is openpyxl's voice, not ours. Naming the real type turns a dead
+#: end into an instruction.
+_MAGIC: tuple[tuple[bytes, str, str], ...] = (
+    (b"%PDF", "a PDF", "Upload it as .pdf and Vyuha will read the text or the scan."),
+    (b"\xd0\xcf\x11\xe0", "an old Excel .xls (or a Word file)",
+     "Open it and Save As .xlsx, then upload again."),
+    (b"\x89PNG", "a PNG image", "Upload it as .png and Vyuha will read it as a photo."),
+    (b"\xff\xd8\xff", "a JPEG photo",
+     "Upload it as .jpg and Vyuha will read it as a photo."),
+    (b"{", "a JSON file", "Export it as Excel or CSV instead."),
+    (b"<", "an HTML or XML file",
+     "Open it in Excel and Save As .xlsx, then upload again."),
+)
+
+
+def _really_is(path: Path) -> tuple[str, str] | None:
+    """Identify a mislabelled file. Returns (what it is, what to do)."""
+    try:
+        head = path.open("rb").read(8)
+    except OSError:
+        return None
+    for magic, what, advice in _MAGIC:
+        if head.startswith(magic):
+            return what, advice
+    return None
+
+
 def read_source(path: str | Path) -> list[RawSheet]:
     """Open ``path`` and return one :class:`RawSheet` per non-empty sheet."""
     path = Path(path)
@@ -83,7 +113,17 @@ def _read_xlsx(path: Path) -> list[RawSheet]:
         # None there; nothing we can do about that without a spreadsheet engine.
         book = load_workbook(path, data_only=True, read_only=False)
     except Exception as exc:  # openpyxl raises a zoo of exception types
-        raise IngestError(f"Could not open {path.name}: {exc}") from exc
+        actually = _really_is(path)
+        if actually is not None:
+            what, advice = actually
+            raise IngestError(
+                f"{path.name} is named like a spreadsheet but it is {what}. {advice}"
+            ) from exc
+        raise IngestError(
+            f"{path.name} could not be opened as a spreadsheet — the file looks "
+            f"damaged or is not a workbook at all. Try opening it in Excel and "
+            f"saving a fresh copy."
+        ) from exc
 
     sheets: list[RawSheet] = []
     try:

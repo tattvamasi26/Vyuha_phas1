@@ -1,0 +1,41 @@
+Particulars	Vch No.	Vch Type	Debit	Credit	Opening	Closing
+M/s Ramu Stores	SL/2000	Sales	132000		0	132000
+Basavaraj Agri Centre	SL/2001	Sales	132000		0	132000
+Krishna Traders Pvt Ltd	SL/2002	Sales	8900		0	8900
+Patil Nursery	SL/2003	Sales	45600		0	45600
+RAMU STORES	SL/2004	Sales	132000		0	132000
+Patil Nursery	SL/2005	Sales	12800		0	12800
+Shetty Farms	SL/2006	Sales	132000		0	132000
+Basavaraj Agri Centre	SL/2007	Sales	12800		0	12800
+Ramu Stores.	SL/2008	Sales	8900		0	8900
+Shetty Farms	SL/2009	Sales	12800		0	12800
+Basavaraj Agri Centre	SL/2010	Sales	45600		0	45600
+Shetty Farms	SL/2011	Sales	8900		0	8900
+RAMU STORES	SL/2012	Sales	8900		0	8900
+Ramu Stores.	SL/2013	Sales	12800		0	12800
+Shetty Farms	SL/2014	Sales	12800		0	12800
+RAMU STORES	SL/2015	Sales	132000		0	132000
+Patil Nursery	SL/2016	Sales	24500		0	24500
+RAMU STORES	SL/2017	Sales	8900		0	8900
+Shetty Farms	SL/2018	Sales	8900		0	8900
+Basavaraj Agri Centre	SL/2019	Sales	12800		0	12800
+Krishna Traders Pvt Ltd	SL/2020	Sales	12800		0	12800
+Patil Nursery	SL/2021	Sales	45600		0	45600
+Ramu Stores.	SL/2022	Sales	45600		0	45600
+Krishna Traders Pvt Ltd	SL/2023	Sales	24500		0	24500
+Ramu Stores.	SL/2024	Sales	8900		0	8900
+M/s Ramu Stores	SL/2025	Sales	8900		0	8900
+Ramu Stores	SL/2026	Sales	12800		0	12800
+Basavaraj Agri Centre	SL/2027	Sales	45600		0	45600
+Basavaraj Agri Centre	SL/2028	Sales	12800		0	12800
+Basavaraj Agri Centre	SL/2029	Sales	132000		0	132000
+Basavaraj Agri Centre	SL/2030	Sales	12800		0	12800
+Shetty Farms	SL/2031	Sales	45600		0	45600
+Shetty Farms	SL/2032	Sales	45600		0	45600
+Ramu Stores.	SL/2033	Sales	24500		0	24500
+Shetty Farms	SL/2034	Sales	132000		0	132000
+M/s Ramu Stores	SL/2035	Sales	12800		0	12800
+Patil Nursery	SL/2036	Sales	132000		0	132000
+M/s Ramu Stores	SL/2037	Sales	12800		0	12800
+Patil Nursery	SL/2038	Sales	24500		0	24500
+Krishna Traders Pvt Ltd	SL/2039	Sales	24500		0	24500

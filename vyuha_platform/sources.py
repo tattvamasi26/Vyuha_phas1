@@ -252,8 +252,55 @@ def _from_vision(source: Path, workdir: Path, settings) -> Extraction:
 
 # ------------------------------------------------------------------ entrypoint
 
-def prepare(source: Path, workdir: Path, settings) -> Extraction:
-    """Turn any accepted file into something ``pipeline.run()`` can read."""
+def _from_chat(source: Path, workdir: Path, settings,
+               item_names: list[str] | None,
+               _rates: dict | None = None) -> "Extraction | None":
+    """Read a WhatsApp export, or return None if it is not one.
+
+    Returns ``None`` rather than a failed ``Extraction`` when the file is not a
+    chat, so the caller falls through to the ordinary delimited-text path. A
+    file that *is* a chat but yields nothing is a real failure and is reported
+    as one — silently handing an empty CSV to the engine would show the client
+    a dashboard of zeros and call it success.
+    """
+    from . import intake
+
+    try:
+        text = source.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    if not intake.looks_like_chat(text):
+        return None
+
+    extract = intake.parse_chat(text, item_names or [], settings)
+    if not extract.ok:
+        return Extraction(False, "whatsapp", error=extract.error,
+                          needs_action=extract.needs_action)
+
+    out = workdir / (source.stem + ".csv")
+    # Price the orders from the client's own rate card. Without it every line
+    # is worth zero and the engine reports a thread full of orders as no
+    # revenue at all.
+    intake.to_csv(extract, out, rates=_rates or {})
+    orders, payments = len(extract.orders), len(extract.payments)
+    return Extraction(
+        True, "whatsapp", out, method=extract.method, confidence="medium",
+        notes=[f"Read {extract.messages} message(s) from the thread.",
+               f"Found {orders} order(s) and {payments} payment(s).",
+               "Orders lifted out of a conversation are drafts - check them "
+               "against the thread before they are treated as sales."])
+
+
+def prepare(source: Path, workdir: Path, settings,
+            item_names: list[str] | None = None,
+            rates: dict | None = None) -> Extraction:
+    """Turn any accepted file into something ``pipeline.run()`` can read.
+
+    ``item_names`` is the client's own catalogue. It is only used for a WhatsApp
+    export, where an order has to be matched against the products they actually
+    sell; every other path ignores it, which is why it is optional and why no
+    existing caller had to change.
+    """
     source, workdir = Path(source), Path(workdir)
     workdir.mkdir(parents=True, exist_ok=True)
     kind = classify(source.name)
@@ -262,6 +309,13 @@ def prepare(source: Path, workdir: Path, settings) -> Extraction:
         return Extraction(True, "native", source, method="Read directly as a spreadsheet")
 
     if kind == "text":
+        # A WhatsApp export is a .txt, so it arrives here — but it is a
+        # conversation, not a delimited table, and the sniffer chokes on it
+        # ("Expected 2 fields in line 3, saw 3"). Check for a chat first: the
+        # test is strict enough that a real CSV never trips it.
+        chat = _from_chat(source, workdir, settings, item_names, rates)
+        if chat is not None:
+            return chat
         return _from_text(source, workdir)
 
     if kind == "pdf":
