@@ -30,6 +30,8 @@ from dataclasses import asdict, dataclass, field
 from datetime import date
 from pathlib import Path
 
+from . import atomic
+
 REPO = Path(__file__).resolve().parent.parent
 PEOPLE = REPO / "vyuha_data" / "people"
 
@@ -123,10 +125,10 @@ def load(slug: str) -> Org:
 
 
 def save(org: Org) -> None:
-    _path(org.slug).write_text(json.dumps({
+    atomic.write_json(_path(org.slug), {
         "branches": [asdict(b) for b in org.branches],
         "staff": [asdict(s) for s in org.staff],
-    }, indent=2), encoding="utf-8")
+    })
 
 
 # --------------------------------------------------------------------- editing

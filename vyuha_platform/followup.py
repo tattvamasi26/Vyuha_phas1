@@ -29,6 +29,8 @@ from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+from . import atomic
+
 REPO = Path(__file__).resolve().parent.parent
 FOLLOWUPS = REPO / "vyuha_data" / "followups"
 
@@ -105,7 +107,7 @@ def load_state(slug: str) -> dict:
 
 
 def save_state(slug: str, state: dict) -> None:
-    _path(slug).write_text(json.dumps(state, indent=2), encoding="utf-8")
+    atomic.write_json(_path(slug), state)
 
 
 def mark(slug: str, key: str, status: str, days: int = 3) -> str:

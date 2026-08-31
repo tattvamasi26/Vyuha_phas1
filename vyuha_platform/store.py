@@ -23,6 +23,8 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
 
+from . import atomic
+
 REPO = Path(__file__).resolve().parent.parent
 DATA = REPO / "vyuha_data"
 UPLOADS = DATA / "uploads"
@@ -116,11 +118,18 @@ def _load_all() -> list[Client]:
     _ensure_dirs()
     if not REGISTRY.exists():
         return []
-    raw = json.loads(REGISTRY.read_text(encoding="utf-8"))
+    # atomic.read_json rather than a bare json.loads: a registry damaged by
+    # anything (an older non-atomic build, a full disk, a killed process) used
+    # to raise here, and since every private route reads clients first, one bad
+    # file blanked the entire product. Now it quarantines the file and the app
+    # still starts.
+    raw = atomic.read_json(REGISTRY, [])
     clients = []
     for row in raw:
-        runs = [Run(**r) for r in row.pop("runs", [])]
-        clients.append(Client(**row, runs=runs))
+        runs = [Run(**{k: v for k, v in r.items() if k in Run.__dataclass_fields__})
+                for r in row.pop("runs", [])]
+        known = {k: v for k, v in row.items() if k in Client.__dataclass_fields__}
+        clients.append(Client(**known, runs=runs))
     clients.sort(key=lambda c: c.created_at, reverse=True)
     return clients
 
@@ -132,7 +141,7 @@ def _save_all(clients: list[Client]) -> None:
         row = asdict(c)
         row["runs"] = [asdict(r) for r in c.runs]
         payload.append(row)
-    REGISTRY.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    atomic.write_json(REGISTRY, payload)
 
 
 def load_clients(owner_id: str) -> list[Client]:

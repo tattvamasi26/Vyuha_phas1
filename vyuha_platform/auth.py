@@ -30,6 +30,8 @@ from hashlib import scrypt, sha256
 
 from .store import DATA
 
+from . import atomic
+
 ACCOUNTS = DATA / "accounts.json"
 INVITES = DATA / "invites.json"
 SECRET = DATA / "secret.key"
@@ -218,8 +220,7 @@ def _load_invites() -> list[Invite]:
 
 def _save_invites(invites: list[Invite]) -> None:
     DATA.mkdir(parents=True, exist_ok=True)
-    INVITES.write_text(json.dumps([asdict(i) for i in invites], indent=2),
-                       encoding="utf-8")
+    atomic.write_json(INVITES, [asdict(i) for i in invites])
 
 
 def create_invite(slug: str, owner_id: str, org_name: str,
@@ -303,8 +304,7 @@ def _load_all() -> list[Account]:
 
 def _save_all(accounts: list[Account]) -> None:
     DATA.mkdir(parents=True, exist_ok=True)
-    ACCOUNTS.write_text(json.dumps([asdict(a) for a in accounts], indent=2),
-                        encoding="utf-8")
+    atomic.write_json(ACCOUNTS, [asdict(a) for a in accounts])
 
 
 def normalise_email(email: str) -> str:

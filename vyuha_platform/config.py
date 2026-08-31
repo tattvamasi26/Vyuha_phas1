@@ -23,6 +23,8 @@ from pathlib import Path
 
 from .store import DATA
 
+from . import atomic
+
 CONFIG_PATH = DATA / "config.json"
 
 
@@ -128,7 +130,7 @@ def load() -> Settings:
 def save(settings: Settings) -> None:
     DATA.mkdir(parents=True, exist_ok=True)
     row = {k: v for k, v in asdict(settings).items() if k in _ALLOWED}
-    CONFIG_PATH.write_text(json.dumps(row, indent=2), encoding="utf-8")
+    atomic.write_json(CONFIG_PATH, row)
 
 
 def mask(value: str) -> str:

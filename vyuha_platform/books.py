@@ -26,6 +26,8 @@ from pathlib import Path
 
 from .store import DATA
 
+from . import atomic
+
 BOOKS = DATA / "books"
 
 #: Deliberately broad — a nursery, a manure dealer and a hardware shop all fit.
@@ -198,11 +200,11 @@ def load(slug: str) -> Book:
 
 
 def save(book: Book) -> None:
-    _path(book.slug).write_text(json.dumps({
+    atomic.write_json(_path(book.slug), {
         "items": [asdict(i) for i in book.items],
         "sales": [asdict(s) for s in book.sales],
         "next_bill": book.next_bill,
-    }, indent=2), encoding="utf-8")
+    })
 
 
 # --------------------------------------------------------------------- editing

@@ -18,30 +18,49 @@ from vyuha import fmt
 
 from . import sources, theme
 
+#: Archivo for display (headings, the brand, big figures) — a grotesque with
+#: enough weight to carry a number without shouting, unlike Bebas Neue, which
+#: is a poster face and made every screen read like a sports app. Schibsted
+#: Grotesk for the interface, because Manrope is the default everything reaches
+#: for. JetBrains Mono stays, and now carries every rupee figure: money in a
+#: proportional face never lines up, and a ledger that does not line up looks
+#: careless before anybody reads a number.
 FONTS = (
     '<link rel="preconnect" href="https://fonts.googleapis.com">'
     '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
-    '<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&'
-    'family=Manrope:wght@500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" '
+    '<link href="https://fonts.googleapis.com/css2?'
+    'family=Archivo:wght@600;700;800&'
+    'family=Schibsted+Grotesk:wght@400;500;600;700&'
+    'family=JetBrains+Mono:wght@400;500;600&display=swap" '
     'rel="stylesheet">'
 )
 
 CSS = """
+/* The ground is a warm near-black with a faint green-ink bias, not the
+   blue-black every dashboard ships with. The accent is jade rather than the
+   violet-to-cyan gradient, which is the single strongest tell of a template.
+   Semantic colours stay conventional (red / amber / green) because a shopkeeper
+   must read "out of stock" without learning anything, and they are kept clear
+   of the accent's hue so a state never reads as a brand flourish. */
 :root{
-  --bg:#07080b; --card:#111319; --card-2:#151821;
-  --line:rgba(255,255,255,.07); --line-2:rgba(255,255,255,.13);
-  --ink:#f2f4f8; --ink-2:#9aa3b4; --ink-3:#5f6779;
-  --accent:#7c5cff; --accent-2:#22d3ee; --ok:#34d399;
-  --warn:#fbbf24; --crit:#fb5f6d;
-  --r:18px; --shadow:0 24px 60px -20px rgba(0,0,0,.85);
+  --bg:#0A0F0E; --card:#121917; --card-2:#171F1D; --card-3:#1D2624;
+  --line:rgba(226,241,236,.075); --line-2:rgba(226,241,236,.15);
+  --ink:#E8F0EC; --ink-2:#9BAAA4; --ink-3:#68766F;
+  --accent:#00A88C; --accent-2:#5BC4E8; --ok:#7DC55C;
+  --warn:#E5A33A; --crit:#F05A62;
+  --display:'Archivo',system-ui,sans-serif;
+  --ui:'Schibsted Grotesk',system-ui,'Segoe UI',sans-serif;
+  --num:'JetBrains Mono',ui-monospace,monospace;
+  --r:13px; --r-sm:9px;
+  --shadow:0 1px 2px rgba(0,0,0,.5), 0 18px 44px -26px rgba(0,0,0,.9);
 }
 *{box-sizing:border-box} html,body{margin:0;padding:0}
 body{background:var(--bg);color:var(--ink);min-height:100vh;
-  font-family:'Manrope',system-ui,'Segoe UI',sans-serif;font-weight:600;
-  -webkit-font-smoothing:antialiased}
-body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
-  background:radial-gradient(900px 500px at 12% -8%,rgba(124,92,255,.20),transparent 60%),
-             radial-gradient(760px 460px at 92% 4%,rgba(34,211,238,.13),transparent 62%)}
+  font-family:var(--ui);font-weight:400;font-size:15px;line-height:1.55;
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+/* No radial colour blobs behind the page. They read as decoration applied to
+   a screen rather than a screen that was designed, and they wash out the very
+   figures this product exists to make legible. */
 a{color:inherit;text-decoration:none}
 .wrap{position:relative;z-index:1;max-width:1180px;margin:0 auto;padding:0 26px 90px}
 
@@ -336,6 +355,148 @@ tr:last-child td{border-bottom:0}
 .out button:hover{color:var(--ink);background:var(--card);border-color:var(--line-2)}
 
 @media(max-width:720px){.two{grid-template-columns:1fr}.top nav a{padding:8px 10px;font-size:12.5px}}
+
+/* ==================================================================
+   Refinement layer — 2026-08-30.
+   Everything above is the original sheet; these rules replace the parts
+   of it that read as a template. Same class names throughout, so no HTML
+   changed. Ordered last, so it wins at equal specificity.
+   ================================================================== */
+
+/* --- type ------------------------------------------------------- */
+.brand{font-family:var(--display);font-weight:800;font-size:23px;letter-spacing:.02em}
+.brand span{background:none;-webkit-background-clip:border-box;background-clip:border-box;
+  color:var(--ink)}
+.brand small{font-family:var(--ui);font-size:8.5px;font-weight:600;letter-spacing:.28em;
+  color:var(--ink-3);margin-top:4px}
+h1.display{font-family:var(--display);font-weight:800;font-size:clamp(38px,6vw,68px);
+  line-height:1.02;letter-spacing:-.022em;margin:0 0 18px}
+h1.display em{font-style:normal;background:none;-webkit-background-clip:border-box;
+  background-clip:border-box;color:var(--accent)}
+.lede{color:var(--ink-2);font-size:16px;font-weight:400;max-width:64ch;line-height:1.65}
+.eyebrow{font-family:var(--num);font-size:10px;font-weight:600;letter-spacing:.22em;
+  text-transform:uppercase;color:var(--ink-3);margin-bottom:14px}
+.section-h{margin:42px 0 16px}
+.section-h h2{font-family:var(--display);font-weight:700;font-size:15px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--ink-2)}
+.muted{font-size:13.5px;font-weight:400;line-height:1.62}
+.tiny{font-size:11.5px;font-weight:500;letter-spacing:.01em}
+.mono,.num{font-family:var(--num);font-variant-numeric:tabular-nums}
+
+/* --- surfaces: flat, real borders, no gradient-on-everything ----- */
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+  padding:20px;box-shadow:var(--shadow);
+  transition:border-color .18s,transform .18s}
+@media (hover:hover){a.card:hover{transform:translateY(-2px);border-color:var(--line-2);
+  box-shadow:0 1px 2px rgba(0,0,0,.5),0 22px 48px -28px rgba(0,0,0,.95)}}
+.grid{gap:14px}
+
+/* --- the stat tile: a figure you can actually read --------------- */
+.stat .k{font-family:var(--num);font-size:9.5px;font-weight:500;letter-spacing:.17em;
+  text-transform:uppercase;color:var(--ink-3)}
+.stat .v{font-family:var(--num);font-weight:600;font-size:27px;line-height:1.15;
+  margin-top:8px;letter-spacing:-.02em;font-variant-numeric:tabular-nums;color:var(--ink)}
+.stat .v.sm{font-size:20px}
+
+/* --- controls --------------------------------------------------- */
+.btn{font-family:var(--ui);font-size:13px;font-weight:600;padding:10px 17px;
+  border-radius:var(--r-sm);border:1px solid var(--line-2);background:var(--card-2);
+  letter-spacing:0}
+.btn:hover{transform:none;border-color:var(--ink-3);background:var(--card-3)}
+.btn.primary{background:var(--accent);color:#04120F;border:1px solid var(--accent)}
+.btn.primary:hover{background:#00BE9D;border-color:#00BE9D}
+.btn.wa{background:#1FA855;color:#fff;border:1px solid #1FA855}
+.btn.wa:hover{background:#25c063;border-color:#25c063}
+.btn.ghost{background:transparent}
+.btn.ghost:hover{background:var(--card-2)}
+.btn.danger{color:var(--crit);border-color:rgba(240,90,98,.32);background:transparent}
+.btn.danger:hover{background:rgba(240,90,98,.1);border-color:var(--crit)}
+.btn.sm{padding:6px 12px;font-size:12px}
+.btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+label{font-family:var(--num);font-size:9.5px;font-weight:500;letter-spacing:.15em;
+  color:var(--ink-3);margin:0 0 7px}
+input,select,textarea{padding:11px 13px;border-radius:var(--r-sm);background:#0B100F;
+  border:1px solid var(--line-2);font-family:var(--ui);font-size:14px;font-weight:400}
+input:focus,select:focus,textarea:focus{border-color:var(--accent);
+  box-shadow:0 0 0 3px rgba(0,168,140,.18)}
+input::placeholder,textarea::placeholder{color:var(--ink-3);font-weight:400}
+.field{margin-bottom:15px}
+
+/* --- state: a pill is a state, never a decoration --------------- */
+.pill{font-family:var(--num);font-size:9.5px;font-weight:500;letter-spacing:.1em;
+  padding:3px 8px;border-radius:5px}
+.pill.crit{background:rgba(240,90,98,.15);color:var(--crit);border:1px solid rgba(240,90,98,.28)}
+.pill.warn{background:rgba(229,163,58,.14);color:var(--warn);border:1px solid rgba(229,163,58,.26)}
+.pill.ok{background:rgba(125,197,92,.14);color:var(--ok);border:1px solid rgba(125,197,92,.26)}
+.pill.info{background:rgba(91,196,232,.13);color:var(--accent-2);border:1px solid rgba(91,196,232,.26)}
+.pill.dim{background:var(--card-2);color:var(--ink-3);border:1px solid var(--line)}
+
+/* --- nav -------------------------------------------------------- */
+.top{background:rgba(10,15,14,.9)}
+.top nav a{border-radius:var(--r-sm);font-size:13px;font-weight:500;padding:8px 13px}
+.top nav a.on{background:var(--card-2);border-color:var(--line-2);color:var(--ink)}
+
+/* --- tables: a ledger, aligned ---------------------------------- */
+table{font-size:13px}
+th{font-family:var(--num);font-size:9.5px;font-weight:500;letter-spacing:.14em;
+  padding:9px 12px;color:var(--ink-3)}
+td{padding:11px 12px;font-weight:400;color:var(--ink-2)}
+td b,td strong{color:var(--ink);font-weight:600}
+.mtable td.num,td.num,.num{font-family:var(--num);font-variant-numeric:tabular-nums;
+  text-align:right;white-space:nowrap}
+th.num{text-align:right}
+tbody tr:hover td{background:rgba(226,241,236,.022)}
+
+/* --- action cards ----------------------------------------------- */
+.act{border-radius:var(--r);background:var(--card);border:1px solid var(--line);
+  padding:15px 16px;min-height:0}
+.act:hover{transform:none;border-color:var(--ink-3);background:var(--card-2);box-shadow:none}
+.act.on{border-color:var(--accent);background:var(--card-2)}
+.act .ic{border-radius:var(--r-sm);background:var(--card-3);color:var(--accent);
+  width:34px;height:34px;font-size:16px}
+.act .t{font-weight:600;font-size:14px}
+.act .d{font-weight:400;font-size:12.5px;color:var(--ink-3);line-height:1.45}
+
+/* --- the client banner ------------------------------------------ */
+.cover{min-height:270px}
+.cover::after{background:linear-gradient(180deg,rgba(10,15,14,.42) 0%,
+  rgba(10,15,14,.80) 58%,var(--bg) 100%)}
+.cover h1{font-family:var(--display);font-weight:800;font-size:clamp(32px,5vw,54px);
+  line-height:1.04;letter-spacing:-.02em;text-shadow:0 2px 20px rgba(0,0,0,.55)}
+.cover .sub{font-size:13.5px;font-weight:400;color:rgba(255,255,255,.78)}
+.cover-stats{gap:28px;margin-top:20px}
+.cover-stats div .k{font-family:var(--num);font-size:9px;font-weight:500;letter-spacing:.18em;
+  color:rgba(255,255,255,.6)}
+.cover-stats div .v{font-family:var(--num);font-weight:600;font-size:23px;
+  font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.cover-edit label{font-family:var(--ui);font-size:11.5px;font-weight:600;
+  border-radius:var(--r-sm)}
+
+/* --- misc ------------------------------------------------------- */
+.avatar{font-family:var(--display);font-weight:800;font-size:15px;border-radius:var(--r-sm);
+  background:var(--card-3);color:var(--accent);width:40px;height:40px;letter-spacing:0}
+.alert{border-radius:0 var(--r-sm) var(--r-sm) 0;background:var(--card);
+  border:1px solid var(--line);border-left-width:3px;padding:15px 18px}
+.alert h4{font-size:14.5px;font-weight:600}
+.alert.info{border-left-color:var(--accent-2)}
+.ent span{font-family:var(--num);font-size:10.5px;font-weight:400;border-radius:5px}
+.empty{padding:48px 22px}
+.empty .big{font-family:var(--display);font-weight:700;font-size:18px;letter-spacing:.01em;
+  color:var(--ink-2);margin-bottom:8px}
+.drop{border-radius:var(--r);border:1.5px dashed var(--line-2);padding:36px 24px}
+.drop:hover,.drop.hot{border-color:var(--accent);background:rgba(0,168,140,.05)}
+.drop .big{font-family:var(--display);font-weight:700;font-size:18px;letter-spacing:0}
+.fmts span{font-family:var(--num);font-size:10px;font-weight:400;letter-spacing:.04em;
+  border-radius:5px}
+.flash{border-radius:var(--r-sm);font-size:13.5px;font-weight:500;padding:11px 16px}
+.flash.ok{background:rgba(125,197,92,.1);border:1px solid rgba(125,197,92,.28);color:var(--ok)}
+.flash.bad{background:rgba(240,90,98,.1);border:1px solid rgba(240,90,98,.28);color:var(--crit)}
+pre.msg{border-radius:var(--r-sm);font-size:12px;line-height:1.7;background:#0B100F}
+.frame{border-radius:var(--r)}
+.fade{animation:fade .3s ease both}
+@keyframes fade{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 """
 
 E = html.escape

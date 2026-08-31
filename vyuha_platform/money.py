@@ -29,6 +29,8 @@ from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+from . import atomic
+
 REPO = Path(__file__).resolve().parent.parent
 MONEY = REPO / "vyuha_data" / "money"
 
@@ -119,9 +121,8 @@ def load(slug: str) -> Ledger:
 
 
 def save(ledger: Ledger) -> None:
-    _path(ledger.slug).write_text(
-        json.dumps({"expenses": [asdict(e) for e in ledger.expenses]}, indent=2),
-        encoding="utf-8")
+    atomic.write_json(_path(ledger.slug),
+                      {"expenses": [asdict(e) for e in ledger.expenses]})
 
 
 # --------------------------------------------------------------------- editing
