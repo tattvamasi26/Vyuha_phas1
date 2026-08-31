@@ -1146,8 +1146,11 @@ def console_ask(slug: str, question: str = Form(""),
         return bail
 
     state = _console_state(client)
-    reply = agent.ask(question, client, state["book"], state["settings"],
-                      ledger=state["ledger"], org=state["org"])
+    # investigate() lets the model query the books itself rather than reading a
+    # fixed summary, and falls back to the pattern answers when Claude is not
+    # reachable — so the offline path is still the same call.
+    reply = agent.investigate(question, client, state["book"], state["settings"],
+                              ledger=state["ledger"], org=state["org"])
     ledger.log("agent.asked", f"Asked: {question[:90]}", client=client,
                channel="agent", answered_by=reply.source, ok=reply.ok)
     return _console(client, account, "ask", reply=reply, question=question)

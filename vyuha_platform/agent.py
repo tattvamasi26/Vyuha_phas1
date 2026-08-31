@@ -28,20 +28,32 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
+from datetime import date
 
-from . import books, followup, llm, money, people
+from . import analysis, books, finance, followup, llm, money, people
 
 #: What the console offers as one-tap questions. Ordered by how often an owner
 #: would actually ask them, not by how well they demo.
 SUGGESTED = [
     "Who owes me the most, and for how long?",
+    "Which items make me the least margin?",
+    "What changed this month against last month?",
+    "What am I about to run out of?",
+    "Which customers have gone quiet?",
+    "Is my biggest customer a risk?",
+    "Where is my money going?",
+    "How are my branches doing?",
+]
+
+#: Kept separate from SUGGESTED: these are the ones ``rules()`` answers without
+#: a model, so the console can still offer something useful when it is offline.
+OFFLINE_SUGGESTED = [
+    "Who owes me the most, and for how long?",
     "What is not selling?",
-    "How much cash came in this month?",
     "What am I about to run out of?",
     "Which customers have gone quiet?",
     "What is my best seller?",
     "Where is my money going?",
-    "How are my branches doing?",
 ]
 
 SYSTEM = """You are Vyuha, answering questions about one small business in India.
@@ -329,3 +341,205 @@ def ask(question: str, client, book, settings, ledger=None, org=None,
         why = answer.error or "No answer could be produced."
         action = answer.needs_action or ""
     return Reply(False, error=why + (f" {action}" if action else ""), source="rules")
+
+
+# =====================================================================
+# Tools — what the model can actually do
+#
+# The fixed-summary design had a ceiling: a question outside the shapes
+# somebody anticipated could not be answered, because the number was not in the
+# summary and nothing could go and fetch it. These let the model ask its own
+# questions of the books and chain the answers.
+#
+# `query_sales` carries most of the weight. One general group-by/filter/measure
+# call replaces thirty specific ones, and it is what makes "which item has the
+# worst margin at Hubballi since June" answerable without anyone having
+# predicted it.
+# =====================================================================
+
+TOOLS: list[dict] = [
+    {
+        "name": "query_sales",
+        "description": (
+            "Group, filter and measure sales along any dimension. The main tool "
+            "— use it for almost every question about what sold, to whom, when, "
+            "where, and how profitably. Set ascending=true for worst-performing "
+            "questions. Dates are ISO (YYYY-MM-DD)."),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "group_by": {"type": "string",
+                             "enum": list(analysis.DIMENSIONS),
+                             "description": "The dimension to group by."},
+                "measure": {"type": "string", "enum": list(analysis.MEASURES),
+                            "description": "What to rank by."},
+                "since": {"type": "string", "description": "Start date, inclusive."},
+                "until": {"type": "string", "description": "End date, inclusive."},
+                "party": {"type": "string", "description": "Filter to a customer (partial name works)."},
+                "item": {"type": "string", "description": "Filter to an item (partial name works)."},
+                "branch": {"type": "string", "description": "Filter to a branch."},
+                "category": {"type": "string", "description": "Filter to an item category."},
+                "unpaid_only": {"type": "boolean", "description": "Only credit sales not yet paid."},
+                "top_n": {"type": "integer", "description": "How many groups to return (max 50)."},
+                "ascending": {"type": "boolean",
+                              "description": "True for the worst/smallest first."},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "stock_report",
+        "description": (
+            "What is on the shelf. state: all | low (below reorder) | out "
+            "(nothing left) | dead (never sold) | moving (has sold)."),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "state": {"type": "string",
+                          "enum": ["all", "low", "out", "dead", "moving"]},
+                "sort": {"type": "string", "enum": ["value", "stock", "sold", "idle"]},
+                "category": {"type": "string"},
+                "top_n": {"type": "integer"},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "customer_detail",
+        "description": ("Everything about one customer: what they buy, what they "
+                        "have spent, what they still owe, when they last came."),
+        "input_schema": {
+            "type": "object",
+            "properties": {"party": {"type": "string"}},
+            "required": ["party"],
+        },
+    },
+    {
+        "name": "item_detail",
+        "description": ("One product: stock, cost, selling price, margin, units "
+                        "sold, and who buys it."),
+        "input_schema": {
+            "type": "object",
+            "properties": {"item": {"type": "string"}},
+            "required": ["item"],
+        },
+    },
+    {
+        "name": "compare_periods",
+        "description": ("The last N days against the N days before that, with the "
+                        "biggest movers and anyone who stopped buying. Use this "
+                        "for any question about trend, growth or change."),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "days": {"type": "integer", "description": "Window length. 30 = month on month."},
+                "group_by": {"type": "string", "enum": list(analysis.DIMENSIONS)},
+                "measure": {"type": "string", "enum": list(analysis.MEASURES)},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "financial_statements",
+        "description": (
+            "Profit and loss, cash flow, balance sheet, receivables and payables "
+            "ageing, ratios (margins, debtor/creditor/stock days, cash cycle, "
+            "current ratio), customer concentration and break-even. period is "
+            "'all', 'fy:2026-27' or 'month:2026-08'."),
+        "input_schema": {
+            "type": "object",
+            "properties": {"period": {"type": "string"}},
+            "required": [],
+        },
+    },
+    {
+        "name": "list_followups",
+        "description": ("Who is worth contacting today: overdue payments and "
+                        "regular customers who have gone quiet."),
+        "input_schema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "list_branches",
+        "description": "Branch-by-branch revenue, spend, bills and customers.",
+        "input_schema": {"type": "object", "properties": {}, "required": []},
+    },
+]
+
+
+SYSTEM_TOOLS = """You are Vyuha, answering questions about one Indian small business
+for its owner. You have tools that query his actual books.
+
+How to work:
+1. Call tools to get real figures. Never answer a factual question from memory or
+   from what an earlier tool call implied — fetch it.
+2. Chain calls when you need to. "Which of my slow items is my biggest customer
+   still buying" is two or three calls, and that is fine.
+3. Do arithmetic with the tools, not in your head. If you want a comparison, use
+   compare_periods. If you want the worst performer, pass ascending=true.
+4. If the tools genuinely cannot answer, say exactly what is missing and what he
+   would have to record for you to answer it next time. Never estimate.
+
+How to reply:
+- Lead with the number, then the context. "Ramu Stores owes the most — Rs 45,000,
+  overdue 34 days." Not "Looking at your receivables...".
+- Amounts are Indian rupees. Write them as Rs 1,23,456 with Indian digit grouping.
+- Three sentences or fewer unless a list is genuinely clearer. He is on a phone.
+- Plain English. No metrics vocabulary, no preamble, no offer to help further.
+- If something in the answer is worth acting on, say what to do in one clause."""
+
+
+def _tools_for(client, book, ledger, org, quotes=None):
+    """Bind the tool names to real calls over this client's books."""
+
+    def run(name: str, args: dict):
+        if name == "query_sales":
+            return analysis.query_sales(book, org, **args)
+        if name == "stock_report":
+            return analysis.stock_report(book, **args)
+        if name == "customer_detail":
+            return analysis.customer_detail(book, args.get("party", ""))
+        if name == "item_detail":
+            return analysis.item_detail(book, args.get("item", ""))
+        if name == "compare_periods":
+            return analysis.compare_windows(book, org, **args)
+        if name == "financial_statements":
+            return finance.facts(book, ledger, args.get("period", "all"))
+        if name == "list_followups":
+            return followup.facts(client.slug, book, quotes)
+        if name == "list_branches":
+            return people.facts(org, book, ledger)
+        raise ValueError(f"No such tool: {name}")
+
+    return run
+
+
+def investigate(question: str, client, book, settings, ledger=None, org=None,
+                quotes=None) -> Reply:
+    """Answer by letting the model query the books itself.
+
+    Falls back to ``rules()`` the moment the model is unavailable, so the
+    offline path is never a dead end.
+    """
+    ledger = ledger if ledger is not None else money.Ledger(slug=client.slug)
+    org = org if org is not None else people.Org(slug=client.slug)
+
+    context = (f"Business: {client.name}"
+               f"{' (' + client.industry + ')' if client.industry else ''}. "
+               f"Today is {date.today().isoformat()}. "
+               f"Their financial year runs April to March.\n\n"
+               f"The owner asks: {question}")
+
+    conversation = llm.run_tools(
+        context, settings, TOOLS, _tools_for(client, book, ledger, org, quotes),
+        system=SYSTEM_TOOLS)
+
+    if conversation.ok:
+        return Reply(True, text=conversation.text.strip(), source="claude",
+                     used=[c.name for c in conversation.calls])
+
+    fallback = rules(question, facts(client, book, ledger, org, quotes))
+    if fallback.ok:
+        return fallback
+    return Reply(False, source="rules",
+                 error=(conversation.error or "No answer could be produced.")
+                       + (f" {conversation.needs_action}" if conversation.needs_action else ""))

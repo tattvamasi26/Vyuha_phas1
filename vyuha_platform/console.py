@@ -342,24 +342,55 @@ def _stock(c, book, org) -> str:
 
 # -------------------------------------------------------------------- 03 · ask
 
+#: Tool names as an owner would say them, for the "consulted" line. A raw
+#: function name on screen tells him nothing and looks like a leak.
+_TOOL_WORDS = {
+    "query_sales": "your sales",
+    "stock_report": "your stock",
+    "customer_detail": "that customer's history",
+    "item_detail": "that item's history",
+    "compare_periods": "last month against this",
+    "financial_statements": "your statements",
+    "list_followups": "who owes you",
+    "list_branches": "your branches",
+}
+
+
 def _ask(c, reply, question: str, settings) -> str:
-    chips = "".join(f'<span class="qchip">{E(q)}</span>' for q in agent.SUGGESTED)
+    live = settings.vision_live
+    offered = agent.SUGGESTED if live else agent.OFFLINE_SUGGESTED
+    chips = "".join(f'<span class="qchip">{E(q)}</span>' for q in offered)
 
     if reply is None:
         out = ('<div class="muted" style="margin-top:20px">Ask anything about this '
                'business — money, stock, customers, branches. Every answer comes from '
                'the numbers on this page, never from a guess.</div>')
     elif reply.ok:
+        # Say what it read. An answer whose provenance is visible can be
+        # checked; one that just appears has to be taken on faith.
+        consulted = ""
+        if reply.source == "claude" and reply.used:
+            seen: list[str] = []
+            for name in reply.used:
+                word = _TOOL_WORDS.get(name, name)
+                if word not in seen:
+                    seen.append(word)
+            consulted = (' · looked at ' + ", ".join(seen[:4])
+                         + (f" and {len(seen) - 4} more" if len(seen) > 4 else ""))
         out = (f'<div class="answer">{E(reply.text)}</div>'
-               f'<div class="tiny" style="margin-top:14px">{E(reply.label)}</div>')
+               f'<div class="tiny" style="margin-top:14px">'
+               f'{E(reply.label)}{E(consulted)}</div>')
     else:
         out = (f'<div class="card" style="margin-top:18px;border-color:rgba(251,191,36,.3)">'
                f'<div style="font-size:15px;font-weight:800">Could not answer that</div>'
                f'<div class="muted" style="margin-top:8px">{E(reply.error)}</div></div>')
 
-    state = ("Claude is connected." if settings.vision_live
-             else "No Claude key yet, so Vyuha answers from your numbers directly. "
-                  "That covers the common questions; connect a key in Settings for the rest.")
+    state = ("Connected — Vyuha will query your books directly to answer, and "
+             "says which parts it read."
+             if live else
+             "No Claude key yet, so Vyuha answers the common questions straight "
+             "from your numbers. Connect a key in Settings and it can work out "
+             "anything you ask.")
 
     return (_head("Ask")
             + f"""<div class="card">

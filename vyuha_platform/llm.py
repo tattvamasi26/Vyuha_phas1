@@ -190,3 +190,139 @@ def ask(prompt: str, settings, system: str = "", schema: dict | None = None,
     if use_cache:
         _store(key, answer)
     return answer
+
+
+# ------------------------------------------------------------- tool calling
+
+@dataclass
+class Call:
+    """One tool the model asked for, and what it got back. Shown to the user."""
+    name: str
+    args: dict
+    ok: bool = True
+    summary: str = ""
+
+
+@dataclass
+class Conversation:
+    ok: bool
+    text: str = ""
+    calls: list = field(default_factory=list)
+    source: str = "live"
+    error: str = ""
+    needs_action: str = ""
+    turns: int = 0
+
+
+#: A hard ceiling on the loop. The model decides when it is finished; this only
+#: exists so a confused model cannot bill for an unbounded conversation. Eight
+#: is generous — real questions here resolve in two or three.
+MAX_TURNS = 8
+
+
+def run_tools(prompt: str, settings, tools: list, execute, system: str = "",
+              model: str = "", max_turns: int = MAX_TURNS,
+              effort: str = "high") -> Conversation:
+    """Let Claude call real functions until it can answer. Never raises.
+
+    ``tools`` is a list of Anthropic tool definitions; ``execute(name, args)``
+    runs one and returns a JSON-serialisable result. Everything the model learns
+    comes back through ``execute``, so the numbers in an answer are computed in
+    Python and can be checked — the model chooses *which* questions to ask of the
+    data, never what the data says.
+
+    Not cached. A single-shot question with a fixed context is the same question
+    every time and caches well; a tool conversation branches on what the first
+    call returns, so a cache hit would replay an answer derived from data that
+    has since changed. ``ask()`` remains the cached path.
+    """
+    if offline():
+        return Conversation(False, source="offline",
+                            error="Vyuha is running offline, so it did not ask Claude.",
+                            needs_action="Unset VYUHA_LLM to allow live answers.")
+    if not getattr(settings, "anthropic_key", ""):
+        return Conversation(False, source="error",
+                            error="No Claude API key is configured.",
+                            needs_action="Add an Anthropic API key in Settings.")
+    try:
+        import anthropic
+    except ImportError:
+        return Conversation(False, source="error",
+                            error="The anthropic package is not installed.",
+                            needs_action="pip install anthropic")
+
+    client = anthropic.Anthropic(api_key=settings.anthropic_key)
+    model = model or getattr(settings, "vision_model", "") or "claude-opus-5"
+    messages: list = [{"role": "user", "content": prompt}]
+    calls: list[Call] = []
+
+    for turn in range(max_turns):
+        request: dict = {
+            "model": model,
+            "max_tokens": MAX_TOKENS,
+            "messages": messages,
+            "tools": tools,
+            # Adaptive thinking, because choosing which figures to pull and how
+            # to combine them is exactly the reasoning this is for. budget_tokens
+            # is rejected on this model family; effort is the control that works.
+            "thinking": {"type": "adaptive"},
+            "output_config": {"effort": effort},
+        }
+        if system:
+            request["system"] = system
+
+        try:
+            response = client.messages.create(**request)
+        except anthropic.AuthenticationError:
+            return Conversation(False, calls=calls, source="error",
+                                error="The Claude API key was rejected.",
+                                needs_action="Check the key in Settings.")
+        except anthropic.RateLimitError:
+            return Conversation(False, calls=calls, source="error",
+                                error="Claude is rate-limiting this key.",
+                                needs_action="Wait a minute and ask again.")
+        except anthropic.APIError as exc:
+            return Conversation(False, calls=calls, source="error",
+                                error=f"Claude could not answer: {exc}")
+        except Exception as exc:                       # network, DNS, proxy
+            return Conversation(False, calls=calls, source="error",
+                                error=f"Could not reach Claude: {exc}",
+                                needs_action="Check the connection, or run with "
+                                             "VYUHA_LLM=offline.")
+
+        if getattr(response, "stop_reason", "") == "refusal":
+            return Conversation(False, calls=calls, source="error",
+                                error="Claude declined to answer that.")
+
+        if response.stop_reason != "tool_use":
+            text = "".join(b.text for b in response.content
+                           if getattr(b, "type", "") == "text")
+            return Conversation(bool(text.strip()), text=text.strip(), calls=calls,
+                                source="live", turns=turn + 1,
+                                error="" if text.strip() else "Claude returned nothing.")
+
+        # Echo the assistant turn back verbatim -- thinking blocks included, which
+        # this model requires when the conversation continues on the same model.
+        messages.append({"role": "assistant", "content": response.content})
+
+        results = []
+        for block in response.content:
+            if getattr(block, "type", "") != "tool_use":
+                continue
+            try:
+                value = execute(block.name, dict(block.input))
+                payload, ok = json.dumps(value, default=str), True
+            except Exception as exc:                   # a broken tool is data
+                payload, ok = f"Error: {exc}", False
+            calls.append(Call(name=block.name, args=dict(block.input), ok=ok,
+                              summary=payload[:160]))
+            results.append({"type": "tool_result", "tool_use_id": block.id,
+                            "content": payload, **({"is_error": True} if not ok else {})})
+
+        # Every result goes back in ONE user message. Splitting them teaches the
+        # model to stop asking for several things at once.
+        messages.append({"role": "user", "content": results})
+
+    return Conversation(False, calls=calls, source="error", turns=max_turns,
+                        error=f"Claude was still working after {max_turns} steps.",
+                        needs_action="Try asking for one thing at a time.")

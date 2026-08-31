@@ -24,8 +24,9 @@ from fastapi.testclient import TestClient    # noqa: E402
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
-from vyuha_platform import (agent, app as app_mod, auth, books, config,  # noqa: E402
-                            decks, finance, followup, llm, money, people, store)
+from vyuha_platform import (agent, analysis, app as app_mod, auth, books,  # noqa: E402
+                            config, decks, finance, followup, llm, money,
+                            people, store)
 
 client = TestClient(app_mod.app, follow_redirects=True)
 _SLUGS: list[str] = []
@@ -575,6 +576,195 @@ def test_the_money_panel_renders_every_statement():
                   "What you own and owe", "Owed to you, by age", "You owe, by age",
                   "Break-even", "Every cost head", "Partial, on purpose"):
         assert probe in page, probe
+
+
+# ============================================== 03 agent · querying the books
+
+def _stocked(name: str):
+    """A shop with two customers, two branches and known margins."""
+    slug, c = _shop(name)
+    urea = _sku(slug, "urea")        # rate 300, cost 250 -> 50/unit
+    rose = _sku(slug, "rose")        # rate 80,  cost 40  -> 40/unit
+    books.record_sale(slug, urea, "Big Buyer", 100, 300, when=_days_ago(5))
+    books.record_sale(slug, rose, "Big Buyer", 10, 80, when=_days_ago(5))
+    books.record_sale(slug, urea, "Small Buyer", 5, 300, when=_days_ago(50))
+    return slug, c
+
+
+def test_a_sales_query_groups_and_ranks_on_any_dimension():
+    slug, _ = _stocked("Query Traders")
+    book = books.load(slug)
+
+    by_party = analysis.query_sales(book, group_by="party", measure="revenue")
+    assert by_party["rows"][0]["group"] == "Big Buyer"
+    assert by_party["rows"][0]["revenue"] == 30800
+
+    by_item = analysis.query_sales(book, group_by="item", measure="qty")
+    assert by_item["rows"][0]["group"] == "Urea 50kg"
+
+
+def test_ascending_answers_the_worst_performer_question():
+    """"Which item makes me least" is asked as often as "which makes me most"."""
+    slug, _ = _stocked("Worst Traders")
+    book = books.load(slug)
+
+    worst = analysis.query_sales(book, group_by="item", measure="margin",
+                                 ascending=True)
+    best = analysis.query_sales(book, group_by="item", measure="margin")
+    assert worst["rows"][0]["group"] != best["rows"][0]["group"]
+    assert worst["rows"][0]["margin"] <= best["rows"][0]["margin"]
+
+
+def test_margin_comes_from_cost_and_is_none_when_cost_is_unknown():
+    slug, _ = _shop("Margin Traders")
+    books.add_item(slug, "No Cost Item", "Other", "piece", 100, 0, 20, 0)
+    books.record_sale(slug, _sku(slug, "no cost"), "Buyer", 5, 100)
+    books.record_sale(slug, _sku(slug, "urea"), "Buyer", 10, 300)
+
+    rows = {r["group"]: r for r in
+            analysis.query_sales(books.load(slug), group_by="item")["rows"]}
+    assert rows["Urea 50kg"]["margin"] == 500          # 10 x (300 - 250)
+    assert rows["No Cost Item"]["margin_pct"] is None, "no cost means no margin claim"
+
+
+def test_filters_combine_and_a_date_window_excludes_what_is_outside_it():
+    slug, _ = _stocked("Filter Traders")
+    book = books.load(slug)
+
+    recent = analysis.query_sales(book, since=_days_ago(30))
+    assert recent["sales_matched"] == 2, "the 50-day-old sale is outside the window"
+
+    one_party = analysis.query_sales(book, party="Small")
+    assert one_party["sales_matched"] == 1
+    assert one_party["total_revenue"] == 1500
+
+
+def test_a_partial_name_matches_because_that_is_how_people_ask():
+    slug, _ = _stocked("Partial Traders")
+    book = books.load(slug)
+    assert analysis.query_sales(book, party="Big")["sales_matched"] == 2
+    assert analysis.customer_detail(book, "Big")["found"]
+
+
+def test_an_empty_result_says_so_rather_than_returning_nothing():
+    slug, _ = _stocked("Empty Traders")
+    out = analysis.query_sales(books.load(slug), party="Nobody At All")
+    assert out["sales_matched"] == 0
+    assert "note" in out and "no sales" in out["note"].lower()
+
+
+def test_stock_report_separates_dead_from_low_from_out():
+    slug, _ = _stocked("Stock Report Traders")
+    book = books.load(slug)
+
+    dead = analysis.stock_report(book, state="dead")
+    assert all(r["never_sold"] for r in dead["rows"])
+    assert any(r["item"] == "Gypsum 5kg" for r in dead["rows"])
+
+    out = analysis.stock_report(book, state="out")
+    assert all(r["in_stock"] <= 0 for r in out["rows"])
+
+
+def test_customer_detail_carries_the_history_and_the_debt():
+    slug, _ = _shop("History Traders")
+    sku = _sku(slug, "urea")
+    books.record_sale(slug, sku, "Regular Ravi", 10, 300, when=_days_ago(40))
+    books.record_sale(slug, sku, "Regular Ravi", 5, 300, when=_days_ago(3),
+                      paid=False, due_date=_days_ago(-5))
+
+    detail = analysis.customer_detail(books.load(slug), "Ravi")
+    assert detail["found"]
+    assert detail["bills"] == 2
+    assert detail["total_spend"] == 4500
+    assert detail["still_owes"] == 1500
+    assert detail["days_since_last"] == 3
+    assert detail["unpaid_bills"]
+
+
+def test_an_unknown_customer_offers_the_names_that_do_exist():
+    """Otherwise the model guesses a name and answers about the wrong person."""
+    slug, _ = _stocked("Unknown Traders")
+    out = analysis.customer_detail(books.load(slug), "Nobody")
+    assert not out["found"]
+    assert "Big Buyer" in out["known_customers"]
+
+
+def test_item_detail_reports_margin_and_who_buys_it():
+    slug, _ = _stocked("Item Detail Traders")
+    detail = analysis.item_detail(books.load(slug), "urea")
+    assert detail["found"]
+    assert detail["units_sold"] == 105
+    assert detail["margin"] == 5250                    # 105 x (300 - 250)
+    assert detail["bought_by"][0]["party"] == "Big Buyer"
+
+
+def test_compare_periods_finds_the_movers_and_who_stopped_buying():
+    slug, _ = _shop("Trend Traders")
+    sku = _sku(slug, "urea")
+    books.record_sale(slug, sku, "Steady", 10, 300, when=_days_ago(45))
+    books.record_sale(slug, sku, "Steady", 30, 300, when=_days_ago(10))
+    books.record_sale(slug, sku, "Vanished", 20, 300, when=_days_ago(45))
+
+    out = analysis.compare_windows(books.load(slug), days=30, group_by="party")
+    assert out["current"]["total_revenue"] == 9000
+    assert out["previous"]["total_revenue"] == 9000
+    gone = {r["group"] for r in out["stopped_buying"]}
+    assert "Vanished" in gone, out["stopped_buying"]
+
+
+def test_branch_filtering_uses_the_branch_name_not_its_id():
+    """The model will say "Hubballi", never a slug."""
+    slug, _ = _shop("Branch Query Traders")
+    client.post(f"/c/{slug}/branch", data={"name": "Hubballi"})
+    org = people.load(slug)
+    bid = org.branches[0].id
+    sku = _sku(slug, "urea")
+    books.record_sale(slug, sku, "A", 10, 300, branch=bid)
+    books.record_sale(slug, sku, "B", 5, 300)
+
+    out = analysis.query_sales(books.load(slug), org, branch="Hubballi")
+    assert out["sales_matched"] == 1
+    assert out["total_revenue"] == 3000
+
+
+def test_every_tool_the_model_is_offered_can_actually_be_called():
+    """A tool in the schema with no dispatch is a runtime error mid-answer."""
+    slug, c = _stocked("Dispatch Traders")
+    book, ledger, org = books.load(slug), money.load(slug), people.load(slug)
+    run = agent._tools_for(c, book, ledger, org)
+    for tool in agent.TOOLS:
+        args = {"party": "Big"} if tool["name"] == "customer_detail" else {}
+        if tool["name"] == "item_detail":
+            args = {"item": "urea"}
+        result = run(tool["name"], args)
+        assert isinstance(result, dict), tool["name"]
+
+
+def test_the_tool_schemas_are_well_formed():
+    for tool in agent.TOOLS:
+        assert tool["name"] and tool["description"]
+        schema = tool["input_schema"]
+        assert schema["type"] == "object"
+        for name in schema.get("required", []):
+            assert name in schema["properties"], f"{tool['name']}: {name} not defined"
+
+
+def test_the_agent_still_answers_with_no_model_available():
+    """investigate() must fall through to the pattern answers, not fail."""
+    slug, c = _stocked("Offline Agent Traders")
+    reply = agent.investigate("Who owes me the most, and for how long?",
+                              c, books.load(slug), config.load(),
+                              ledger=money.load(slug), org=people.load(slug))
+    assert reply.ok, reply.error
+    assert reply.source == "rules"
+
+
+def test_the_offline_question_list_is_one_the_rules_can_answer():
+    """Offering a question the fallback cannot handle is a trap for the demo."""
+    slug, c = _stocked("Suggested Traders")
+    f = agent.facts(c, books.load(slug), money.load(slug), people.load(slug))
+    for question in agent.OFFLINE_SUGGESTED:
+        assert agent.rules(question, f).ok, question
 
 
 def _cleanup() -> None:
