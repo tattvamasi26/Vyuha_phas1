@@ -29,7 +29,7 @@ from datetime import date
 
 from vyuha import fmt
 
-from . import (agent, books, catalog, decks, finance, followup, invoice,
+from . import (agent, books, catalog, finance, followup, invoice,
                money, people, ui)
 
 E = ui.E
@@ -49,7 +49,6 @@ PANELS = [
     ("followups", "Follow-ups", "↩"),
     ("money", "Money", "₹"),
     ("bills", "Bills", "▤"),
-    ("deck", "Deck", "◫"),
     ("people", "People", "⌂"),
 ]
 
@@ -228,6 +227,10 @@ details.levels[open] summary::before{content:"▾ "}
 .tpl{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px}
 .gaps{border-left:3px solid var(--warn);padding:10px 0 10px 14px;margin-top:14px;
   font-size:12.5px;color:var(--ink-2);line-height:1.6}
+
+.deckout{display:flex;justify-content:space-between;align-items:center;gap:16px;
+  flex-wrap:wrap;margin-top:18px;padding:14px 16px;border-radius:var(--r-sm);
+  border:1px solid var(--accent);background:var(--card-2)}
 """
 
 JS = """
@@ -502,7 +505,17 @@ def _ask(c, reply, question: str, settings) -> str:
                     seen.append(word)
             consulted = (' · looked at ' + ", ".join(seen[:4])
                          + (f" and {len(seen) - 4} more" if len(seen) > 4 else ""))
-        out = (f'<div class="answer">{E(reply.text)}</div>'
+        deck = ""
+        if reply.deck:
+            deck = f"""<div class="deckout">
+  <div><div style="font-size:15px;font-weight:700">Your deck is ready</div>
+    <div class="tiny" style="margin-top:5px">{E(reply.deck_label)}</div></div>
+  <div class="row" style="gap:8px">
+    <a class="btn sm primary" href="{E(reply.deck)}" target="_blank"
+       rel="noopener">Open the deck</a>
+    <a class="btn sm ghost" href="/c/{c.slug}/deck/pptx">PPTX</a>
+    <a class="btn sm ghost" href="/c/{c.slug}/deck/pdf">PDF</a></div></div>"""
+        out = (f'<div class="answer">{E(reply.text)}</div>{deck}'
                f'<div class="tiny" style="margin-top:14px">'
                f'{E(reply.label)}{E(consulted)}</div>')
     else:
@@ -517,7 +530,8 @@ def _ask(c, reply, question: str, settings) -> str:
              "from your numbers. Connect a key in Settings and it can work out "
              "anything you ask.")
 
-    return (_head("Ask")
+    return (_head("Ask", '<span class="tiny">Decks are made here too — '
+                   'just ask for one</span>')
             + f"""<div class="card">
   <form method="post" action="/c/{c.slug}/ask">
     <div class="field">
@@ -1021,62 +1035,6 @@ def _bills(c, book, invoices) -> str:
             + raise_card + listed + identity)
 
 
-# ------------------------------------------------------------------- 09 · deck
-
-def _deck(c, outline, brief: str, kind: str) -> str:
-    picker = "".join(
-        f'<label class="seg" style="margin:0 8px 8px 0">'
-        f'<input type="radio" name="kind" value="{E(k)}"{" checked" if k == kind else ""}>'
-        f'<span>{E(label)}</span></label>'
-        for k, (label, _) in decks.KINDS.items())
-
-    hint = decks.KINDS.get(kind, ("", ""))[1]
-
-    preview = ""
-    if outline is not None:
-        slides = ""
-        for s in outline.slides:
-            stats = ""
-            if s.stats:
-                stats = ('<div class="st">' + "".join(
-                    f'<div><span>{E(x["label"])}</span><b>{E(x["value"])}</b></div>'
-                    for x in s.stats) + "</div>")
-            bullets = ("<ul>" + "".join(f"<li>{E(b)}</li>" for b in s.bullets) + "</ul>"
-                       if s.bullets else "")
-            slides += f'<div class="slide"><h4>{E(s.heading)}</h4>{stats}{bullets}</div>'
-
-        note = (f'<div class="tiny" style="margin-top:12px">{E(outline.note)}</div>'
-                if outline.note else "")
-        preview = f"""<div class="card" style="margin-top:16px">
-  <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:14px">
-    <div><div style="font-size:18px;font-weight:800">{E(outline.title)}</div>
-      <div class="muted" style="margin-top:5px">{E(outline.subtitle)}</div>
-      <div class="tiny" style="margin-top:8px">{E(outline.label)} ·
-        {len(outline.slides)} slide(s)</div></div>
-    <div class="row" style="gap:9px">
-      <a class="btn primary" href="/c/{c.slug}/deck/pptx">Download PPTX</a>
-      <a class="btn ghost" href="/c/{c.slug}/deck/pdf">PDF</a></div></div>
-  {note}
-  <div style="margin-top:20px">{slides}</div></div>"""
-
-    return (_head("Deck")
-            + f"""<div class="card">
-  <div style="font-size:16px;font-weight:800">What is this deck for?</div>
-  <div class="tiny" style="margin:7px 0 15px">The audience changes the argument far
-    more than the numbers do.</div>
-  <form method="post" action="/c/{c.slug}/deck">
-    <div style="margin-bottom:6px">{picker}</div>
-    <div class="tiny" style="margin-bottom:16px">{E(hint)}</div>
-    <div class="field">
-      <textarea name="brief" rows="3" placeholder="Say what you want it to argue — &quot;show the bank we collect on time&quot;, &quot;case study for a new distributor&quot;"
-        aria-label="Your brief">{E(brief)}</textarea>
-    </div>
-    <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:12px">
-      <div class="tiny">Every figure comes from this workspace. Nothing is invented.</div>
-      <button class="btn primary" type="submit">Build the deck</button></div>
-  </form></div>{preview}""")
-
-
 # ----------------------------------------------------------------- 10 · people
 
 def _people(c, org, book, ledger) -> str:
@@ -1175,8 +1133,7 @@ def _people(c, org, book, ledger) -> str:
 # -------------------------------------------------------------------- the page
 
 def page(c, *, book, ledger, org, queue, settings, account, panel: str = "stock",
-         reply=None, question: str = "", outline=None, brief: str = "",
-         deck_kind: str = "review", period: str = "all", invoices=None,
+         reply=None, question: str = "", period: str = "all", invoices=None,
          flash: str = "", flash_kind: str = "ok") -> str:
     """Everything, once, in one document."""
     panel = panel if panel in {p for p, _, _ in PANELS} else "stock"
@@ -1188,7 +1145,6 @@ def page(c, *, book, ledger, org, queue, settings, account, panel: str = "stock"
         "followups": len(queue),
         "money": len([e for e in ledger.expenses if not e.paid]),
         "bills": len(invoices or []),
-        "deck": 0,
         "people": len([b for b in org.branches if b.active]),
     }
     hot = {"stock", "followups"}
@@ -1207,7 +1163,6 @@ def page(c, *, book, ledger, org, queue, settings, account, panel: str = "stock"
         "followups": _followups(c, queue, settings),
         "money": _money(c, book, ledger, org, period),
         "bills": _bills(c, book, invoices if invoices is not None else []),
-        "deck": _deck(c, outline, brief, deck_kind),
         "people": _people(c, org, book, ledger),
     }
     panes = "".join(f'<div class="panel{" on" if key == panel else ""}" data-panel="{key}">'

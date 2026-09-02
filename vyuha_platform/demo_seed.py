@@ -216,15 +216,20 @@ def build(quiet: bool = False) -> tuple[str, str]:
     people.add_branch(slug, "Hubballi", "Market Yard, Hubballi", manager="Girish Kulkarni")
     org = people.load(slug)
     main_id, second_id = org.branches[0].id, org.branches[1].id
-    for name, role, branch in [
-        ("Vishwanath Patil", "Owner", main_id),
-        ("Girish Kulkarni", "Manager", second_id),
-        ("Sunita Desai", "Accountant", main_id),
-        ("Mahesh Naik", "Salesperson", main_id),
-        ("Iranna Hosur", "Salesperson", second_id),
-        ("Ravi Gouda", "Delivery", second_id),
+    # Targets only on the people who carry one. A delivery hand at 0% of a
+    # target he was never given is noise on the screen, not a finding.
+    for name, role, branch, target, commission in [
+        ("Vishwanath Patil", "Owner", main_id, 0, 0),
+        ("Girish Kulkarni", "Manager", second_id, 250000, 1.0),
+        ("Sunita Desai", "Accountant", main_id, 0, 0),
+        ("Mahesh Naik", "Salesperson", main_id, 320000, 2.0),
+        ("Iranna Hosur", "Salesperson", second_id, 220000, 2.0),
+        ("Ravi Gouda", "Delivery", second_id, 0, 0),
     ]:
-        people.add_staff(slug, name, role, branch)
+        people.add_staff(slug, name, role, branch, target=target,
+                         commission=commission)
+    org = people.load(slug)
+    sellers = {p.name: p.id for p in org.staff}
     say(f"  branches   2, staff 6")
 
     # --- the catalogue, with tax details
@@ -258,6 +263,14 @@ def build(quiet: bool = False) -> tuple[str, str]:
             # could not carry six staff, and every ratio said so.
             qty = rng.choice([10, 15, 20, 20, 25, 30, 40, 50, 60, 80, 100])
             branch = main_id if rng.random() < 0.62 else second_id
+            # Whoever works that counter rang it up. A slice is left
+            # unattributed on purpose: real books always have some, and the
+            # screen has to show that honestly rather than share it out.
+            seller = ""
+            if rng.random() < 0.78:
+                seller = (rng.choice([sellers["Mahesh Naik"], sellers["Vishwanath Patil"]])
+                          if branch == main_id else
+                          rng.choice([sellers["Iranna Hosur"], sellers["Girish Kulkarni"]]))
             # Credit older than ~45 days was settled long ago. Leaving every
             # historic credit sale open would put 17 names in the chase queue,
             # which reads as a failing business rather than a working one.
@@ -269,6 +282,7 @@ def build(quiet: bool = False) -> tuple[str, str]:
                 due_date=_ago(day - 30) if on_credit else "",
                 party_phone=phone,
                 branch=branch,
+                staff=seller,
             )
             sales += 1
             day -= step + rng.randint(-1, 2)
@@ -292,6 +306,31 @@ def build(quiet: bool = False) -> tuple[str, str]:
         if item is not None:
             item.stock_qty = stock
     books.save(book)
+
+    # --- the register for the last fortnight
+    marked = 0
+    for person in people.load(slug).staff:
+        for back in range(1, 15):
+            when = _ago(back)
+            if date.fromisoformat(when).weekday() == 6:      # shop shuts Sunday
+                continue
+            roll = rng.random()
+            state = ("present" if roll < 0.88 else
+                     "half" if roll < 0.94 else
+                     "leave" if roll < 0.97 else "absent")
+            people.mark_attendance(slug, person.id, state, when)
+            marked += 1
+    say(f"  register   {marked} day(s) marked across 6 people")
+
+    # --- stock moved between the two godowns
+    book_now = books.load(slug)
+    for item_name, qty in [("Urea 50kg", 40), ("Cattle Feed 50kg", 15),
+                           ("HDPE Pipe 1in 10m", 8)]:
+        item = next((i for i in book_now.items if i.name == item_name), None)
+        if item is not None:
+            people.transfer_stock(slug, item.sku, item.name, qty, main_id,
+                                  second_id, note="Weekly top-up")
+    say(f"  transfers  3 between godowns")
 
     # --- money out, sized from the revenue that was actually generated
     book = books.load(slug)
@@ -322,6 +361,12 @@ def build(quiet: bool = False) -> tuple[str, str]:
     pl = finance.profit_and_loss(b, ledger)
     say(f"  P&L        gross Rs {pl['gross_profit']:,.0f} ({pl['gross_margin_pct']:.1f}%)"
         f"   net Rs {pl['net_profit']:,.0f} ({pl['net_margin_pct']:.1f}%)")
+    pf = people.by_person(people.load(slug), b)
+    top = pf[1] if len(pf) > 1 else None
+    if top:
+        say(f"  selling    {top['name']} leads on Rs {top['revenue']:,.0f} "
+            f"({top['pct_of_target']}% of target)" if top["pct_of_target"] is not None
+            else f"  selling    {top['name']} leads on Rs {top['revenue']:,.0f}")
     say(f"  to chase   {len(queue)} "
         f"({sum(1 for f in queue if f.kind == 'payment')} overdue, "
         f"{sum(1 for f in queue if f.kind == 'dormant')} gone quiet)")

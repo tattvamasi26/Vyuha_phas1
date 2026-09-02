@@ -29,9 +29,9 @@ from fastapi.staticfiles import StaticFiles
 
 from vyuha import analyze, pipeline
 
-from . import (agent, auth, books, channels, config, console, decks, exports,
-               followup, invoice, invoice_render, ledger, money, people,
-               sources, store, theme, ui, whatsapp)
+from . import (agent, auth, books, channels, config, console, deck_render, decks,
+               exports, finance, followup, invoice, invoice_render, ledger, money,
+               people, sources, store, theme, ui, whatsapp)
 
 app = FastAPI(title="Vyuha Operations Platform", docs_url=None, redoc_url=None)
 
@@ -1023,12 +1023,6 @@ def settings_save(
 #     the page directly instead, because a redirect would throw the result away.
 # =====================================================================
 
-#: The last brief per client, so the download links rebuild the same deck.
-#: In-process and deliberately small — a deck is cheap to rebuild and the LLM
-#: cache makes the rebuild free, so losing this on restart costs nothing.
-_DECK_BRIEFS: dict[str, tuple[str, str]] = {}
-
-
 def _console_state(client: store.Client) -> dict:
     """Everything the console page needs, loaded once.
 
@@ -1211,23 +1205,30 @@ def console_expense_delete(slug: str, expense_id: str,
 # ----------------------------------------------------------------- 09 · deck
 
 def _deck_outline(client: store.Client, brief: str, kind: str, state: dict):
-    facts = agent.facts(client, state["book"], state["ledger"], state["org"])
+    # Both fact sets. agent.facts carries the operating picture — stock, best
+    # sellers, who owes what — and finance.facts carries the series a chart is
+    # drawn from: the monthly trend, the customer split, the ratios. A deck
+    # needs both, and reading only one is why the charts came out empty.
+    facts = {**agent.facts(client, state["book"], state["ledger"], state["org"]),
+             **finance.facts(state["book"], state["ledger"])}
     return decks.outline(brief, kind, client, facts, state["settings"])
 
 
-@app.post("/c/{slug}/deck", response_class=HTMLResponse)
-def console_deck(slug: str, brief: str = Form(""), kind: str = Form("review"),
-                 account: auth.Account = Depends(_acct)):
+@app.get("/c/{slug}/deck/view", response_class=HTMLResponse)
+def console_deck_view(slug: str, account: auth.Account = Depends(_acct)):
+    """The deck itself — a real presentation, not a preview pane.
+
+    Its own page rather than a panel: a deck wants the whole screen, arrow keys
+    and a print stylesheet, none of which fit inside a dashboard tab.
+    """
     client, bail = _console_client(account, slug)
     if bail is not None:
         return bail
-
-    state = _console_state(client)
-    outline = _deck_outline(client, brief, kind, state)
-    _DECK_BRIEFS[slug] = (brief, kind)
-    ledger.log("export.created", f"Deck outlined: {outline.title}", client=client,
+    brief, kind = agent.DECK_BRIEFS.get(slug, ("", "review"))
+    outline = _deck_outline(client, brief, kind, _console_state(client))
+    ledger.log("export.created", f"Deck opened: {outline.title}", client=client,
                channel="deck", written_by=outline.source, slides=len(outline.slides))
-    return _console(client, account, "deck", outline=outline, brief=brief, deck_kind=kind)
+    return HTMLResponse(deck_render.render_html(outline, client))
 
 
 @app.get("/c/{slug}/deck/{fmt}")
@@ -1238,7 +1239,7 @@ def console_deck_download(slug: str, fmt: str, account: auth.Account = Depends(_
     if fmt not in {"pptx", "pdf"}:
         return _console_back(slug, "deck", "That format is not available.")
 
-    brief, kind = _DECK_BRIEFS.get(slug, ("", "review"))
+    brief, kind = agent.DECK_BRIEFS.get(slug, ("", "review"))
     state = _console_state(client)
     outline = _deck_outline(client, brief, kind, state)
 

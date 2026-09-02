@@ -388,11 +388,13 @@ def test_one_branch_is_not_reported_as_a_multi_branch_business():
 
 # ================================================================== integration
 
-def test_the_console_renders_all_six_panels_in_one_document():
+def test_the_console_renders_every_panel_in_one_document():
     slug, _ = _shop("Whole Page Traders")
     page = client.get(f"/c/{slug}/console").text
-    for panel in ("stock", "ask", "followups", "money", "deck", "people"):
+    for panel in ("stock", "ask", "followups", "money", "bills", "people"):
         assert f'data-panel="{panel}"' in page, f"{panel} panel missing"
+    # Deck has no panel: you ask the agent for one and it hands back a link.
+    assert 'data-panel="deck"' not in page
     assert page.count("<style>") >= 1
 
 
@@ -550,12 +552,16 @@ def test_the_balance_sheet_declares_what_it_leaves_out():
 def test_a_period_filter_excludes_what_is_outside_it():
     slug, _ = _shop("Period Traders")
     sku = _sku(slug, "urea")
+    recent = _days_ago(2)
     books.record_sale(slug, sku, "Old", 5, 320, when=_days_ago(400))
-    books.record_sale(slug, sku, "New", 5, 320, when=_days_ago(2))
+    books.record_sale(slug, sku, "New", 5, 320, when=recent)
 
     b, l = books.load(slug), money.load(slug)
     everything = finance.profit_and_loss(b, l)
-    this_month = finance.statements(b, l, f"month:{date.today().isoformat()[:7]}")
+    # The month of the recent sale, not of today: run this on the 1st or 2nd and
+    # "two days ago" is last month, and the test fails for the calendar rather
+    # than for the code.
+    this_month = finance.statements(b, l, f"month:{recent[:7]}")
     assert everything["revenue"] == 3200
     assert this_month["pl"]["revenue"] == 1600, "the 400-day-old sale is outside the month"
 
@@ -759,12 +765,38 @@ def test_the_agent_still_answers_with_no_model_available():
     assert reply.source == "rules"
 
 
-def test_the_offline_question_list_is_one_the_rules_can_answer():
-    """Offering a question the fallback cannot handle is a trap for the demo."""
+def test_every_offline_question_gets_a_real_answer():
+    """Offering a question the offline path cannot handle is a trap for the demo.
+
+    Goes through investigate() rather than rules(), because a deck request is
+    answered by building a deck — rules() only recognises it and hands it on.
+    """
     slug, c = _stocked("Suggested Traders")
-    f = agent.facts(c, books.load(slug), money.load(slug), people.load(slug))
+    book, ledger, org = books.load(slug), money.load(slug), people.load(slug)
     for question in agent.OFFLINE_SUGGESTED:
-        assert agent.rules(question, f).ok, question
+        reply = agent.investigate(question, c, book, config.load(),
+                                  ledger=ledger, org=org)
+        assert reply.ok, f"{question}: {reply.error}"
+        assert reply.text, question
+
+
+def test_asking_for_a_deck_builds_one_even_with_no_model():
+    slug, c = _stocked("Deck Ask Traders")
+    reply = agent.investigate("Make me a case study deck", c, books.load(slug),
+                              config.load(), ledger=money.load(slug),
+                              org=people.load(slug))
+    assert reply.ok, reply.error
+    assert reply.deck.endswith("/deck/view"), reply.deck
+    assert "slides" in reply.text.lower()
+
+
+def test_a_deck_request_is_not_mistaken_for_a_question_about_a_customer():
+    """"Case study on my biggest customer" names a customer and is not a
+    question about one — the keyword branches would answer the wrong thing."""
+    slug, c = _stocked("Deck Intent Traders")
+    f = agent.facts(c, books.load(slug), money.load(slug), people.load(slug))
+    assert agent.rules("Make me a case study on my biggest customer", f).error \
+        == "wants-deck"
 
 
 # ================================================= 02 stock · how it reads

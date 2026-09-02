@@ -104,6 +104,10 @@ class Sale:
     #: existed, which is why people.performance() reports those under
     #: "Unassigned" rather than guessing.
     branch: str = ""
+    #: Who made the sale (``people.Staff.id``). Without it "who is actually
+    #: selling" is unanswerable, which is the first question an owner with
+    #: staff asks and the one a branch total cannot answer.
+    staff: str = ""
 
 
 @dataclass
@@ -261,7 +265,8 @@ def mark_receipt_sent(slug: str, sale_id: str) -> None:
 
 def record_sale(slug: str, sku: str, party: str, qty, rate, when: str = "",
                 paid: bool = True, due_date: str = "", note: str = "",
-                party_phone: str = "", branch: str = "") -> tuple[Book, str, bool]:
+                party_phone: str = "", branch: str = "",
+                staff: str = "") -> tuple[Book, str, bool]:
     book = load(slug)
     item = book.item(sku)
     if item is None:
@@ -283,7 +288,7 @@ def record_sale(slug: str, sku: str, party: str, qty, rate, when: str = "",
         id=bill, date=when or _today(), party=party, sku=item.sku, item=item.name,
         qty=qty_n, rate=rate_n, amount=round(qty_n * rate_n, 2),
         paid=paid, due_date=due_date, note=note.strip(),
-        party_phone=party_phone, branch=branch,
+        party_phone=party_phone, branch=branch, staff=staff,
     ))
     item.stock_qty -= qty_n
     save(book)

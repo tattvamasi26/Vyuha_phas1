@@ -42,7 +42,7 @@ SUGGESTED = [
     "Which customers have gone quiet?",
     "Is my biggest customer a risk?",
     "Where is my money going?",
-    "How are my branches doing?",
+    "Make me a case study deck",
 ]
 
 #: Kept separate from SUGGESTED: these are the ones ``rules()`` answers without
@@ -54,6 +54,7 @@ OFFLINE_SUGGESTED = [
     "Which customers have gone quiet?",
     "What is my best seller?",
     "Where is my money going?",
+    "Make me a business review deck",
 ]
 
 SYSTEM = """You are Vyuha, answering questions about one small business in India.
@@ -82,6 +83,11 @@ class Reply:
     source: str = "rules"
     error: str = ""
     used: list[str] = field(default_factory=list)   # which fact groups were read
+    #: Set when the answer produced a deck. The console turns it into links
+    #: rather than a panel, because a deck is something you *ask for*, not a
+    #: place you go — which is why it no longer has a tab.
+    deck: str = ""
+    deck_label: str = ""
 
     @property
     def label(self) -> str:
@@ -142,6 +148,12 @@ def facts(client, book, ledger=None, org=None, quotes=None) -> dict:
     return out
 
 
+#: build_deck calls this rather than ``facts`` directly, so the deck keeps
+#: working if the public name ever changes.
+def facts_for(client, book, ledger=None, org=None, quotes=None) -> dict:
+    return facts(client, book, ledger, org, quotes)
+
+
 # ------------------------------------------------------------- the fallback
 
 def _rs(v) -> str:
@@ -170,6 +182,13 @@ def rules(question: str, f: dict) -> Reply:
         return Reply(False, error="Ask a question first.")
 
     sales, stock, cash, chase = f["sales"], f["stock"], f["money"], f["followups"]
+
+    # --- a deck request, before anything else. "Make me a case study on my
+    # biggest customer" mentions a customer and is not a question about one, so
+    # the keyword branches below would answer the wrong thing entirely.
+    if _match(q, "deck", "presentation", "slides", "ppt", "powerpoint",
+              "case study", "pitch"):
+        return Reply(False, error="wants-deck")
 
     # --- refuse to speculate, before any keyword branch can catch it.
     # "What will the monsoon do to my sales next year?" contains "sales", and
@@ -333,7 +352,7 @@ def ask(question: str, client, book, settings, ledger=None, org=None,
         return fallback
 
     # Neither path could answer. Say which, and what to do about it.
-    if fallback.error == "not-understood":
+    if fallback.error in {"not-understood", "wants-deck"}:
         why = ("Vyuha could not match that to your numbers, and Claude is not available "
                f"to reason about it ({answer.error}).")
         action = answer.needs_action or "Try one of the suggested questions below."
@@ -453,6 +472,24 @@ TOOLS: list[dict] = [
         },
     },
     {
+        "name": "make_deck",
+        "description": (
+            "Build a slide deck from this business's own numbers and return where "
+            "it can be opened. Use it whenever the owner asks for a deck, "
+            "presentation, case study or pitch. audience: review (for the owner) "
+            "| case-study (for a prospect) | investor | bank. brief is one line "
+            "saying what it should argue."),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "audience": {"type": "string",
+                             "enum": ["review", "case-study", "investor", "bank"]},
+                "brief": {"type": "string"},
+            },
+            "required": [],
+        },
+    },
+    {
         "name": "list_followups",
         "description": ("Who is worth contacting today: overdue payments and "
                         "regular customers who have gone quiet."),
@@ -488,7 +525,33 @@ How to reply:
 - If something in the answer is worth acting on, say what to do in one clause."""
 
 
-def _tools_for(client, book, ledger, org, quotes=None):
+#: The last deck brief per client, so /deck/view rebuilds exactly what was
+#: described rather than a generic one. In-process and small: a deck is cheap to
+#: rebuild and losing this on restart costs nothing.
+DECK_BRIEFS: dict[str, tuple[str, str]] = {}
+
+
+def build_deck(client, book, ledger, org, settings, brief: str = "",
+               audience: str = "review") -> dict:
+    """Make a deck and say where it is. Shared by the tool and the offline path."""
+    from . import decks, finance
+
+    facts = {**facts_for(client, book, ledger, org), **finance.facts(book, ledger)}
+    outline = decks.outline(brief, audience, client, facts, settings)
+    DECK_BRIEFS[client.slug] = (brief, audience)
+    return {
+        "made": True,
+        "title": outline.title,
+        "slides": len(outline.slides),
+        "headings": [s.heading for s in outline.slides],
+        "written_by": outline.label,
+        "open_at": f"/c/{client.slug}/deck/view",
+        "download_pptx": f"/c/{client.slug}/deck/pptx",
+        "download_pdf": f"/c/{client.slug}/deck/pdf",
+    }
+
+
+def _tools_for(client, book, ledger, org, quotes=None, settings=None):
     """Bind the tool names to real calls over this client's books."""
 
     def run(name: str, args: dict):
@@ -504,6 +567,10 @@ def _tools_for(client, book, ledger, org, quotes=None):
             return analysis.compare_windows(book, org, **args)
         if name == "financial_statements":
             return finance.facts(book, ledger, args.get("period", "all"))
+        if name == "make_deck":
+            return build_deck(client, book, ledger, org, settings,
+                              brief=args.get("brief", ""),
+                              audience=args.get("audience", "review"))
         if name == "list_followups":
             return followup.facts(client.slug, book, quotes)
         if name == "list_branches":
@@ -530,14 +597,36 @@ def investigate(question: str, client, book, settings, ledger=None, org=None,
                f"The owner asks: {question}")
 
     conversation = llm.run_tools(
-        context, settings, TOOLS, _tools_for(client, book, ledger, org, quotes),
+        context, settings, TOOLS,
+        _tools_for(client, book, ledger, org, quotes, settings),
         system=SYSTEM_TOOLS)
 
     if conversation.ok:
+        made = next((c for c in conversation.calls if c.name == "make_deck"), None)
         return Reply(True, text=conversation.text.strip(), source="claude",
-                     used=[c.name for c in conversation.calls])
+                     used=[c.name for c in conversation.calls],
+                     deck=f"/c/{client.slug}/deck/view" if made else "",
+                     deck_label="Written by Claude from your brief" if made else "")
 
     fallback = rules(question, facts(client, book, ledger, org, quotes))
+
+    # A deck asked for with no model available still gets built — from the same
+    # numbers, through the same renderer. What is lost is the argument being
+    # tailored, and the deck itself says so.
+    if not fallback.ok and fallback.error == "wants-deck":
+        audience = ("case-study" if _match(question, "case study") else
+                    "investor" if _match(question, "investor", "funding", "pitch") else
+                    "bank" if _match(question, "bank", "loan", "credit") else "review")
+        made = build_deck(client, book, ledger, org, settings,
+                          brief=question, audience=audience)
+        return Reply(
+            True, source="rules",
+            text=(f"Built \"{made['title']}\" — {made['slides']} slides: "
+                  + ", ".join(made["headings"][:4])
+                  + (f" and {made['slides'] - 4} more" if made["slides"] > 4 else "")
+                  + ". Open it below."),
+            deck=made["open_at"], deck_label=made["written_by"])
+
     if fallback.ok:
         return fallback
     return Reply(False, source="rules",
