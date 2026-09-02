@@ -345,6 +345,15 @@ def build(quiet: bool = False) -> tuple[str, str]:
                           branch=main_id if category not in {"Salary", "Tax"} else "")
     say(f"  expenses   {len(rows)} across {len({r[0] for r in rows})} heads")
 
+    # --- run the engine over the typed-in book, so the client dashboard exists
+    #
+    # Without this the seed leaves a workspace whose "See the dashboard" button
+    # opens nothing: the books path only writes a dashboard when somebody edits
+    # an entry through the UI, and the seed writes entries directly. The demo
+    # then fails on the one screen that is meant to be forwarded to the client.
+    _build_dashboard(slug, client)
+    say(f"  dashboard  generated from the book")
+
     # --- what the demo should now show
     b, ledger = books.load(slug), money.load(slug)
     from . import followup
@@ -371,6 +380,50 @@ def build(quiet: bool = False) -> tuple[str, str]:
         f"({sum(1 for f in queue if f.kind == 'payment')} overdue, "
         f"{sum(1 for f in queue if f.kind == 'dormant')} gone quiet)")
     return EMAIL, slug
+
+
+def _build_dashboard(slug: str, client) -> None:
+    """Put the book through the real engine and write the client dashboard.
+
+    Mirrors ``app._rebuild_from_book`` rather than importing it: pulling the web
+    app into the seeder would drag in FastAPI and every route just to render one
+    file, and the seeder has to work from a bare ``python -m`` with no server.
+    """
+    from datetime import datetime
+
+    from vyuha import pipeline
+
+    from . import channels
+
+    book = books.load(slug)
+    if not book.sales and not book.items:
+        return
+
+    workbook = books.to_workbook(book, store.upload_dir(slug) / "books.xlsx")
+    run_id = datetime.now().strftime("%Y%m%d-%H%M%S")
+    result = pipeline.run(workbook)
+    out = store.dashboard_dir(slug) / f"{run_id}.html"
+    pipeline.write_report(result, out, client=client.name)
+
+    ins = result.insights
+    run = store.Run(
+        id=run_id, filename="books.xlsx",
+        uploaded_at=datetime.now().isoformat(timespec="seconds"),
+        source_kind="manual", source_method="Typed in directly", confidence="high",
+        dashboard=f"{slug}/{run_id}.html",
+        sheets_read=[t.kind.title() for t in result.tables],
+        alerts=[{"code": a.code, "severity": a.severity, "title": a.title,
+                 "detail": a.detail, "entities": list(a.entities)}
+                for a in channels.ordered(ins)],
+        alert_count=len(ins.alerts),
+        critical_count=sum(1 for a in ins.alerts if a.severity == "critical"),
+        revenue=float(ins.sales.get("revenue") or 0),
+        stock_value=float(ins.stock.get("value") or 0),
+        outstanding=float(ins.receivables.get("total") or 0),
+    )
+    fresh = store.get_client(slug, client.owner_id)
+    fresh.runs = [run]
+    store.update_client(fresh)
 
 
 def main() -> None:
