@@ -376,6 +376,9 @@ def build(quiet: bool = False) -> tuple[str, str]:
         say(f"  selling    {top['name']} leads on Rs {top['revenue']:,.0f} "
             f"({top['pct_of_target']}% of target)" if top["pct_of_target"] is not None
             else f"  selling    {top['name']} leads on Rs {top['revenue']:,.0f}")
+    say("")
+    build_uploader(account, say)
+    say("")
     say(f"  to chase   {len(queue)} "
         f"({sum(1 for f in queue if f.kind == 'payment')} overdue, "
         f"{sum(1 for f in queue if f.kind == 'dormant')} gone quiet)")
@@ -426,12 +429,33 @@ def _build_dashboard(slug: str, client) -> None:
     store.update_client(fresh)
 
 
+#: The second demo business, and the reason it exists: Shree Agro keeps no
+#: files and types entries in, so its workspace has an entry form where the
+#: drop zone would be — there is nowhere to put the sample files. Half the
+#: market works the other way round, and the demo has to show both.
+UPLOADER = "Deshpande Trading Company"
+
+
+def build_uploader(account, say) -> str:
+    """A business that sends files, so demo/samples/ has somewhere to go."""
+    client = store.add_client(
+        account.id, name=UPLOADER, phone="919845000222",
+        contact="Anil Deshpande", email="deshpande@example.com",
+        industry="Building materials & hardware", trade="hardware",
+        data_mode="upload", dead_stock_days=90, low_cover_days=14,
+        address="Shop 3, Khanapur Road\nBelagavi 590006\nKarnataka",
+        gstin="29PQRST5678M1Z4", state="KA")
+    say(f"  workspace  {UPLOADER}  ->  /c/{client.slug}/data  (send it a file)")
+    return client.slug
+
+
 def main() -> None:
     print(f"\n  Seeding the demo workspace\n  {'-' * 46}")
     email, slug = build()
     print(f"\n  Start it:  .venv/Scripts/python -m vyuha_platform --open")
     print(f"  Log in:    {email} / {PASSWORD}")
-    print(f"  Console:   http://127.0.0.1:8000/c/{slug}/console\n")
+    print(f"  Typed in:  http://127.0.0.1:8000/c/{slug}/today")
+    print(f"  Send files to the second business, from demo/samples/\n")
 
 
 if __name__ == "__main__":

@@ -281,14 +281,20 @@ def test_saving_the_identity_does_not_change_invoices_already_sent():
     assert again.intra_state, "the issued invoice keeps the split it was raised with"
 
 
-def test_the_bills_panel_renders():
+def test_billing_lives_with_selling():
+    """Raising a bill follows a sale, so it is on the Sell screen — and the
+    identity that prints on it is setup, so that moved to Setup."""
     slug, c = _shop("Panel Traders")
     _raise(slug, [_sell(slug, "urea", 4, 320)])
     _sell(slug, "paddy", 2, 640)     # leave one unbilled, or the form is hidden
-    page = client.get(f"/c/{slug}/console?panel=bills").text
-    for probe in ('data-panel="bills"', "Raise an invoice", "Invoices raised",
-                  "What prints at the top"):
-        assert probe in page, probe
+
+    sell = client.get(f"/c/{slug}/sell").text
+    assert "Raise an invoice" in sell
+    assert "Invoices raised" in sell
+    assert "What prints on your bills" not in sell, "setup does not belong here"
+
+    setup = client.get(f"/c/{slug}/setup").text
+    assert "What prints on your bills" in setup
 
 
 def _cleanup() -> None:

@@ -180,7 +180,7 @@ def test_manual_books_flow_end_to_end():
     assert run.revenue == 20 * 450
     assert "Sales" in run.sheets_read and "Stock" in run.sheets_read
 
-    page = client.get(f"/c/{slug}?tab=books")
+    page = client.get(f"/c/{slug}/sell")
     assert page.status_code == 200
     assert "Record a sale" in page.text and "WHAT IS LEFT" in page.text
 
@@ -236,7 +236,7 @@ def test_credit_sale_becomes_a_receivable_the_engine_sees():
 def test_alerts_tab_offers_whatsapp_email_and_exports():
     slug = _onboard("Zeta Brief Co")
     _upload(slug, _sample_workbook())
-    resp = client.get(f"/c/{slug}?tab=alerts")
+    resp = client.get(f"/c/{slug}/today")
     assert resp.status_code == 200
     assert "wa.me/919876543210" in resp.text, "WhatsApp deep link missing"
     assert f"/c/{slug}/export/pdf" in resp.text
@@ -406,11 +406,14 @@ def test_cover_photo_upload_shows_on_the_workspace():
     (store.covers_dir() / f"{slug}.img").unlink(missing_ok=True)
 
 
-def test_workspace_shows_every_option_as_a_labelled_action():
+def test_the_workspace_navigates_by_job_not_by_feature():
+    """Six equal panels became four screens named after what somebody is doing."""
     slug = _onboard("Zeta Actions Co", mode="books", phone="")
     body = client.get(f"/c/{slug}").text
-    for label in ("Enter sales &amp; stock", "See the dashboard", "Send &amp; download", "Setup"):
-        assert label in body, f"missing action: {label}"
+    for label in (">Today", ">Sell", ">Stock", ">Money", "Setup"):
+        assert label in body, f"missing screen: {label}"
+    # Data belongs to a business that sends files; this one types entries.
+    assert f'href="/c/{slug}/data"' not in body
 
 
 # ---------------------------------------------------------- accounts & gate
@@ -749,7 +752,7 @@ def test_a_sale_captures_the_buyers_number_and_remembers_it():
     assert books.load(slug).customer_phones()["Ramu"] == "919876543210"
 
     # ...and the entry screen ships it to the browser so it can auto-fill.
-    page = client.get(f"/c/{slug}?tab=books").text
+    page = client.get(f"/c/{slug}/sell").text
     assert "919876543210" in page and "Their WhatsApp" in page
 
 
@@ -789,7 +792,7 @@ def test_the_send_button_offers_exactly_one_primary_action():
     """Two competing send buttons was the thing that read as messy."""
     slug = _onboard("Zeta OneClick Co")
     _upload(slug, _sample_workbook())
-    body = client.get(f"/c/{slug}?tab=alerts").text
+    body = client.get(f"/c/{slug}/today").text
 
     assert body.count("Send now to") + body.count("Open WhatsApp to send") == 1, \
         "the alerts tab offered more than one way to send"

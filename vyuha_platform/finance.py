@@ -396,8 +396,13 @@ def concentration(book, ledger, start: str = "", end: str = "", top: int = 8) ->
                         for k, v in supp.items()),
                        key=lambda r: r["amount"], reverse=True)
 
-    top_share = customers[0]["share"] if customers else 0.0
-    top3 = sum(c["share"] for c in customers[:3])
+    # The risk headline ignores walk-in trade: "48% of revenue is Cash sale"
+    # warns about losing a customer who does not exist. It stays in the list,
+    # because where the money comes from is still worth seeing.
+    WALK_IN = {"cash sale", "cash", "walk-in", "walkin", "counter sale", ""}
+    named = [c for c in customers if c["party"].strip().lower() not in WALK_IN]
+    top_share = named[0]["share"] if named else 0.0
+    top3 = sum(c["share"] for c in named[:3])
     return {
         "customers": customers[:top],
         "suppliers": suppliers[:top],

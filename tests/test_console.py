@@ -122,7 +122,7 @@ def test_bulk_reorder_save_updates_levels_and_makes_an_item_low():
 
 def test_the_stock_panel_names_what_needs_ordering():
     slug, _ = _shop("Ordering Traders")
-    page = client.get(f"/c/{slug}/console?panel=stock").text
+    page = client.get(f"/c/{slug}/stock").text
     assert "Needs ordering" in page
     assert "Gypsum 5kg" in page                      # 6 in stock against a level of 12
     assert "below reorder" in page
@@ -388,19 +388,65 @@ def test_one_branch_is_not_reported_as_a_multi_branch_business():
 
 # ================================================================== integration
 
-def test_the_console_renders_every_panel_in_one_document():
+def test_every_screen_has_its_own_address():
+    """One 141KB document toggled by JavaScript became five real pages."""
     slug, _ = _shop("Whole Page Traders")
-    page = client.get(f"/c/{slug}/console").text
-    for panel in ("stock", "ask", "followups", "money", "bills", "people"):
-        assert f'data-panel="{panel}"' in page, f"{panel} panel missing"
-    # Deck has no panel: you ask the agent for one and it hands back a link.
-    assert 'data-panel="deck"' not in page
-    assert page.count("<style>") >= 1
+    for view in ("today", "sell", "stock", "money", "setup"):
+        r = client.get(f"/c/{slug}/{view}")
+        assert r.status_code == 200, view
+        assert str(r.url).endswith(view), f"{view} redirected to {r.url}"
+
+    # An unknown screen lands on Today rather than 404ing at somebody.
+    assert str(client.get(f"/c/{slug}/nonsense").url).endswith("/today")
 
 
-def test_the_workspace_offers_the_console():
-    slug, _ = _shop("Entry Point Traders")
-    assert f"/c/{slug}/console" in client.get(f"/c/{slug}").text
+def test_the_workspace_root_opens_on_today():
+    """Not on a stock table, which was a guess about what somebody wanted."""
+    slug, _ = _shop("Root Traders")
+    page = client.get(f"/c/{slug}").text
+    assert "Good " in page, "the greeting should be there"
+    assert 'class="todo"' in page or "All clear" in page
+
+
+def test_the_second_nav_item_is_this_business_own_daily_job():
+    """A business that types entries has no Data screen and vice versa."""
+    slug, _ = _shop("Books Mode Traders")          # data_mode=books
+    page = client.get(f"/c/{slug}/today").text
+    assert f'href="/c/{slug}/sell"' in page
+    assert f'href="/c/{slug}/data"' not in page
+    # Asking for the wrong one lands on the right one, never on a dead end.
+    assert str(client.get(f"/c/{slug}/data").url).endswith("/sell")
+
+
+def test_the_question_box_is_on_every_screen():
+    """A panel has to be remembered; a box in front of you does not."""
+    slug, _ = _shop("Ask Everywhere Traders")
+    for view in ("today", "sell", "stock", "money", "setup"):
+        page = client.get(f"/c/{slug}/{view}").text
+        assert 'class="askform"' in page, view
+        assert f'action="/c/{slug}/ask"' in page, view
+
+
+def test_setup_is_off_the_daily_screens():
+    """Branches, staff, invoice details and reorder levels were sitting
+    permanently on screens used every day."""
+    setup = client.get(f"/c/{_shop('Setup Moved Traders')[0]}/setup").text
+    assert "Stock levels" in setup and "Your team" in setup
+    assert "What prints on your bills" in setup
+
+    slug, _ = _shop("Clean Stock Traders")
+    stock = client.get(f"/c/{slug}/stock").text
+    assert "Add branch" not in stock
+    assert "What prints on your bills" not in stock
+
+
+def test_the_findings_are_on_the_front_screen():
+    """They were each one click inside a different panel, so nobody found them."""
+    slug, _ = _shop("Findings Traders")
+    books.record_sale(slug, _sku(slug, "gypsum"), "Buyer", 6, 140)   # -> out of stock
+    page = client.get(f"/c/{slug}/today").text
+    assert "run out" in page or "about to run out" in page
+    assert 'class="td critical"' in page or 'class="td warning"' in page
 
 
 def test_another_account_cannot_reach_the_console():
@@ -410,7 +456,7 @@ def test_another_account_cannot_reach_the_console():
     client.post("/logout")
     _login(other.email, "another-password-1")
     try:
-        page = client.get(f"/c/{slug}/console").text
+        page = client.get(f"/c/{slug}/today").text
         # The property that matters is that no part of the console rendered.
         # Which page they land on instead depends on how far their own signup
         # got, so asserting on the console's absence is the durable check.
@@ -577,7 +623,7 @@ def test_the_financial_year_runs_april_to_march():
 
 def test_the_money_panel_renders_every_statement():
     slug, _ = _traded("Money Panel Traders")
-    page = client.get(f"/c/{slug}/console?panel=money").text
+    page = client.get(f"/c/{slug}/money").text
     for probe in ("Profit &amp; loss", "Cost of goods sold", "Cash flow",
                   "What you own and owe", "Owed to you, by age", "You owe, by age",
                   "Break-even", "Every cost head", "Partial, on purpose"):
@@ -804,7 +850,7 @@ def test_a_deck_request_is_not_mistaken_for_a_question_about_a_customer():
 def test_the_shelf_sorts_by_how_worried_to_be_not_alphabetically():
     """A stock screen exists to surface problems, not to be an index."""
     slug, _ = _shop("Shelf Order Traders")
-    page = client.get(f"/c/{slug}/console?panel=stock").text
+    page = client.get(f"/c/{slug}/stock").text
     out_at = page.index("Gypsum 5kg")          # 0 in stock
     fine_at = page.index("Rose Sapling")       # 25 in stock, level 0
     assert out_at < fine_at, "the out-of-stock item must come first"
@@ -817,7 +863,7 @@ def test_every_item_carries_a_state_a_filter_and_a_picture():
     # state logic at all.
     books.record_sale(slug, _sku(slug, "gypsum"), "Buyer", 6, 140)   # -> out
     books.record_sale(slug, _sku(slug, "urea"), "Buyer", 32, 320)    # -> low (8 of 10)
-    page = client.get(f"/c/{slug}/console?panel=stock").text
+    page = client.get(f"/c/{slug}/stock").text
     for cls in ('class="sk out"', 'class="sk low"', 'class="sk dead"'):
         assert cls in page, cls
     for f in ('data-filter="out"', 'data-filter="low"', 'data-filter="dead"'):
@@ -844,7 +890,7 @@ def test_days_of_cover_is_shown_because_a_bare_quantity_means_nothing():
 
 def test_the_reorder_marker_only_appears_when_a_level_is_set():
     slug, _ = _shop("Marker Traders")
-    page = client.get(f"/c/{slug}/console?panel=stock").text
+    page = client.get(f"/c/{slug}/stock").text
     # Rose Sapling has reorder_level 0 -- claiming a threshold it does not have
     # would be a lie drawn on a chart.
     assert page.count("Reorder at") >= 2

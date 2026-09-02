@@ -575,7 +575,7 @@ def layout(title: str, body: str, active: str = "", account=None,
     if tenant:
         # A shared-link guest has no business on the credentials page, so their
         # "Setup" points at their own details tab instead of the install's.
-        setup = (f"/c/{account.tenant_slug}?tab=settings"
+        setup = (f"/c/{account.tenant_slug}/setup"
                  if getattr(account, "is_guest", False) else "/settings")
         links = (nav("/", "My business", "clients")
                  + nav("/activity", "History", "activity")
@@ -817,13 +817,13 @@ def login(flash: str = "", flash_kind: str = "bad", email: str = "",
   <a href="/login?master=1">Vyuha staff — master login</a></div>""")
 
 
-def cover_hero(c, settings, stats: list[tuple[str, str]]) -> str:
+def cover_hero(c, settings, stats: list[tuple[str, str]] | None = None) -> str:
     """Full-bleed banner: their own photograph if they uploaded one, else the
     trade backdrop. Either way the first thing on screen is their business."""
     t = theme.trade(c.trade)
     bg = f"/c/{c.slug}/cover" if c.has_cover else t["backdrop"]
     tiles = "".join(f'<div><div class="k">{E(k)}</div><div class="v">{E(v)}</div></div>'
-                    for k, v in stats)
+                    for k, v in (stats or []))
     sub = " · ".join(x for x in [E(c.industry or t["label"]), E(c.contact), E(c.phone)] if x)
     return f"""<div class="cover" style="background-image:url('{bg}')">
   <form class="cover-edit" method="post" action="/c/{c.slug}/cover"
@@ -1750,224 +1750,9 @@ def _share_card(c, invite, fresh_pin: str) -> str:
   </div></div>"""
 
 
-def client_page(c, tab: str, settings, account, activity_entries, flash: str = "", flash_kind: str = "ok",
-                wa_text: str = "", wa_link: str = "", mail_link: str = "",
-                email_subject: str = "", email_body: str = "", book=None,
-                invite=None, fresh_pin: str = "",
-                viewing_as_master: bool = False) -> str:
-    last = c.latest
-    manual = c.data_mode == "books"
-    if manual and tab == "data":
-        tab = "books"
-    has_data = bool(last and last.status == "ok")
+# client_page lived here: an 85KB tabbed page with five sections, sixty-six
+# buttons and the sale form, rendering whatever ?tab= asked for. Every one of
+# those jobs now has its own screen and its own URL in console.py, so the whole
+# function went rather than being left to rot beside the thing that replaced it.
 
-    # Every option, spelled out, on screen. No hunting through tab labels.
-    entry = (("books", "✎", "Enter sales & stock", "Type in what sold and what came in")
-             if manual else
-             ("data", "⬆", "Add data", "Spreadsheet, PDF, or a photo of the page"))
-    items = [
-        (f"/c/{c.slug}?tab={entry[0]}", entry[1], entry[2], entry[3], tab == entry[0]),
-        (f"/c/{c.slug}?tab=dashboard", "▦", "See the dashboard",
-         "Charts and the full picture" if has_data else "Nothing to show yet",
-         tab == "dashboard"),
-        (f"/c/{c.slug}?tab=alerts", "➤", "Send & download",
-         f"{last.alert_count} alert(s) ready" if has_data else "Add data first",
-         tab == "alerts"),
-        (f"/c/{c.slug}/console", "◈", "Open the console",
-         "Stock, questions, follow-ups, money, decks and branches — one page",
-         False),
-        (f"/c/{c.slug}?tab=settings", "⚙", "Setup",
-         "Contact, photo, and when to warn you", tab == "settings"),
-    ]
-    tabs = actions(items)
 
-    stats: list[tuple[str, str]] = []
-    if has_data:
-        stats = [("Revenue", short(last.revenue)), ("Stock value", short(last.stock_value)),
-                 ("Outstanding", short(last.outstanding)),
-                 ("Alerts", str(last.alert_count))]
-    strip = ""
-
-    # ---- tab bodies
-    if tab == "books":
-        inner = books_tab(c, book) if book is not None else '<div class="muted">No book.</div>'
-
-    elif tab == "dashboard":
-        if last and last.status == "ok" and last.dashboard:
-            inner = f"""<div class="section-h" style="margin-top:0"><h2>CLIENT DASHBOARD</h2>
-  <div class="rule"></div><a class="btn ghost sm" href="/c/{c.slug}/dashboard" target="_blank">Full screen ↗</a></div>
-{_provenance(last)}
-<iframe class="frame" src="/c/{c.slug}/dashboard"></iframe>
-<div class="tiny" style="margin-top:12px">Self-contained — no scripts, no CDN, no remote images.
-  Forward it on WhatsApp and it opens on a phone with no internet.</div>"""
-        else:
-            inner = ('<div class="card empty"><div class="big">No dashboard yet</div>'
-                     '<div class="muted">Upload something on the Data tab first.</div></div>')
-
-    elif tab == "alerts":
-        alerts = last.alerts if (last and last.status == "ok") else []
-        blocks = ""
-        if alerts:
-            # Exactly one primary action, never two. Offering "Send
-            # automatically" and "Open in WhatsApp" side by side made the
-            # operator decide which one was the real button every single time.
-            if not c.phone:
-                action = ('<a class="btn" href="/c/' + c.slug + '?tab=settings">'
-                          'Add their WhatsApp number →</a>')
-                sub = "Alerts go to the number on their Details tab. There isn't one yet."
-            elif settings.whatsapp_live:
-                action = (f'<form method="post" action="/c/{c.slug}/whatsapp">'
-                          f'<input type="hidden" name="text" value="{E(wa_text)}">'
-                          f'<button class="btn primary" type="submit">'
-                          f'Send now to {E(c.name)} →</button></form>')
-                sub = f"Goes straight to +{E(c.phone)}. One click, no new tab."
-            else:
-                action = (f'<a class="btn wa" href="{wa_link}" target="_blank">'
-                          f'Open WhatsApp to send →</a>')
-                sub = ('No provider connected, so this opens WhatsApp with the brief typed out '
-                       'and you tap send. <a href="/settings">Connect one</a> to make it a '
-                       'single click from here.')
-
-            blocks += f"""<div class="card" style="margin-top:22px">
-  <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:14px">
-    <div style="max-width:48ch"><div style="font-size:16px;font-weight:800">WhatsApp brief</div>
-      <div class="tiny" style="margin-top:6px">{sub}</div></div>
-    <div>{action}</div></div>
-  <pre class="msg" style="margin-top:17px">{E(wa_text)}</pre>
-  <div class="tiny" style="margin-top:10px">{len(wa_text)} of 1024 characters</div></div>"""
-
-            send_btn = ('<button class="btn primary" type="submit">Send email</button>'
-                        if settings.email_live and c.email else
-                        f'<a class="btn ghost" href="{mail_link}">Open in mail app</a>'
-                        if c.email else
-                        '<span class="pill dim">Add an email on the Details tab</span>')
-            blocks += f"""<div class="card" style="margin-top:16px">
-  <div style="font-size:16px;font-weight:800;margin-bottom:14px">Email</div>
-  <form method="post" action="/c/{c.slug}/email">
-    <div class="field"><label>Subject</label>
-      <input name="subject" value="{E(email_subject)}"></div>
-    <div class="field"><label>Body</label>
-      <textarea name="body" rows="12">{E(email_body)}</textarea></div>
-    {send_btn}
-    <span class="tiny" style="margin-left:10px">The dashboard is attached automatically.</span>
-  </form></div>"""
-
-            blocks += f"""<div class="card" style="margin-top:16px">
-  <div style="font-size:16px;font-weight:800">Take it into a meeting</div>
-  <div class="muted" style="margin-top:7px">Same numbers, three formats.</div>
-  <div style="display:flex;gap:9px;margin-top:15px;flex-wrap:wrap">
-    <a class="btn" href="/c/{c.slug}/export/pdf">Download PDF</a>
-    <a class="btn" href="/c/{c.slug}/export/pptx">Download deck</a>
-    <a class="btn ghost" href="/c/{c.slug}/export/html">Download dashboard</a>
-  </div></div>"""
-
-        inner = (f'<div class="section-h" style="margin-top:0"><h2>WHAT NEEDS ATTENTION</h2>'
-                 f'<div class="rule"></div></div>{_alert_cards(alerts)}{blocks}')
-
-    elif tab == "settings":
-        # A shared-link guest is looking at their own business: they may edit
-        # their details, but sharing and deleting stay with the operator.
-        if account.is_guest:
-            owner_access = danger = ""
-        else:
-            owner_access = ('<div class="section-h"><h2>THE OWNER&#39;S OWN ACCESS</h2>'
-                            '<div class="rule"></div></div>'
-                            + _share_card(c, invite, fresh_pin))
-            danger = f"""<div class="section-h"><h2>DANGER</h2><div class="rule"></div></div>
-<div class="card"><div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:14px">
-  <div class="muted">Deletes the workspace, every uploaded file and every generated dashboard.</div>
-  <form method="post" action="/c/{c.slug}/delete"
-        onsubmit="return confirm('Delete {E(c.name)} and everything they sent?')">
-    <button class="btn danger" type="submit">Delete client</button></form>
-</div></div>"""
-
-        inner = f"""<div class="section-h" style="margin-top:0"><h2>DETAILS</h2><div class="rule"></div></div>
-<form method="post" action="/c/{c.slug}/contact" class="card">
-  <div class="two">
-    <div class="field"><label>Contact person</label>
-      <input name="contact" value="{E(c.contact)}" placeholder="Ramesh Shah"></div>
-    <div class="field"><label>Industry</label>
-      <input name="industry" value="{E(c.industry)}" placeholder="Industrial spares"></div>
-  </div>
-  <div class="two">
-    <div class="field"><label>WhatsApp number</label>
-      <input name="phone" value="{E(c.phone)}" inputmode="tel"></div>
-    <div class="field"><label>Email</label>
-      <input name="email" type="email" value="{E(c.email)}"></div>
-  </div>
-  <div class="two">
-    <div class="field"><label>Dead stock after (days)</label>
-      <input name="dead_stock_days" type="number" value="{c.dead_stock_days}" min="7" max="730">
-      <div class="tiny" style="margin-top:7px">A spares dealer holding slow stock on purpose
-        should not use an FMCG distributor's definition of dead.</div></div>
-    <div class="field"><label>Low cover under (days)</label>
-      <input name="low_cover_days" type="number" value="{c.low_cover_days}" min="1" max="120"></div>
-  </div>
-  <div class="field"><label>Look &amp; feel</label>
-    {trade_picker(c.trade)}
-    <div class="tiny" style="margin-top:10px">Sets the colours and the backdrop behind the name.
-      Use <b>Add a photo</b> at the top right of the banner to put a real picture up instead.</div></div>
-  <button class="btn primary" type="submit">Save</button>
-</form>
-{owner_access}
-<div class="section-h"><h2>THIS CLIENT'S TRAIL</h2><div class="rule"></div></div>
-<div class="card">{_trail(activity_entries) if activity_entries else '<div class="muted">Nothing yet.</div>'}</div>
-{danger}"""
-
-    else:  # data
-        rows = []
-        for r in c.runs:
-            when = r.uploaded_at.replace("T", " ")[:16]
-            if r.status == "ok":
-                state = f'<span class="pill {"crit" if r.critical_count else "ok"}">{r.alert_count} alert(s)</span>'
-                read = E(", ".join(r.sheets_read) or "—")
-            else:
-                state, read = '<span class="pill crit">failed</span>', E(r.error[:70])
-            how = ('<span class="pill dim">spreadsheet</span>' if r.source_kind == "native"
-                   else f'<span class="pill info">{E(r.source_kind)}</span>')
-            rows.append(f"""<tr><td class="mono tiny">{E(when)}</td>
-  <td style="color:var(--ink)">{E(r.filename)}</td><td>{how}</td>
-  <td>{read}</td><td>{state}</td></tr>""")
-        table = (f"""<table><thead><tr><th>When</th><th>File</th><th>How it was read</th>
-<th>Understood</th><th>Result</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"""
-                 if rows else
-                 '<div class="empty"><div class="big">Nothing uploaded yet</div>'
-                 '<div class="muted">Drop anything above — no template, no column mapping.</div></div>')
-
-        vision_note = ("" if settings.vision_live else
-                       '<div class="tiny" style="margin-top:10px;color:var(--warn)">'
-                       'Photos and scanned PDFs need a Claude API key — add one in Settings.</div>')
-        exts = " ".join(f"<span>{e}</span>" for e in sorted(sources.ACCEPTED))
-
-        inner = f"""{_provenance(last) if last and last.status == 'ok' else ''}
-<form method="post" action="/c/{c.slug}/upload" enctype="multipart/form-data">
-  <label class="drop" id="drop">
-    <input type="file" name="file" id="file" required
-           accept=".xlsx,.xlsm,.csv,.txt,.tsv,.pdf,.png,.jpg,.jpeg,.webp,.gif">
-    <div class="big">DROP ANYTHING THEY SEND YOU</div>
-    <div class="muted">A spreadsheet, a CSV, a PDF from their accountant, or a photo of a
-      handwritten register. Junk rows, merged cells and ₹ formats are expected.</div>
-    <div class="fmts">{exts}</div>
-    <div id="picked" class="tiny" style="margin-top:15px"></div>
-  </label>
-  <div style="margin-top:15px"><button class="btn primary" type="submit">Read this file →</button></div>
-  {vision_note}
-</form>
-<div class="section-h"><h2>HISTORY</h2><div class="rule"></div></div>
-<div class="card" style="padding:8px 10px">{table}</div>
-<script>
-  const d=document.getElementById('drop'),f=document.getElementById('file'),p=document.getElementById('picked');
-  f.addEventListener('change',()=>{{p.textContent=f.files[0]?'Selected: '+f.files[0].name:'';}});
-  ['dragenter','dragover'].forEach(e=>d.addEventListener(e,ev=>{{ev.preventDefault();d.classList.add('hot')}}));
-  ['dragleave','drop'].forEach(e=>d.addEventListener(e,ev=>{{ev.preventDefault();d.classList.remove('hot')}}));
-  d.addEventListener('drop',ev=>{{f.files=ev.dataTransfer.files;p.textContent='Selected: '+f.files[0].name;}});
-</script>"""
-
-    support = ('<div class="support-bar">Vyuha support view &mdash; you are inside a client&#39;s '
-               'workspace. Anything you change here is theirs, and this visit is recorded in '
-               'their activity trail. <a href="/master">Back to all workspaces</a></div>'
-               if viewing_as_master else "")
-
-    return layout(c.name, f"{support}{tabs}{_flash(flash, flash_kind)}{inner}",
-                  active="clients", account=account, trade_key=c.trade,
-                  full_bleed=cover_hero(c, settings, stats))
