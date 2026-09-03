@@ -1457,55 +1457,116 @@ def _money_out_form(c, org) -> str:
 
 def data_view(c, account, settings, activity_entries, *, reply=None,
               question: str = "", flash: str = "", flash_kind: str = "ok") -> str:
-    """The daily job for a business that sends files: drop one in."""
+    """Send files — as many as you like, or point at a folder.
+
+    One file at a time was the wrong shape for the job. A client's data arrives
+    as fourteen months of exports, and reading them one by one and keeping the
+    last reports whichever happened to be dropped last as the whole business.
+    """
     last = c.latest
-    runs = ""
-    if c.runs:
+
+    drop = f"""<div class="card">
+  <div style="font-size:16px;font-weight:700">Send files</div>
+  <div class="tiny" style="margin:7px 0 16px">Select as many as you like — they
+    are read together, not one at a time. Do not clean them up first.</div>
+  <form method="post" action="/c/{c.slug}/upload" enctype="multipart/form-data" id="uf">
+    <label class="drop" for="fi">
+      <div class="big">Drop files here</div>
+      <div class="muted">or click to choose — hold Ctrl or Shift to pick many</div>
+      <div class="fmts"><span>.xlsx</span><span>.csv</span><span>.txt</span>
+        <span>.pdf</span><span>.jpg</span><span>WhatsApp export</span></div>
+      <input type="file" name="file" id="fi" multiple
+             onchange="document.getElementById('picked').textContent =
+                       this.files.length + ' file(s) chosen';
+                       document.getElementById('go').hidden = false">
+    </label>
+    <div class="row" style="justify-content:space-between;margin-top:14px;
+                            flex-wrap:wrap;gap:12px">
+      <span class="tiny" id="picked">Nothing chosen yet</span>
+      <button class="btn primary" type="submit" id="go" hidden>Read them</button>
+    </div>
+  </form></div>"""
+
+    folder = "" if account.is_guest else f"""<div class="card" style="margin-top:16px">
+  <div style="font-size:16px;font-weight:700">Or read a folder already on this machine</div>
+  <div class="tiny" style="margin:7px 0 15px">Nobody wants to select ninety files
+    in a dialog. Nothing is moved or changed — the folder is read where it sits.</div>
+  <form method="post" action="/c/{c.slug}/folder">
+    <div class="field"><input name="path" placeholder="C:\\Users\\you\\Desktop\\client files"
+      autocomplete="off"></div>
+    <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:12px">
+      <label class="chk"><input type="checkbox" name="recursive" value="1" checked>
+        Include sub-folders</label>
+      <button class="btn" type="submit">Read the folder</button></div>
+  </form></div>"""
+
+    # --- what happened last time, file by file
+    read = ""
+    if last:
+        if last.status == "ok":
+            rows = "".join(
+                f'<div class="chase"><div><div class="who">{E(n)}</div>'
+                f'<div class="why">{E(n2)}</div></div></div>'
+                for n, n2 in [(x.split(":", 1)[0], x.split(":", 1)[1].strip())
+                              for x in last.source_notes if ":" in x][:10])
+            plain = "".join(f'<div class="tiny" style="margin-top:7px">· {E(x)}</div>'
+                            for x in last.source_notes if ":" not in x)
+            skipped = ""
+            if last.sheets_skipped:
+                skipped = (f'<div class="tiny" style="margin-top:14px">'
+                           f'Could not read: {E(", ".join(last.sheets_skipped[:8]))}'
+                           + (f" and {len(last.sheets_skipped) - 8} more"
+                              if len(last.sheets_skipped) > 8 else "") + "</div>")
+            read = f"""<div class="card" style="margin-top:16px">
+  <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:12px">
+    <div><div style="font-size:16px;font-weight:700">What Vyuha read</div>
+      <div class="tiny" style="margin-top:6px">{E(last.filename)} ·
+        {E(", ".join(last.sheets_read) or "nothing named")} ·
+        {last.alert_count} alert(s)</div></div>
+    <div class="row" style="gap:9px">
+      <a class="btn sm primary" href="/c/{c.slug}/dashboard" target="_blank"
+         rel="noopener">Open the dashboard</a>
+      <a class="btn sm ghost" href="/c/{c.slug}/export/pdf">PDF</a></div></div>
+  {plain}{rows}{skipped}
+  <div class="grid g4" style="margin-top:18px;gap:10px">
+    <div><div class="tiny">REVENUE</div><div style="font-weight:700;margin-top:3px">
+      {short(last.revenue)}</div></div>
+    <div><div class="tiny">STOCK</div><div style="font-weight:700;margin-top:3px">
+      {short(last.stock_value)}</div></div>
+    <div><div class="tiny">OUTSTANDING</div><div style="font-weight:700;margin-top:3px">
+      {short(last.outstanding)}</div></div>
+    <div><div class="tiny">CONFIDENCE</div><div style="font-weight:700;margin-top:3px">
+      {E(last.confidence)}</div></div></div></div>"""
+        else:
+            read = (f'<div class="card" style="margin-top:16px;'
+                    f'border-color:rgba(240,90,98,.32)">'
+                    f'<div style="font-size:16px;font-weight:700">'
+                    f'That did not read</div>'
+                    f'<div class="muted" style="margin-top:8px">{E(last.error)}</div>'
+                    + "".join(f'<div class="tiny" style="margin-top:7px">· {E(n)}</div>'
+                              for n in last.source_notes[:8]) + "</div>")
+
+    # --- history
+    history = ""
+    if len(c.runs) > 1:
         rows = "".join(
             f'<div class="chase"><div><div class="who">{E(r.filename)}</div>'
             f'<div class="why">{E(r.uploaded_at[:16].replace("T", " "))} · '
-            f'{E(r.source_method or r.source_kind)}'
-            f'{" · " + str(r.alert_count) + " alert(s)" if r.status == "ok" else ""}'
-            f'</div></div><div class="act">'
-            + (f'<span class="pill {"ok" if r.confidence == "high" else "warn"}">'
-               f'{E(r.confidence)} confidence</span>' if r.status == "ok"
-               else '<span class="pill crit">failed</span>')
-            + "</div></div>" for r in c.runs[:8])
-        runs = (f'<div class="section-h"><h2>WHAT YOU HAVE SENT</h2>'
-                f'<div class="rule"></div></div><div class="card">{rows}</div>')
+            f'{E(", ".join(r.sheets_read) or "—")}</div></div>'
+            f'<div class="act"><span class="pill '
+            f'{"ok" if r.status == "ok" else "crit"}">'
+            f'{E(r.confidence if r.status == "ok" else "failed")}</span></div></div>'
+            for r in c.runs[1:9])
+        history = (f'<div class="section-h"><h2>EARLIER</h2><div class="rule"></div>'
+                   f'</div><div class="card">{rows}</div>')
 
-    drop = f"""<div class="card">
-  <div style="font-size:16px;font-weight:700">Send a file</div>
-  <div class="tiny" style="margin:7px 0 16px">Do not clean it up first — that is
-    the point. Excel, CSV, a Tally export, a PDF, or a photo of the register.</div>
-  <form method="post" action="/c/{c.slug}/upload" enctype="multipart/form-data" id="uf">
-    <label class="drop" for="fi">
-      <div class="big">Drop it here</div>
-      <div class="muted">or click to choose</div>
-      <div class="fmts"><span>.xlsx</span><span>.csv</span><span>.txt</span>
-        <span>.pdf</span><span>.jpg</span><span>WhatsApp export</span></div>
-      <input type="file" name="file" id="fi"
-             onchange="document.getElementById('uf').submit()">
-    </label>
-  </form></div>"""
-
-    read = ""
-    if last and last.status == "ok":
-        read = (f'<div class="card" style="margin-top:16px">'
-                f'<div style="font-size:16px;font-weight:700">What Vyuha read</div>'
-                f'<div class="tiny" style="margin:8px 0 4px">'
-                f'{E(last.source_method or "Read directly")} · '
-                f'{E(", ".join(last.sheets_read) or "no sheets named")}</div>'
-                + "".join(f'<div class="muted" style="margin-top:8px">· {E(n)}</div>'
-                          for n in last.source_notes[:5])
-                + f'<div class="row" style="margin-top:16px;gap:9px">'
-                  f'<a class="btn sm primary" href="/c/{c.slug}/dashboard" '
-                  f'target="_blank" rel="noopener">Open the dashboard</a>'
-                  f'<a class="btn sm ghost" href="/c/{c.slug}/export/pdf">PDF</a>'
-                  f'</div></div>')
+    how = """<div class="note-line" style="margin-top:20px">Files are reconciled,
+      not stacked. Sales from different months add up; a stock count is a
+      snapshot, so the newest file wins rather than being added to the last one;
+      and a row appearing in two overlapping exports is counted once.</div>"""
 
     return shell(c, account, "data",
-                 _answer_block(c, reply) + drop + read + runs,
+                 _answer_block(c, reply) + drop + folder + read + history + how,
                  counts={"data": len(c.runs)},
                  question=question, flash=flash, flash_kind=flash_kind)
 

@@ -273,6 +273,13 @@ def _from_chat(source: Path, workdir: Path, settings,
         return None
 
     extract = intake.parse_chat(text, item_names or [], settings)
+    if extract.ok and not extract.orders and not extract.payments:
+        # A header-only CSV reaches the engine as "no usable rows" and reports a
+        # parse failure about a file that parsed fine. Say the real thing.
+        return Extraction(False, "whatsapp",
+                          error=f"Read {extract.messages} message(s) from the "
+                                f"thread but found nothing to record.",
+                          needs_action="Orders need a quantity written as a number.")
     if not extract.ok:
         return Extraction(False, "whatsapp", error=extract.error,
                           needs_action=extract.needs_action)

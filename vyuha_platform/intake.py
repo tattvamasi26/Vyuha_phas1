@@ -165,6 +165,44 @@ def _iso(when: str) -> str:
 
 # ------------------------------------------------------------- the pattern path
 
+#: Words that sit next to a quantity but are not the thing being bought.
+_NOT_AN_ITEM = {
+    "bag", "bags", "pkt", "pkts", "packet", "packets", "piece", "pieces", "pcs",
+    "nos", "no", "kg", "kgs", "litre", "litres", "ltr", "box", "boxes", "tin",
+    "tins", "can", "cans", "unit", "units", "coil", "coils", "and", "the", "of",
+    "for", "with", "please", "sir", "madam", "urgent", "beku", "send", "need",
+    "want", "give", "order", "supply", "deliver", "chahiye", "bhejo", "hold",
+    "book", "arrange", "today", "tomorrow", "morning", "evening", "next", "week",
+}
+
+
+def _free_text_item(chunk: str, qty_end: int) -> str:
+    """The words after a quantity, when there is no catalogue to match against.
+
+    A client who sends files has no item list in Vyuha — and is exactly the
+    client most likely to forward a chat export. Refusing to read one because we
+    cannot tick the product off a list would be reading nothing at all. So the
+    words following the number become the item, and the row is marked low
+    confidence because a name lifted from a sentence is a guess.
+    """
+    tail = chunk[qty_end:].strip(" ,.-–—:")
+    words = []
+    for raw in tail.split():
+        word = raw.strip(" ,.-–—:?!").lower()
+        if not word:
+            continue
+        if word in _NOT_AN_ITEM:
+            if words:                 # a trailing unit ends the name
+                break
+            continue                  # a leading unit is skipped
+        if not any(ch.isalpha() for ch in word):
+            break
+        words.append(raw.strip(" ,.-–—:?!"))
+        if len(words) >= 4:
+            break
+    return " ".join(words).strip()
+
+
 def _match_item(text: str, names: list[str]) -> tuple[str, int] | None:
     """Find the client's own item in a message, longest name first.
 
@@ -230,19 +268,27 @@ def by_patterns(lines: list[ChatLine], item_names: list[str],
 
         # A message can carry more than one line: "20 bags urea and 5 gypsum".
         for chunk in re.split(r"\band\b|,|\+", line.text, flags=re.IGNORECASE):
-            found = _match_item(chunk, item_names)
-            if found is None:
-                continue
             qty_match = _QTY.search(chunk)
             if qty_match is None:
                 continue
             qty = float(qty_match.group(1))
             if qty <= 0 or qty > 10000:
                 continue
+
+            found = _match_item(chunk, item_names)
+            if found is not None:
+                item, confidence = found[0], "medium"
+            else:
+                # No catalogue, or nothing in it matched. Take the words after
+                # the number rather than dropping the order on the floor.
+                item = _free_text_item(chunk, qty_match.end())
+                confidence = "low"
+                if len(item) < 3:
+                    continue
             drafts.append(Draft(
-                kind="order", party=line.sender, item=found[0], qty=qty,
+                kind="order", party=line.sender, item=item, qty=qty,
                 unit=(qty_match.group(2) or "").lower(), when=when,
-                confidence="medium", evidence=line.text))
+                confidence=confidence, evidence=line.text))
 
     # A thread restates an order as it is confirmed -- "20 bags urea beku", then
     # "ok send 20 bags urea and 5 gypsum". Counting both doubles it, and a
@@ -359,9 +405,15 @@ def parse_chat(text: str, item_names: list[str], settings,
             method="Read by matching your item names — Claude was not available",
             error=why)
 
-    return ChatExtract(False, messages=len(lines),
-                       error=why or "No orders or payments were found in that thread.",
-                       needs_action="Check the items mentioned are in your stock list.")
+    # The honest reason is that the thread had nothing in it, not that Claude
+    # was unavailable. Leading with the model's error blames the wrong thing and
+    # sends somebody to check an API key over a chat about the weather.
+    reason = f"Read {len(lines)} message(s) but found no orders or payments in them."
+    if why:
+        reason += f" (Claude was not available either: {why})"
+    return ChatExtract(False, messages=len(lines), error=reason,
+                       needs_action="If this thread does contain orders, check the "
+                                    "quantities are written as numbers.")
 
 
 def to_csv(extract: ChatExtract, out: Path, rates: dict[str, float] | None = None) -> Path:

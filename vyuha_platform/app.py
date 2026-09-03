@@ -27,11 +27,11 @@ from fastapi import Depends, FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from vyuha import analyze, pipeline
+from vyuha import analyze, pipeline, report
 
 from . import (agent, auth, books, channels, config, console, deck_render, decks,
-               exports, finance, followup, invoice, invoice_render, ledger, money,
-               people, sources, store, theme, ui, whatsapp)
+               exports, finance, followup, invoice, invoice_render, ledger, library,
+               money, people, sources, store, theme, ui, whatsapp)
 
 app = FastAPI(title="Vyuha Operations Platform", docs_url=None, redoc_url=None)
 
@@ -715,83 +715,144 @@ def _reload_insights(client: store.Client, run: store.Run, settings):
         return None
 
 
-@app.post("/c/{slug}/upload")
-def upload(slug: str, file: UploadFile = File(...), account: auth.Account = Depends(_acct)):
-    client = _client_for(account, slug)
-    if client is None:
-        return _redirect("/?m=That+client+no+longer+exists.&k=bad")
+def _ingest(client: store.Client, paths: list[Path], label: str) -> tuple[store.Run, str]:
+    """Read a pile of files as one dataset and write one run.
 
+    Everything goes through ``library.batch``, which reconciles them: sales
+    accumulate, stock is a snapshot where the newest wins, duplicates are
+    dropped before anything is summed. Reading them one at a time and keeping
+    the last — which is what this route used to do — reported whichever file
+    happened to be dropped last as though it were the whole business.
+    """
     settings = config.load()
-    name = Path(file.filename or "upload").name
-    target = store.upload_dir(slug) / name
-    with target.open("wb") as fh:
-        shutil.copyfileobj(file.file, fh)
+    catalogue = books.load(client.slug).items
+    workdir = store.upload_dir(client.slug)
 
-    size = target.stat().st_size
-    ledger.log("source.received", f"{name} received", client=client,
-               channel="upload", bytes=size, file_kind=sources.classify(name))
-
-    # Anything that is not a spreadsheet is converted to one first.
-    # The catalogue lets a WhatsApp export be matched against the products this
-    # client actually sells. Every other file type ignores it.
-    catalogue = books.load(slug).items
-    item_names = [i.name for i in catalogue]
-    rates = {i.name: i.rate for i in catalogue}
-    extraction = sources.prepare(target, store.upload_dir(slug), settings,
-                                 item_names, rates)
-    if not extraction.ok:
-        ledger.log("source.rejected", f"{name}: {extraction.error}", client=client,
-                   channel="upload", needs_action=extraction.needs_action)
-        detail = extraction.error + (" " + extraction.needs_action if extraction.needs_action else "")
-        return _redirect(f"/c/{slug}?m={_msg(detail)}&k=bad")
-
-    if extraction.kind != "native":
-        ledger.log("source.converted", f"{name} — {extraction.method}", client=client,
-                   channel=extraction.kind, confidence=extraction.confidence,
-                   notes=extraction.notes)
+    with _thresholds(client):
+        result = library.batch(
+            paths, workdir, settings,
+            item_names=[i.name for i in catalogue],
+            rates={i.name: i.rate for i in catalogue},
+            label=label)
 
     run_id = datetime.now().strftime("%Y%m%d-%H%M%S")
-    run = store.Run(id=run_id, filename=name,
-                    uploaded_at=datetime.now().isoformat(timespec="seconds"),
-                    source_kind=extraction.kind, source_method=extraction.method,
-                    confidence=extraction.confidence, source_notes=list(extraction.notes),
-                    converted=extraction.path.name if extraction.path else "")
+    ins = result.insights
+    first_ok = next((f for f in result.files if f.ok), None)
 
-    try:
-        with _thresholds(client):
-            result = pipeline.run(extraction.path)
-            out = store.dashboard_dir(slug) / f"{run_id}.html"
-            pipeline.write_report(result, out, client=client.name)
+    run = store.Run(
+        id=run_id,
+        filename=(label if len(paths) != 1 else paths[0].name),
+        uploaded_at=datetime.now().isoformat(timespec="seconds"),
+        source_kind=(first_ok.kind if first_ok else "native"),
+        source_method=(first_ok.method if first_ok else ""),
+        confidence=("high" if result.rejected == 0 else "medium"),
+        source_notes=list(result.notes) + [
+            f"{f.name}: {f.error}" for f in result.files if not f.ok][:12],
+        sheets_read=sorted({t.kind.title() for t in result.tables}),
+        sheets_skipped=[f.name for f in result.files if not f.ok][:12],
+    )
 
-        ins = result.insights
-        run.dashboard = f"{slug}/{run_id}.html"
-        run.sheets_read = [t.kind.title() for t in result.tables]
-        run.sheets_skipped = [n for n, _ in result.skipped]
-        run.alerts = [{"code": a.code, "severity": a.severity, "title": a.title,
-                       "detail": a.detail, "entities": list(a.entities)}
-                      for a in channels.ordered(ins)]
-        run.alert_count = len(ins.alerts)
-        run.critical_count = sum(1 for a in ins.alerts if a.severity == "critical")
-        run.revenue = float(ins.sales.get("revenue") or 0)
-        run.stock_value = float(ins.stock.get("value") or 0)
-        run.outstanding = float(ins.receivables.get("total") or 0)
+    if not result.tables:
+        # No run. A run is a record of data, and nothing was read — leaving a
+        # failed run behind would put an empty dashboard at the top of the
+        # history and make the workspace look like it holds numbers it does not.
+        # The rejection reaches the operator through the flash and the ledger.
+        why = ("Nothing readable in "
+               + ("that file." if len(paths) == 1 else f"any of {len(paths)} files."))
+        detail = next((f"{f.name}: {f.error}"
+                       + (f" {f.needs_action}" if f.needs_action else "")
+                       for f in result.files if not f.ok), "")
+        ledger.log("source.rejected", detail or why, client=client, channel="upload")
+        run.status = "failed"
+        run.error = why
+        return run, (detail or why)
 
-        ledger.log("run.completed",
-                   f"{name}: understood {', '.join(run.sheets_read) or 'no sheets'}",
-                   client=client, channel=extraction.kind, alerts=run.alert_count)
-        if run.alert_count:
-            ledger.log("alert.raised", f"{run.alert_count} alert(s) from {name}",
-                       client=client, critical=run.critical_count)
-        msg, kind = f"Read {name}. {run.alert_count} alert(s) raised.", "ok"
-    except Exception as exc:                       # noqa: BLE001 — surface, never crash the page
-        run.status, run.error = "failed", f"{type(exc).__name__}: {exc}"
-        traceback.print_exc()
-        ledger.log("run.failed", f"{name}: {run.error}", client=client)
-        msg, kind = f"Could not read {name}. {run.error[:110]}", "bad"
+    out = store.dashboard_dir(client.slug) / f"{run_id}.html"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(report.render(ins, client=client.name), encoding="utf-8")
 
-    store.add_run(slug, client.owner_id, run)
-    tab = "alerts" if run.status == "ok" and run.alert_count else "data"
-    return _redirect(f"/c/{slug}/{_AFTER.get(tab, 'data')}?m={_msg(msg)}&k={kind}")
+    run.dashboard = f"{client.slug}/{run_id}.html"
+    run.alerts = [{"code": a.code, "severity": a.severity, "title": a.title,
+                   "detail": a.detail, "entities": list(a.entities)}
+                  for a in channels.ordered(ins)]
+    run.alert_count = len(ins.alerts)
+    run.critical_count = sum(1 for a in ins.alerts if a.severity == "critical")
+    run.revenue = float(ins.sales.get("revenue") or 0)
+    run.stock_value = float(ins.stock.get("value") or 0)
+    run.outstanding = float(ins.receivables.get("total") or 0)
+    store.add_run(client.slug, client.owner_id, run)
+
+    ledger.log("run.completed",
+               f"{result.read} of {len(result.files)} file(s) read — "
+               f"{result.rows:,} row(s)", client=client, channel="upload",
+               duplicates=result.duplicates_dropped, alerts=run.alert_count)
+
+    note = (f"Read {result.read} of {len(result.files)} file(s), "
+            f"{result.rows:,} row(s).")
+    if result.duplicates_dropped:
+        note += f" {result.duplicates_dropped} duplicate row(s) counted once."
+    if result.rejected:
+        note += f" {result.rejected} could not be read — see below."
+    return run, note
+
+
+@app.post("/c/{slug}/upload")
+async def upload(slug: str, request: Request, account: auth.Account = Depends(_acct)):
+    """Take as many files as somebody selected, and read them together.
+
+    Declared with the raw form rather than ``List[UploadFile]`` so a browser
+    that posts a single file and one that posts ninety both arrive the same way.
+    """
+    client, bail = _console_client(account, slug)
+    if bail is not None:
+        return bail
+
+    form = await request.form()
+    uploads = [u for u in form.getlist("file") if getattr(u, "filename", "")]
+    if not uploads:
+        return _console_back(slug, "data", "Pick at least one file.")
+
+    folder = store.upload_dir(slug)
+    folder.mkdir(parents=True, exist_ok=True)
+    saved: list[Path] = []
+    for upload_file in uploads:
+        name = Path(upload_file.filename or "upload").name
+        target = folder / name
+        with target.open("wb") as fh:
+            shutil.copyfileobj(upload_file.file, fh)
+        saved.append(target)
+
+    ledger.log("source.received", f"{len(saved)} file(s) received", client=client,
+               channel="upload", files=[p.name for p in saved][:20])
+    _run, note = _ingest(client, saved,
+                         label=(saved[0].name if len(saved) == 1
+                                else f"{len(saved)} files"))
+    return _console_back(slug, "data", note)
+
+
+@app.post("/c/{slug}/folder")
+def read_folder(slug: str, path: str = Form(""), recursive: str = Form("1"),
+                account: auth.Account = Depends(_acct)):
+    """Read a folder already on this machine.
+
+    The honest answer to "the data is already on my computer" — nobody wants to
+    select ninety files in a dialog. Only reachable by a signed-in operator, and
+    it reads rather than copies, so nothing is moved out from under them.
+    """
+    client, bail = _console_client(account, slug)
+    if bail is not None:
+        return bail
+    if account.is_guest:
+        return _console_back(slug, "data", "Shared links cannot read folders.")
+
+    found, notes = library.scan(Path(path.strip()), recursive=bool(recursive))
+    if not found:
+        return _console_back(slug, "data", " ".join(notes) or "Nothing readable there.")
+
+    ledger.log("source.received", f"Folder read: {len(found)} file(s) from {path}",
+               client=client, channel="folder")
+    _run, note = _ingest(client, found, label=f"{len(found)} files from {Path(path).name}")
+    return _console_back(slug, "data", " ".join(notes + [note]))
 
 
 @app.get("/c/{slug}/dashboard")
