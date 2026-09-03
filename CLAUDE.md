@@ -30,7 +30,9 @@ python -m venv .venv
 .venv/Scripts/python -m tests.test_console      # 41 console tests, runs VYUHA_LLM=offline
 .venv/Scripts/python -m tests.test_intake       # 23 intake tests, over the demo corpus
 .venv/Scripts/python -m tests.test_invoice      # 19 invoice tests: tax, numbering, document
-.venv/Scripts/python demo/make_samples.py       # regenerate the nine messy sample files
+.venv/Scripts/python demo/make_samples.py       # the nine messy sample files
+.venv/Scripts/python demo/make_samples.py --bulk 100   # 103 files over 14 months
+.venv/Scripts/python -m vyuha_platform seed     # both demo businesses
 
 .venv/Scripts/python -m vyuha_platform --open   # the web platform on :8000
 .venv/Scripts/python -m vyuha_platform seed     # rebuild the demo workspace, then exit
@@ -88,15 +90,16 @@ but **not yet declared in `pyproject.toml`**.
   link, not an API call** — it opens WhatsApp with the brief pre-typed and the founder taps send,
   so there is no Meta Business account, no BSP and no template pre-approval. Swapping in the
   Cloud API later means adding a sender here; the renderers do not change.
-- **`ui.py`** — hand-rolled HTML strings (same choice as `report.py`). Dark, glass-card styling.
-  Unlike the client dashboard this **may** use a webfont CDN, since it is served over localhost;
-  the embedded dashboard is still strictly self-contained and a test enforces that.
-  The workspace shell is `cover_hero()` + `actions()`, **not** a tab strip: a full-bleed banner
-  carrying the client's own photo (or their trade backdrop) with the live numbers over a scrim,
-  then every option as a large labelled card stating what it does *and its current state*
-  ("Send & download — 4 alerts ready"). `?tab=` still drives which body renders; the change is
-  that nothing is hidden behind an unlabelled tab. `layout()` swaps the nav and the wordmark by
-  install type — a tenant sees their own business name over "powered by Vyuha".
+- **`ui.py`** — hand-rolled HTML strings (same choice as `report.py`). Dark styling.
+  Unlike the client dashboard this **may** use a webfont CDN, since it is served over
+  localhost; the embedded dashboard is still strictly self-contained and a test
+  enforces that. `layout()` swaps the nav by account kind, and that nav is now
+  deliberately short: an operator gets **Businesses / Settings**, a tenant gets
+  **none at all**. Onboarding left the bar because it is a service Vyuha performs
+  rather than a screen a client drives; Activity left because "where did this
+  number come from" is a question about one business and now lives inside one.
+  `client_page` — an 85KB tabbed page with sixty-six buttons — was deleted outright
+  when `console.py` took over every job it did.
 - **`sources.py`** — everything that is not a spreadsheet is *converted to a CSV first* and then
   handed to the unchanged pipeline: `.txt`/`.tsv` by delimiter sniffing, `.pdf` via its own text
   layer, and images plus scanned PDFs via **Claude vision** (`claude-opus-5`, base64 image /
@@ -192,9 +195,62 @@ but **not yet declared in `pyproject.toml`**.
   to today make it **deterministic** — the same command on two machines gives
   the same numbers, and re-running it after a messy rehearsal puts it back.
   Idempotent: it wipes the account's workspaces first. Never demo off live data.
+- **`console.py`** — **the workspace: four screens plus a gear**, each on its own
+  URL. It replaced a console of six equal panels that had no opinion about which
+  mattered, opened on a stock table because that was built first, and carried
+  setup forms on every screen used daily.
+  * **`today`** is the landing and is a *ranked list of decisions*, not tiles.
+    `today.py` computes them — severity gates the order and money ranks within it,
+    because sorting on money alone put customer-mix above an empty shelf.
+  * **The second item is that business's own daily job** — `sell` for one that
+    types entries, `data` for one that sends files. Asking for the wrong one
+    redirects to the right one.
+  * **`stock`**, **`money`**, and **`setup`** behind the gear.
+  * **Ask is the bar in the header of every screen**, and its answer returns on
+    the screen it was asked from. A panel has to be remembered; a box in front of
+    somebody does not.
+  Each view renders on its own request. The previous build put all six panels in
+  one 141KB document and toggled them with JavaScript — instant to switch and
+  slow at everything else, which is the wrong trade once a screen has content.
+- **`today.py`** — what needs a decision, ranked by what it costs to ignore. Every
+  finding was already being computed and was sitting one click inside a different
+  panel, which is why nobody found any of them. A business that sends files has an
+  empty `Book` by definition, so its findings come from the last `Run`'s alerts
+  instead — reading only the book is why an uploaded file used to leave Today
+  saying "nothing to read yet" immediately after successfully reading one.
+- **`finance.py`** — the statements a CA prepares: P&L, cash flow, a working
+  balance sheet, both ageing schedules, eight ratios, concentration, monthly trend,
+  cost heads as a share of turnover, break-even. Accrual and cash are reported
+  side by side and never blended, and `balance_sheet()` **declares what it cannot
+  see** rather than omitting it. The Money screen shows four headline numbers and
+  then *one* section you pick — eleven statements at once is a filing cabinet
+  tipped onto the floor.
+- **`analysis.py`** — one general `query_sales` (group by any dimension, filter on
+  any combination, measure revenue/qty/margin/bills) plus stock, customer, item and
+  period-comparison queries. This is what the agent calls; nothing here touches a
+  model, so a wrong answer is an arithmetic bug rather than a prompt.
+- **`invoice.py` / `invoice_render.py`** — real tax invoices: per-line GST,
+  CGST+SGST within a state against IGST across one (frozen at issue), HSN, amount
+  in words, and **numbering per financial year that is never reused**. Rendering is
+  split from arithmetic so a template change cannot alter a total.
+- **`deck_render.py`** — a 16:9 presentation with slide *kinds*: a figure takes the
+  whole screen, a trend gets an SVG chart drawn from `finance.py`'s own series, a
+  comparison gets two columns. Bullets are the fallback, not the default, which is
+  what made the first version text on a rectangle. There is no Deck screen — you
+  ask the agent for one.
+- **`people.py`** — branches, staff, targets and commission, a daily register where
+  an unmarked day is a forgotten register rather than unpaid leave, and stock
+  transfers that move location without touching revenue.
+- **`atomic.py`** — every JSON write goes through it. `write_text` truncates then
+  writes, so a browser tab open beside a test run corrupted the client registry and
+  blanked every private screen. Temp-then-`os.replace` under a lock, retried through
+  the transient Windows locks OneDrive's sync client takes.
 - **`app.py`** — routes: `/` (landing when signed out, portfolio when signed in),
   `GET|POST /signup`, `GET|POST /login`, `POST /logout`, `POST /install`, `/onboard`, `/setup`,
-  `/settings`, `/activity`, `/c/{slug}?tab=data|books|dashboard|alerts|settings`,
+  `/settings`, `/activity`, `/c/{slug}` and
+  `/c/{slug}/{today|sell|data|stock|money|setup}` (declared **last**, since
+  FastAPI matches in definition order and a path parameter that broad would
+  otherwise swallow `/dashboard`, `/cover`, `/deck/view` and every export),
   `POST /c/{slug}/upload`, `POST /c/{slug}/book/item|sale`,
   `/c/{slug}/export/{pdf|pptx|html}`, `POST /c/{slug}/email|whatsapp|delete`,
   and the console block (`# ---- vishak`) at the foot of the file:
