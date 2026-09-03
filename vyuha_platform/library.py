@@ -336,3 +336,208 @@ def scan(folder: Path, recursive: bool = True) -> tuple[list[Path], list[str]]:
     if not found:
         notes.append("Nothing readable in that folder.")
     return found, notes
+
+
+# ------------------------------------------------------- into the books
+
+def _clean_str(value) -> str:
+    if value is None or (isinstance(value, float) and value != value):
+        return ""
+    return str(value).strip()
+
+
+def _num(value, default: float = 0.0) -> float:
+    try:
+        if value is None or (isinstance(value, float) and value != value):
+            return default
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _iso(value) -> str:
+    """Whatever the cleaner produced, as a plain ISO date string."""
+    if value is None:
+        return ""
+    try:
+        if hasattr(value, "date"):
+            return value.date().isoformat()
+        if hasattr(value, "isoformat"):
+            return value.isoformat()[:10]
+    except Exception:
+        pass
+    text = str(value).strip()
+    return text[:10] if text and text[0].isdigit() else ""
+
+
+def _frames(tables, kind):
+    return [t.frame for t in tables if t.kind == kind and not t.frame.empty]
+
+
+def materialise(tables, slug: str, *, replace: bool) -> dict:
+    """Write reconciled tables into ``books.Book`` so every screen can read them.
+
+    ``replace=True`` for a business whose files are the source of truth; the
+    Book is rebuilt from them each time. ``False`` merges, which is what a
+    business that types entries needs — a stray upload must never delete
+    somebody's hand-entered sales.
+    """
+    from . import books as bk
+
+    book = bk.Book(slug=slug) if replace else bk.load(slug)
+    by_sku = {i.sku: i for i in book.items}
+    by_name = {i.name.strip().lower(): i for i in book.items}
+    counts = {"items": 0, "sales": 0, "receivables": 0}
+
+    def item_for(sku: str, name: str, category="", unit="") -> "bk.Item":
+        """Find or make the item a row refers to.
+
+        Matched on SKU first and then on name, because half of real files carry
+        one and half the other, and the same product appearing twice under two
+        identities would split its own sales history.
+        """
+        key = sku.strip()
+        if key and key in by_sku:
+            return by_sku[key]
+        lname = name.strip().lower()
+        if lname and lname in by_name:
+            return by_name[lname]
+        made = bk.Item(
+            sku=key or bk.make_sku(name or "item", book.items),
+            name=name.strip() or key or "Unnamed item",
+            category=category.strip() or "Other",
+            unit=unit.strip() or "piece")
+        book.items.append(made)
+        by_sku[made.sku] = made
+        by_name[made.name.strip().lower()] = made
+        counts["items"] += 1
+        return made
+
+    # --- stock first, so a sale can attach to the item it sold
+    for frame in _frames(tables, schema.STOCK):
+        for _i, row in frame.iterrows():
+            name = _clean_str(row.get(schema.ITEM))
+            sku = _clean_str(row.get(schema.SKU))
+            if not name and not sku:
+                continue
+            item = item_for(sku, name, _clean_str(row.get(schema.CATEGORY)), "")
+            item.stock_qty = _num(row.get(schema.STOCK_QTY), item.stock_qty)
+            item.reorder_level = _num(row.get(schema.REORDER_LEVEL),
+                                      item.reorder_level)
+            rate = _num(row.get(schema.RATE))
+            if rate:
+                item.rate = rate
+            if _clean_str(row.get(schema.LOCATION)):
+                item.branch = item.branch or _clean_str(row.get(schema.LOCATION))
+
+    # --- sales
+    #
+    # The cleaner already worked out that "Ramu Stores", "M/s Ramu Stores" and
+    # "RAMU STORES" are one customer and left the answer in `party_key`. Writing
+    # the raw spelling into the Book throws that away, and the concentration
+    # check then reports one customer at 19% and 15% instead of one at 34% —
+    # under the threshold, so the risk that exists is never flagged.
+    #
+    # The key groups them; the display name is the spelling used most often,
+    # because that is the one he will recognise on a screen.
+    display: dict[str, str] = {}
+    if hasattr(schema, "PARTY_KEY") or True:
+        tally: dict[str, dict[str, int]] = {}
+        for frame in _frames(tables, schema.SALES):
+            if "party_key" not in frame.columns or schema.PARTY not in frame.columns:
+                continue
+            for key, name in zip(frame["party_key"], frame[schema.PARTY]):
+                k, n = _clean_str(key), _clean_str(name)
+                if not k or not n:
+                    continue
+                tally.setdefault(k, {})
+                tally[k][n] = tally[k].get(n, 0) + 1
+        display = {k: max(names.items(), key=lambda kv: kv[1])[0]
+                   for k, names in tally.items()}
+
+    seen_bills = {s.id for s in book.sales}
+    for frame in _frames(tables, schema.SALES):
+        for _i, row in frame.iterrows():
+            qty = _num(row.get(schema.QTY), 0.0)
+            amount = _num(row.get(schema.AMOUNT), 0.0)
+            rate = _num(row.get(schema.RATE), 0.0)
+            if not amount and qty and rate:
+                amount = qty * rate
+            if not rate and qty:
+                rate = amount / qty if qty else 0.0
+            if not amount and not qty:
+                continue
+
+            name = _clean_str(row.get(schema.ITEM))
+            sku = _clean_str(row.get(schema.SKU))
+            item = item_for(sku, name or sku)
+
+            bill = _clean_str(row.get(schema.INVOICE_NO))
+            if not bill or bill in seen_bills:
+                bill = f"F-{book.next_bill:05d}"
+                book.next_bill += 1
+            seen_bills.add(bill)
+
+            book.sales.append(bk.Sale(
+                id=bill,
+                date=_iso(row.get(schema.DATE)),
+                party=(display.get(_clean_str(row.get("party_key")))
+                       or _clean_str(row.get(schema.PARTY)) or "Cash sale"),
+                sku=item.sku, item=item.name,
+                qty=qty or 1.0, rate=rate, amount=amount,
+                # A sales register records what was billed, not what was
+                # collected. Receivables below mark the ones still owed; without
+                # that evidence, treating a line as unpaid would invent a debt.
+                paid=True,
+                due_date=_iso(row.get(schema.DUE_DATE)),
+            ))
+            counts["sales"] += 1
+
+    # --- receivables tell us which of those are actually unpaid
+    owed_by_party: dict[str, float] = {}
+    for frame in _frames(tables, schema.RECEIVABLES):
+        for _i, row in frame.iterrows():
+            outstanding = _num(row.get(schema.OUTSTANDING), 0.0)
+            if outstanding <= 0:
+                continue
+            party = _clean_str(row.get(schema.PARTY)) or "Cash sale"
+            bill = _clean_str(row.get(schema.INVOICE_NO))
+            due = _iso(row.get(schema.DUE_DATE)) or _iso(row.get(schema.DATE))
+            counts["receivables"] += 1
+
+            hit = next((s for s in book.sales if bill and s.id == bill), None)
+            if hit is not None:
+                hit.paid = False
+                hit.due_date = due or hit.due_date
+                continue
+            owed_by_party[party] = owed_by_party.get(party, 0.0) + outstanding
+            book.sales.append(bk.Sale(
+                id=bill or f"R-{book.next_bill:05d}",
+                date=_iso(row.get(schema.DATE)) or due,
+                party=party, sku="", item="Outstanding balance",
+                qty=1.0, rate=outstanding, amount=outstanding,
+                paid=False, due_date=due,
+                note="From a receivables statement, not a sale line."))
+            if not bill:
+                book.next_bill += 1
+
+    # --- a stock statement rarely carries a selling price, so items arrive at
+    # zero and every figure derived from them — stock value, what a stockout
+    # costs, margin — comes out as zero too. The sales lines know the price, so
+    # take it from the most recent one that sold each item.
+    priced = 0
+    latest: dict[str, tuple[str, float]] = {}
+    for sale in book.sales:
+        if sale.sku and sale.rate > 0:
+            when = sale.date or ""
+            if sale.sku not in latest or when >= latest[sale.sku][0]:
+                latest[sale.sku] = (when, sale.rate)
+    for item in book.items:
+        if item.rate <= 0 and item.sku in latest:
+            item.rate = latest[item.sku][1]
+            priced += 1
+    counts["priced_from_sales"] = priced
+
+    book.sales.sort(key=lambda s: s.date or "")
+    bk.save(book)
+    return counts

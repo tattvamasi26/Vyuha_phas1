@@ -111,20 +111,18 @@ def findings(client, book, ledger, org, invoices=None) -> list[Finding]:
     summary = books.summary(book)
     invoices = invoices or []
 
-    # A business that sends files has an empty book by definition. Its findings
-    # come from the last run, and the book-derived ones below would all be zero.
+    # Uploaded files are written into the Book on ingest, so there is one data
+    # model and the findings below work for both kinds of business. This used to
+    # branch to the run's alerts for an upload client, which was a second code
+    # path saying nearly the same thing in vaguer words — "4 SKU(s) at or below
+    # reorder level" against "Gypsum has run out, 3 more are low, Rs 35,220 of
+    # orders you would turn away".
+    #
+    # The run is still the fallback for a client ingested before that existed.
     last = client.latest
-    if client.data_mode != "books" and last is not None and last.status == "ok":
+    if (not book.items and not book.sales
+            and last is not None and last.status == "ok"):
         out.extend(_from_run(client, last))
-        week = money_mod.due_this_week(book, ledger)
-        if week["outgoing"]:
-            out.append(Finding(
-                key="payables", severity="info",
-                title=f"{len(week['outgoing'])} supplier bill(s) due this week — "
-                      f"{_fmt(week['outgoing_total'])}",
-                detail="Recorded here, not in the file you sent",
-                action="See them", href=f"/c/{slug}/money",
-                weight=week["outgoing_total"], tags=["money"]))
         out.sort(key=lambda f: (_RANK.get(f.severity, 3), -f.weight))
         return out
 
@@ -288,9 +286,9 @@ def chase_list(client, book) -> list:
 
 def summary_line(client, book, ledger) -> str:
     """One line of context under the greeting."""
-    # A business that sends files has an empty book; its totals are on the run.
+    # Same fallback as findings(): only when the Book is genuinely empty.
     last = client.latest
-    if client.data_mode != "books" and last is not None and last.status == "ok":
+    if (not book.sales and last is not None and last.status == "ok"):
         bits = [f"{_fmt(last.revenue)} in sales"]
         if last.stock_value:
             bits.append(f"{_fmt(last.stock_value)} of stock")

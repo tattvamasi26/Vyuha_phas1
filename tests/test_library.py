@@ -291,6 +291,104 @@ def test_a_thread_with_no_orders_is_reported_not_handed_on_empty():
     assert "no orders" in extract.error.lower() or "nothing" in extract.error.lower()
 
 
+# ================================================ uploads reach every screen
+
+def _upload_to(slug: str, names: list[str]):
+    files = [("file", (n, (REPO / "demo" / "samples" / n).open("rb"),
+                       "application/octet-stream")) for n in names]
+    return client.post(f"/c/{slug}/upload", files=files)
+
+
+def test_an_uploaded_file_reaches_the_stock_screen():
+    """The bug: files parsed perfectly and every screen showed zero, because
+    the console reads the Book and only typed entries ever wrote one."""
+    from vyuha_platform import books
+    slug = _shop("End To End Co")
+    _upload_to(slug, ["02-filthy-multisheet.xlsx"])
+
+    book = books.load(slug)
+    assert book.items, "nothing landed in the book"
+    assert book.sales, "no sales landed in the book"
+
+    stock = client.get(f"/c/{slug}/stock").text
+    assert 'class="sk ' in stock, "the shelf is empty"
+    assert book.items[0].name.split()[0] in stock
+
+
+def test_an_upload_gives_every_item_a_price():
+    """A stock statement rarely carries one, and an item at zero makes stock
+    value, margin and the cost of a stockout all come out as zero."""
+    from vyuha_platform import books
+    slug = _shop("Priced Co")
+    _upload_to(slug, ["01-clean-sales.csv", "02-filthy-multisheet.xlsx"])
+
+    book = books.load(slug)
+    priced = [i for i in book.items if i.rate > 0]
+    assert len(priced) == len(book.items), [i.name for i in book.items if not i.rate]
+    assert book.stock_value > 0
+
+
+def test_one_customer_spelled_four_ways_is_one_customer():
+    """The cleaner works this out and leaves it in party_key; writing the raw
+    spelling threw it away and split a 34% customer into 19% and 15% — under
+    the threshold, so a real concentration risk went unflagged."""
+    from vyuha_platform import books, finance, money as money_mod
+    slug = _shop("One Name Co")
+    _upload_to(slug, ["02-filthy-multisheet.xlsx"])
+
+    book = books.load(slug)
+    spellings = {s.party.strip().lower().rstrip(".") for s in book.sales
+                 if "ramu" in s.party.lower()}
+    assert len(spellings) == 1, spellings
+
+    conc = finance.concentration(book, money_mod.load(slug))
+    assert conc["customers"][0]["share"] > 0.25
+
+
+def test_today_speaks_about_uploaded_data_in_rupees():
+    """Not "4 SKU(s) at or below reorder level" — a sentence with money in it."""
+    from vyuha_platform import books, invoice, money as money_mod, people, today
+    slug = _shop("Findings Co")
+    _upload_to(slug, ["01-clean-sales.csv", "02-filthy-multisheet.xlsx"])
+
+    c = store.get_client(slug, ACCOUNT.id)
+    found = today.findings(c, books.load(slug), money_mod.load(slug),
+                           people.load(slug), invoice.load_all(slug))
+    assert found, "nothing surfaced from an uploaded file"
+    stock = next((f for f in found if "stock" in f.tags), None)
+    assert stock is not None
+    assert "₹0" not in stock.detail, "cost of a stockout came out as zero"
+
+
+def test_uploading_again_replaces_rather_than_doubles():
+    """Files are the source of truth for this kind of business, so a re-upload
+    is a correction, not an addition."""
+    from vyuha_platform import books
+    slug = _shop("Reupload Co")
+    _upload_to(slug, ["01-clean-sales.csv"])
+    first = books.load(slug).earned
+    _upload_to(slug, ["01-clean-sales.csv"])
+    again = books.load(slug).earned
+    assert again == first, f"{first} became {again}"
+
+
+def test_an_upload_never_deletes_typed_entries():
+    """Losing hand-entered sales to a stray file would be unforgivable."""
+    from vyuha_platform import books
+    client.post("/onboard", data={"name": "Typed Co", "phone": "9876543210",
+                                  "data_mode": "books"})
+    slug = next(c.slug for c in store.load_clients(ACCOUNT.id)
+                if c.slug.startswith("typed-co"))
+    _SLUGS.append(slug)
+    client.post(f"/c/{slug}/book/item", data={
+        "name": "Hand Typed Item", "category": "Other", "unit": "piece",
+        "rate": "500", "cost": "300", "stock_qty": "10", "reorder_level": "2"})
+
+    _upload_to(slug, ["01-clean-sales.csv"])
+    names = {i.name for i in books.load(slug).items}
+    assert "Hand Typed Item" in names, names
+
+
 def _cleanup() -> None:
     _login()
     _as_operator()

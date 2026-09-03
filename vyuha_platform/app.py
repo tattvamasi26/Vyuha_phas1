@@ -767,6 +767,12 @@ def _ingest(client: store.Client, paths: list[Path], label: str) -> tuple[store.
         run.error = why
         return run, (detail or why)
 
+    # Write what was read into the Book, so every screen sees it. Without this
+    # a file parsed perfectly and the Stock page still showed zero items,
+    # because the console reads the Book and only typed entries ever wrote one.
+    wrote = library.materialise(result.tables, client.slug,
+                                replace=(client.data_mode != "books"))
+
     out = store.dashboard_dir(client.slug) / f"{run_id}.html"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(report.render(ins, client=client.name), encoding="utf-8")
@@ -787,8 +793,9 @@ def _ingest(client: store.Client, paths: list[Path], label: str) -> tuple[store.
                f"{result.rows:,} row(s)", client=client, channel="upload",
                duplicates=result.duplicates_dropped, alerts=run.alert_count)
 
-    note = (f"Read {result.read} of {len(result.files)} file(s), "
-            f"{result.rows:,} row(s).")
+    note = (f"Read {result.read} of {len(result.files)} file(s) — "
+            f"{wrote['items']} item(s) and {wrote['sales']} sale(s) are now on "
+            f"your screens.")
     if result.duplicates_dropped:
         note += f" {result.duplicates_dropped} duplicate row(s) counted once."
     if result.rejected:
