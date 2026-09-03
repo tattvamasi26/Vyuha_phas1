@@ -295,6 +295,19 @@ details.levels[open] summary::before{content:"▾ "}
 .todoline .tick.done{background:var(--ok);border-color:var(--ok);color:#08140A}
 .todoline .lbl{flex:1;font-size:13.5px}
 .todoline .lbl small{display:block;font-size:11.5px;color:var(--ink-3);margin-top:2px}
+
+.chooser{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));
+  margin:20px 0 20px}
+.pick-sec{display:flex;flex-direction:column;gap:4px;padding:12px 14px;
+  border:1px solid var(--line);border-radius:var(--r-sm);background:var(--card);
+  transition:.15s}
+.pick-sec:hover{border-color:var(--ink-3)}
+.pick-sec.on{border-color:var(--accent);background:var(--card-2)}
+.pick-sec b{font-size:13.5px;font-weight:600}
+.pick-sec span{font-size:11px;color:var(--ink-3);line-height:1.45}
+.pick-sec.on b{color:var(--accent)}
+.note-line{font-size:12.5px;color:var(--ink-3);line-height:1.6;margin-top:16px;
+  padding-left:14px;border-left:2px solid var(--line-2);max-width:74ch}
 """
 
 JS = """
@@ -681,138 +694,74 @@ def _followups(c, queue: list, settings) -> str:
 
 # ------------------------------------------------------------------ 08 · money
 
-def _money(c, book, ledger, org, period: str = "all") -> str:
-    """The statements a CA would prepare, from the same books everything else reads.
+#: What somebody can ask to see. Each is one question, answered on its own.
+MONEY_SECTIONS = [
+    ("summary",  "Where I stand",   "The short version — what came in, what went out"),
+    ("profit",   "Profit",          "What was earned, what it cost, what is left"),
+    ("owed",     "Who owes what",   "Money out to customers, and money you owe suppliers"),
+    ("costs",    "Costs",           "Every head, and what share of turnover it eats"),
+    ("health",   "Health check",    "The ratios a lender asks for, and break-even"),
+]
 
-    Ordered the way an owner reads them, not the way an accountant files them:
-    the position first (am I alright), then what happened (P&L), then what is
-    owed both ways, then the diagnostics. The period selector drives all of it.
+
+def _money(c, book, ledger, org, period: str = "all", show: str = "summary") -> str:
+    """Four numbers, then whichever statement was asked for.
+
+    The period selector and the headline figures stay put; everything below is
+    one section. Somebody looking for last month's profit should not have to
+    scroll past a balance sheet to reach it.
     """
-    st = finance.statements(book, ledger, period)
+    show = show if show in {k for k, _l, _d in MONEY_SECTIONS} else "summary"
+    st = finance.statements(c and book, ledger, period) if False else \
+        finance.statements(book, ledger, period)
     pl, cf, bs = st["pl"], st["cash"], st["balance"]
     ar, ap = st["receivables"], st["payables"]
     label = st["period"]["label"]
 
-    # --- period selector
-    chips = "".join(
-        f'<a href="/c/{c.slug}/console?panel=money&period={E(key)}"'
+    periods = "".join(
+        f'<a href="/c/{c.slug}/money?show={E(show)}&period={E(key)}"'
         f'{" class=\'on\'" if key == period else ""}>{E(text)}</a>'
-        for key, text, _ in finance.periods(book, ledger)[:10])
+        for key, text, _k in finance.periods(book, ledger)[:8])
 
-    # --- the four headline numbers
     tiles = "".join([
-        _stat("Net profit", short(pl["net_profit"]),
-              f"{pl['net_margin_pct']:.1f}% of revenue · {label}"),
-        _stat("Cash movement", short(cf["net_movement"]),
+        _stat("In hand", short(cf["net_movement"]),
               f"{short(cf['received'])} in, {short(cf['paid_out'])} out"),
+        _stat("Profit", short(pl["net_profit"]),
+              f"{pl['net_margin_pct']:.1f}% of what you billed"),
         _stat("Owed to you", short(ar["total"]),
-              f"{short(ar['overdue'])} of it overdue"),
+              f"{short(ar['overdue'])} of it late" if ar["overdue"] else "none late"),
         _stat("You owe", short(ap["total"]),
-              f"{short(ap['overdue'])} of it overdue"),
+              f"{short(ap['overdue'])} of it late" if ap["overdue"] else "none late"),
     ])
 
-    def ln(lab, amount, cls="", pct=None, sub=False):
-        p = f'<span class="pc">{pct}</span>' if pct else ""
-        return (f'<div class="ln {cls}{" sub" if sub else ""}">'
-                f'<span class="l">{E(lab)}</span>'
-                f'<span class="a">{rs(amount)}{p}</span></div>')
+    chooser = "".join(
+        f'<a class="pick-sec{" on" if k == show else ""}" '
+        f'href="/c/{c.slug}/money?show={k}&period={E(period)}">'
+        f'<b>{E(lab)}</b><span>{E(desc)}</span></a>'
+        for k, lab, desc in MONEY_SECTIONS)
 
-    # --- profit & loss
-    opex_lines = "".join(ln(head, amt, sub=True) for head, amt in pl["opex_rows"][:8])
-    coverage = ""
-    if pl["cost_coverage_pct"] < 100:
-        coverage = (f'<div class="assume">Gross margin covers the '
-                    f'{pl["cost_coverage_pct"]:.0f}% of sale lines where a cost price is '
-                    f'known. Add cost prices on the Stock panel to make it exact.</div>')
+    body = {
+        "summary": _m_summary, "profit": _m_profit, "owed": _m_owed,
+        "costs": _m_costs, "health": _m_health,
+    }[show](c, book, ledger, st)
 
-    pnl_card = f"""<div class="card">
-  <div class="row" style="justify-content:space-between;margin-bottom:14px">
-    <div style="font-size:16px;font-weight:700">Profit &amp; loss</div>
-    <span class="pill dim">accrual · billed</span></div>
-  <div class="stmt">
-    {ln("Revenue", pl["revenue"])}
-    {ln("Cost of goods sold", -pl["cogs"])}
-    {ln("Gross profit", pl["gross_profit"], cls="tot " + ("pos" if pl["gross_profit"] >= 0 else "neg"), pct=f"{pl['gross_margin_pct']:.1f}%")}
-    {ln("Operating expenses", -pl["opex"])}
-    {opex_lines}
-    {ln("Net profit", pl["net_profit"], cls="tot " + ("pos" if pl["net_profit"] >= 0 else "neg"), pct=f"{pl['net_margin_pct']:.1f}%")}
-  </div>{coverage}</div>"""
+    return (_head("Money", f'<div class="periods">{periods}</div>')
+            + f'<div class="grid g4">{tiles}</div>'
+            + f'<div class="chooser">{chooser}</div>'
+            + body)
 
-    # --- cash flow + balance sheet
-    cash_card = f"""<div class="card">
-  <div class="row" style="justify-content:space-between;margin-bottom:14px">
-    <div style="font-size:16px;font-weight:700">Cash flow</div>
-    <span class="pill dim">cash · actually moved</span></div>
-  <div class="stmt">
-    {ln("Received from customers", cf["received"])}
-    {ln("Paid out", -cf["paid_out"])}
-    {ln("Net movement", cf["net_movement"], cls="tot " + ("pos" if cf["net_movement"] >= 0 else "neg"))}
-  </div>
-  <div class="assume"><b>Profit is not cash.</b> {rs(cf["billed_not_collected"])} was
-    billed and not yet collected; {rs(cf["incurred_not_paid"])} was incurred and not yet
-    paid. That gap is the difference between the two statements.</div></div>"""
 
-    assumptions = "".join(f"<div>· {E(a)}</div>" for a in bs["assumptions"])
-    bs_card = f"""<div class="card">
-  <div class="row" style="justify-content:space-between;margin-bottom:14px">
-    <div style="font-size:16px;font-weight:700">What you own and owe</div>
-    <span class="pill dim">as of {E(bs["as_of"])}</span></div>
-  <div class="stmt">
-    {ln("Cash from trading", bs["cash_from_trading"])}
-    {ln("Owed by customers", bs["receivables"])}
-    {ln("Stock on hand", bs["stock_value"])}
-    {ln("Total short-term assets", bs["current_assets"], cls="tot")}
-    {ln("Owed to suppliers", -bs["payables"])}
-    {ln("Working capital", bs["working_capital"], cls="tot " + ("pos" if bs["working_capital"] >= 0 else "neg"))}
-  </div>
-  <div class="assume"><b>Partial, on purpose:</b>{assumptions}</div></div>"""
+def _ln(lab, amount, cls="", pct=None, sub=False) -> str:
+    p = f'<span class="pc">{pct}</span>' if pct else ""
+    return (f'<div class="ln {cls}{" sub" if sub else ""}">'
+            f'<span class="l">{E(lab)}</span>'
+            f'<span class="a">{rs(amount)}{p}</span></div>')
 
-    # --- ratios
-    ratio_cards = "".join(
-        f'<div class="ratio {"good" if r["good"] else "bad"}">'
-        f'<div class="n">{E(r["name"])}</div>'
-        f'<div class="v">{r["value"]:,.1f}<span class="u">{E(r["unit"])}</span></div>'
-        f'<div class="note">{E(r["note"])}</div></div>' for r in st["ratios"])
-    flagged = [r for r in st["ratios"] if not r["good"]]
-    ratio_note = ("Everything is inside a healthy range."
-                  if not flagged else
-                  f"{len(flagged)} figure(s) worth a look: "
-                  + ", ".join(r["name"] for r in flagged) + ".")
-    ratios_card = f"""<div class="card" style="margin-top:16px">
-  <div class="row" style="justify-content:space-between;margin-bottom:6px">
-    <div style="font-size:16px;font-weight:700">The numbers a lender asks for</div></div>
-  <div class="tiny" style="margin-bottom:16px">{E(ratio_note)}</div>
-  <div class="ratios">{ratio_cards}</div></div>"""
 
-    # --- ageing, both directions
-    def ageing(title, data, kind):
-        peak = max((v for _, v, _ in data["buckets"]), default=0) or 1.0
-        rows = "".join(
-            f'<div class="r b{i}"><span class="lb">{E(lab)}</span>'
-            f'<span class="track"><i style="width:{val / peak * 100:.1f}%"></i></span>'
-            f'<span class="amt">{short(val)}</span></div>'
-            for i, (lab, val, _) in enumerate(data["buckets"]))
-        top = "".join(
-            f'<div class="row" style="justify-content:space-between;padding:7px 0;'
-            f'border-top:1px solid var(--line)">'
-            f'<span style="font-size:13px">{E(r["party"])}</span>'
-            f'<span class="mono" style="font-size:12.5px">{rs(r["total"])}'
-            f'<span class="tiny" style="margin-left:8px">{r["oldest"]}d</span></span></div>'
-            for r in data["parties"][:6])
-        return f"""<div class="card">
-  <div class="row" style="justify-content:space-between;margin-bottom:14px">
-    <div style="font-size:16px;font-weight:700">{E(title)}</div>
-    <span class="pill {"crit" if data["overdue"] else "ok"}">{short(data["overdue"])} overdue</span></div>
-  <div class="age">{rows}</div>
-  {f'<div style="margin-top:14px"><div class="tiny" style="margin-bottom:2px">BY {kind}</div>{top}</div>' if top else ''}</div>"""
-
-    ageing_row = ('<div class="two" style="margin-top:16px">'
-                  + ageing("Owed to you, by age", ar, "CUSTOMER")
-                  + ageing("You owe, by age", ap, "SUPPLIER") + "</div>")
-
-    # --- monthly trend
-    months = st["monthly"]
-    trend_card = ""
+def _m_summary(c, book, ledger, st) -> str:
+    """The short version, and the one line that matters most."""
+    cf, months = st["cash"], st["monthly"]
+    chart = ""
     if months:
         peak = max(max(m["revenue"], abs(m["profit"])) for m in months) or 1.0
         bars = "".join(
@@ -824,142 +773,209 @@ def _money(c, book, ledger, org, period: str = "all") -> str:
             f'title="Revenue {rs(m["revenue"])}"></div></div>'
             f'<div class="lb">{E(m["label"])}</div></div>' for m in months)
         last = months[-1]
-        trend_card = f"""<div class="card" style="margin-top:16px">
+        chart = f"""<div class="card">
   <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:12px">
     <div style="font-size:16px;font-weight:700">Month by month</div>
-    <div class="legend"><span><i style="background:var(--accent)"></i>Revenue</span>
+    <div class="legend"><span><i style="background:var(--accent)"></i>Billed</span>
       <span><i style="background:var(--ok)"></i>Profit</span></div></div>
   <div class="trend">{bars}</div>
-  <div class="tiny">Latest month {E(last["label"])}: {rs(last["revenue"])} revenue,
-    {rs(last["profit"])} profit{f", {last['change_pct']:+.0f}% on the month before" if last["change_pct"] else ""}.</div></div>"""
+  <div class="tiny">{E(last["label"])}: {rs(last["revenue"])} billed,
+    {rs(last["profit"])} profit{f", {last['change_pct']:+.0f}% on the month before"
+                                 if last["change_pct"] else ""}.</div></div>"""
 
-    # --- concentration
-    co = st["concentration"]
-    risk_pill = {"high": ("crit", "concentrated"), "watch": ("warn", "watch this"),
-                 "spread": ("ok", "well spread")}[co["risk"]]
-    cust_rows = "".join(
-        f'<div style="margin-bottom:11px"><div class="row" style="justify-content:space-between">'
-        f'<span style="font-size:13px">{E(r["party"])}</span>'
-        f'<span class="mono" style="font-size:12.5px">{short(r["amount"])} '
-        f'<span class="tiny">{r["share"] * 100:.0f}%</span></span></div>'
-        f'<div class="meter"><i style="width:{r["share"] * 100:.1f}%"></i></div></div>'
-        for r in co["customers"][:6])
-    supp_rows = "".join(
-        f'<div style="margin-bottom:11px"><div class="row" style="justify-content:space-between">'
-        f'<span style="font-size:13px">{E(r["party"])}</span>'
-        f'<span class="mono" style="font-size:12.5px">{short(r["amount"])} '
-        f'<span class="tiny">{r["share"] * 100:.0f}%</span></span></div>'
-        f'<div class="meter"><i style="width:{r["share"] * 100:.1f}%"></i></div></div>'
-        for r in co["suppliers"][:6])
-    conc_card = f"""<div class="two" style="margin-top:16px">
-  <div class="card">
-    <div class="row" style="justify-content:space-between;margin-bottom:6px">
-      <div style="font-size:16px;font-weight:700">Where revenue comes from</div>
-      <span class="pill {risk_pill[0]}">{risk_pill[1]}</span></div>
-    <div class="tiny" style="margin-bottom:15px">Your biggest customer is
-      {co["top_customer_share"] * 100:.0f}% of revenue and the top three are
-      {co["top3_share"] * 100:.0f}%, across {co["customer_count"]} customer(s).
-      {"Losing one would hurt badly." if co["risk"] == "high" else "Reasonably spread."}</div>
-    {cust_rows}</div>
-  <div class="card">
-    <div style="font-size:16px;font-weight:700;margin-bottom:6px">Where the money goes</div>
-    <div class="tiny" style="margin-bottom:15px">{co["supplier_count"]} supplier(s) and
-      cost heads, biggest first.</div>
-    {supp_rows}</div></div>"""
+    week = money.due_this_week(book, ledger)
+    upcoming = ""
+    if week["incoming"] or week["outgoing"]:
+        def line(when, who, amount, late):
+            return (f'<div class="row" style="justify-content:space-between;padding:9px 0;'
+                    f'border-top:1px solid var(--line)">'
+                    f'<div><span style="font-weight:600;font-size:13.5px">{E(who)}</span>'
+                    f'<div class="tiny" style="margin-top:3px">{E(when)}'
+                    f'{" · overdue" if late else ""}</div></div>'
+                    f'<span class="mono" style="font-size:13.5px">{rs(amount)}</span></div>')
+        today_iso = date.today().isoformat()
+        ins = "".join(line(s.due_date, s.party or "Customer", s.amount,
+                           s.due_date < today_iso) for s in week["incoming"][:6]) \
+            or '<div class="tiny">Nothing due in.</div>'
+        outs = "".join(line(e.due_date, e.party or e.category, e.amount,
+                            e.due_date < today_iso) for e in week["outgoing"][:6]) \
+            or '<div class="tiny">Nothing due out.</div>'
+        upcoming = f"""<div class="card" style="margin-top:16px">
+  <div style="font-size:16px;font-weight:700">The next 7 days</div>
+  <div class="two" style="margin-top:15px">
+    <div><div class="tiny" style="margin-bottom:4px">COMING IN ·
+      {E(short(week['incoming_total']))}</div>{ins}</div>
+    <div><div class="tiny" style="margin-bottom:4px">GOING OUT ·
+      {E(short(week['outgoing_total']))}</div>{outs}</div></div></div>"""
 
-    # --- expense heads and break-even
-    be = st["break_even"]
-    exp_rows = "".join(
+    gap = (f'<div class="note-line">Profit is not cash. '
+           f'{rs(cf["billed_not_collected"])} was billed and not collected; '
+           f'{rs(cf["incurred_not_paid"])} was incurred and not paid. That gap is '
+           f'the whole difference between the two.</div>')
+    return chart + upcoming + gap
+
+
+def _m_profit(c, book, ledger, st) -> str:
+    pl, cf = st["pl"], st["cash"]
+    opex = "".join(_ln(head, -amt, sub=True) for head, amt in pl["opex_rows"][:8])
+    coverage = ""
+    if pl["cost_coverage_pct"] < 100:
+        coverage = (f'<div class="note-line">Gross margin covers the '
+                    f'{pl["cost_coverage_pct"]:.0f}% of sale lines with a known cost '
+                    f'price. Add cost prices on the Stock screen to make it exact.</div>')
+    return f"""<div class="two">
+  <div class="card">
+    <div class="row" style="justify-content:space-between;margin-bottom:14px">
+      <div style="font-size:16px;font-weight:700">Profit &amp; loss</div>
+      <span class="pill dim">what you billed</span></div>
+    <div class="stmt">
+      {_ln("Revenue", pl["revenue"])}
+      {_ln("Cost of goods sold", -pl["cogs"])}
+      {_ln("Gross profit", pl["gross_profit"], cls="tot " + ("pos" if pl["gross_profit"] >= 0 else "neg"), pct=f"{pl['gross_margin_pct']:.1f}%")}
+      {_ln("Running costs", -pl["opex"])}
+      {opex}
+      {_ln("Net profit", pl["net_profit"], cls="tot " + ("pos" if pl["net_profit"] >= 0 else "neg"), pct=f"{pl['net_margin_pct']:.1f}%")}
+    </div></div>
+  <div class="card">
+    <div class="row" style="justify-content:space-between;margin-bottom:14px">
+      <div style="font-size:16px;font-weight:700">Cash</div>
+      <span class="pill dim">what actually moved</span></div>
+    <div class="stmt">
+      {_ln("Received from customers", cf["received"])}
+      {_ln("Paid out", -cf["paid_out"])}
+      {_ln("Net movement", cf["net_movement"], cls="tot " + ("pos" if cf["net_movement"] >= 0 else "neg"))}
+    </div>
+    <div class="note-line" style="margin-top:16px">Billed but not collected:
+      {rs(cf["billed_not_collected"])}. Incurred but not paid:
+      {rs(cf["incurred_not_paid"])}.</div></div></div>{coverage}"""
+
+
+def _m_owed(c, book, ledger, st) -> str:
+    def ageing(title, data, kind, colour_from) -> str:
+        peak = max((v for _l, v, _p in data["buckets"]), default=0) or 1.0
+        rows = "".join(
+            f'<div class="r b{i + colour_from}"><span class="lb">{E(lab)}</span>'
+            f'<span class="track"><i style="width:{val / peak * 100:.1f}%"></i></span>'
+            f'<span class="amt">{short(val)}</span></div>'
+            for i, (lab, val, _p) in enumerate(data["buckets"]))
+        parties = "".join(
+            f'<div class="row" style="justify-content:space-between;padding:8px 0;'
+            f'border-top:1px solid var(--line)">'
+            f'<span style="font-size:13px">{E(r["party"])}</span>'
+            f'<span class="mono" style="font-size:12.5px">{rs(r["total"])}'
+            f'<span class="tiny" style="margin-left:8px">{r["oldest"]}d</span></span></div>'
+            for r in data["parties"][:8])
+        return f"""<div class="card">
+  <div class="row" style="justify-content:space-between;margin-bottom:14px">
+    <div style="font-size:16px;font-weight:700">{E(title)}</div>
+    <span class="pill {"crit" if data["overdue"] else "ok"}">
+      {short(data["overdue"])} late</span></div>
+  <div class="age">{rows}</div>
+  {f'<div style="margin-top:14px"><div class="tiny" style="margin-bottom:2px">BY {kind}</div>{parties}</div>' if parties else ''}</div>"""
+
+    return ('<div class="two">'
+            + ageing("Customers owe you", st["receivables"], "CUSTOMER", 0)
+            + ageing("You owe suppliers", st["payables"], "SUPPLIER", 0)
+            + "</div>"
+            + '<div class="note-line">"Not yet due" is money that is not late. '
+              'Folding it into the first ageing bucket makes a healthy ledger read '
+              'as overdue, so it is kept separate.</div>')
+
+
+def _m_costs(c, book, ledger, st) -> str:
+    rows = "".join(
         f'<tr><td><b>{E(e["head"])}</b></td>'
         f'<td class="num">{rs(e["amount"])}</td>'
         f'<td class="num">{e["pct_of_revenue"]:.1f}%</td>'
         f'<td class="num">{e["count"]}</td>'
         f'<td class="num">{rs(e["unpaid"]) if e["unpaid"] else "—"}</td></tr>'
         for e in st["expenses"])
-    exp_card = f"""<div class="card" style="margin-top:16px;padding:0;overflow:hidden">
-  <div style="padding:18px 20px 4px">
-    <div style="font-size:16px;font-weight:700">Every cost head</div>
-    <div class="tiny" style="margin-top:6px">Share of revenue is the column that
-      matters — rent means nothing until you know it is 3% of turnover or 30%.</div></div>
-  <div class="scroll-x"><table class="mtable">
-    <tr><th>Head</th><th class="num">Amount</th><th class="num">% of revenue</th>
-        <th class="num">Entries</th><th class="num">Unpaid</th></tr>
-    {exp_rows or '<tr><td colspan="5" class="tiny">No costs recorded yet.</td></tr>'}
-  </table></div></div>"""
-
-    be_card = f"""<div class="card" style="margin-top:16px">
-  <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:14px">
-    <div style="max-width:52ch">
-      <div style="font-size:16px;font-weight:700">Break-even</div>
-      <div class="tiny" style="margin-top:7px">At a {be["contribution_margin_pct"]:.1f}%
-        gross margin, you need {rs(be["break_even_monthly"])} of sales a month to
-        cover {rs(be["fixed_monthly"])} of running costs. You are averaging
-        {rs(be["actual_monthly"])}.</div></div>
-    <div style="text-align:right">
-      <div class="pill {"ok" if be["clears"] else "crit"}">
-        {"clears by " + short(abs(be["headroom"])) if be["clears"] else "short by " + short(abs(be["headroom"]))}</div>
-    </div></div>
-  <div class="assume">Every head except purchases is treated as fixed. Some costs do
-    move with sales, so read this as the cautious version.</div></div>"""
-
-    # --- entry form
-    branch_opts = "".join(f'<option value="{E(b.id)}">{E(b.name)}</option>'
-                          for b in org.branches if b.active)
-    cat_opts = "".join(f'<option>{E(x)}</option>' for x in money.CATEGORIES)
-    form = f"""<div class="card" style="margin-top:16px">
-  <div style="font-size:16px;font-weight:700">Record something paid</div>
-  <div class="tiny" style="margin:7px 0 15px">Purchases, salary, rent, transport —
-    anything that left the business, or that you owe.</div>
-  <form method="post" action="/c/{c.slug}/expense">
-    <div class="two">
-      <div class="field"><select name="category" aria-label="Category">{cat_opts}</select></div>
-      <div class="field"><input name="party" placeholder="Paid to (optional)"></div></div>
-    <div class="two">
-      <div class="field"><input name="amount" placeholder="Amount" inputmode="decimal" required></div>
-      <div class="field"><input name="when" type="date" value="{date.today().isoformat()}"
-        aria-label="Date"></div></div>
-    <div class="two">
-      <div class="field"><input name="due_date" type="date" aria-label="Due date">
-        <div class="tiny" style="margin-top:5px">Due date — only if it is not paid yet</div></div>
-      {f'<div class="field"><select name="branch" aria-label="Branch"><option value="">All branches</option>{branch_opts}</select></div>' if branch_opts else '<div></div>'}
-    </div>
-    <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:12px">
-      <label class="chk"><input type="checkbox" name="unpaid" value="1">
-        Not paid yet — this is a bill I owe</label>
-      <button class="btn primary" type="submit">Record</button></div>
-  </form></div>"""
-
     recent = ""
     if ledger.expenses:
-        rows = "".join(
+        recent = "".join(
             f'<tr><td>{E(e.date)}</td><td><b>{E(e.category)}</b>'
-            + (f'<div class="tiny" style="margin-top:3px">{E(e.party)}</div>' if e.party else "")
+            + (f'<div class="tiny" style="margin-top:3px">{E(e.party)}</div>'
+               if e.party else "")
             + f'</td><td class="num">{rs(e.amount)}</td>'
-            f'<td>{"<span class=\'pill ok\'>paid</span>" if e.paid else "<span class=\'pill crit\'>overdue</span>" if e.overdue else "<span class=\'pill warn\'>owed</span>"}</td>'
+            f'<td>{"<span class=\'pill ok\'>paid</span>" if e.paid else "<span class=\'pill crit\'>late</span>" if e.overdue else "<span class=\'pill warn\'>owed</span>"}</td>'
             f'<td style="text-align:right">'
             + ("" if e.paid else
                f'<form method="post" action="/c/{c.slug}/expense/{e.id}/paid" '
                f'style="display:inline"><button class="btn sm ghost" type="submit">'
                f'Mark paid</button></form> ')
             + f'<form method="post" action="/c/{c.slug}/expense/{e.id}/delete" '
-              f'style="display:inline"><button class="btn sm danger" type="submit">×</button>'
-              f'</form></td></tr>'
-            for e in ledger.expenses[:20])
+              f'style="display:inline"><button class="btn sm danger" type="submit">×'
+              f'</button></form></td></tr>' for e in ledger.expenses[:20])
         recent = (f'<div class="card" style="margin-top:16px;padding:0;overflow:hidden">'
                   f'<div style="font-size:16px;font-weight:700;padding:18px 20px">'
                   f'Recent payments</div><div class="scroll-x"><table class="mtable">'
                   f'<tr><th>Date</th><th>What</th><th class="num">Amount</th>'
-                  f'<th>State</th><th></th></tr>{rows}</table></div></div>')
+                  f'<th>State</th><th></th></tr>{recent}</table></div></div>')
 
-    head = _head("Money", f'<div class="periods">{chips}</div>')
-    return (head + f'<div class="grid g4">{tiles}</div>'
-            + f'<div class="two" style="margin-top:16px">{pnl_card}'
-            + f'<div style="display:flex;flex-direction:column;gap:16px">{cash_card}{bs_card}</div></div>'
-            + ratios_card + ageing_row + trend_card + conc_card + exp_card + be_card
-            + form + recent)
+    return (f'<div class="card" style="padding:0;overflow:hidden">'
+            f'<div style="padding:18px 20px 4px">'
+            f'<div style="font-size:16px;font-weight:700">Every cost head</div>'
+            f'<div class="tiny" style="margin-top:6px">Share of turnover is the column '
+            f'that matters — rent means nothing until you know it is 3% or 30%.</div></div>'
+            f'<div class="scroll-x"><table class="mtable">'
+            f'<tr><th>Head</th><th class="num">Amount</th><th class="num">% of turnover</th>'
+            f'<th class="num">Entries</th><th class="num">Unpaid</th></tr>'
+            f'{rows or "<tr><td colspan=5 class=tiny>Nothing recorded yet.</td></tr>"}'
+            f'</table></div></div>{recent}'
+            f'<div class="note-line">Record what leaves the business on the Sell '
+            f'screen. Until you do, this is a receivables report, not a cash flow.</div>')
 
 
-# --------------------------------------------------------------- 03b · bills
+def _m_health(c, book, ledger, st) -> str:
+    cards = "".join(
+        f'<div class="ratio {"good" if r["good"] else "bad"}">'
+        f'<div class="n">{E(r["name"])}</div>'
+        f'<div class="v">{r["value"]:,.1f}<span class="u">{E(r["unit"])}</span></div>'
+        f'<div class="note">{E(r["note"])}</div></div>' for r in st["ratios"])
+    flagged = [r for r in st["ratios"] if not r["good"]]
+    verdict = ("Everything is inside a healthy range." if not flagged else
+               f"{len(flagged)} worth a look: " + ", ".join(r["name"] for r in flagged) + ".")
+
+    co, be = st["concentration"], st["break_even"]
+    risk = {"high": ("crit", "concentrated"), "watch": ("warn", "watch this"),
+            "spread": ("ok", "well spread")}[co["risk"]]
+    cust = "".join(
+        f'<div style="margin-bottom:11px"><div class="row" '
+        f'style="justify-content:space-between"><span style="font-size:13px">'
+        f'{E(r["party"])}</span><span class="mono" style="font-size:12.5px">'
+        f'{short(r["amount"])} <span class="tiny">{r["share"] * 100:.0f}%</span></span></div>'
+        f'<div class="meter"><i style="width:{r["share"] * 100:.1f}%"></i></div></div>'
+        for r in co["customers"][:6])
+
+    return f"""<div class="card">
+  <div style="font-size:16px;font-weight:700">The numbers a lender asks for</div>
+  <div class="tiny" style="margin:7px 0 16px">{E(verdict)}</div>
+  <div class="ratios">{cards}</div></div>
+<div class="two" style="margin-top:16px">
+  <div class="card">
+    <div class="row" style="justify-content:space-between;margin-bottom:6px">
+      <div style="font-size:16px;font-weight:700">Where revenue comes from</div>
+      <span class="pill {risk[0]}">{risk[1]}</span></div>
+    <div class="tiny" style="margin-bottom:15px">Biggest customer is
+      {co["top_customer_share"] * 100:.0f}% and the top three are
+      {co["top3_share"] * 100:.0f}%, across {co["customer_count"]} customer(s).</div>
+    {cust}</div>
+  <div class="card">
+    <div style="font-size:16px;font-weight:700">Break-even</div>
+    <div class="tiny" style="margin:7px 0 16px">At a
+      {be["contribution_margin_pct"]:.1f}% gross margin you need
+      {rs(be["break_even_monthly"])} of sales a month to cover
+      {rs(be["fixed_monthly"])} of running costs.</div>
+    <div class="row" style="justify-content:space-between;align-items:baseline">
+      <div><div class="tiny">YOU AVERAGE</div>
+        <div style="font-family:var(--num);font-size:26px;font-weight:600;margin-top:5px">
+          {short(be["actual_monthly"])}</div></div>
+      <span class="pill {"ok" if be["clears"] else "crit"}">
+        {"clears by " + short(abs(be["headroom"])) if be["clears"]
+         else "short by " + short(abs(be["headroom"]))}</span></div>
+    <div class="note-line" style="margin-top:14px">Every head except purchases is
+      treated as fixed, so read this as the cautious version.</div></div></div>"""
+
 
 def _bills(c, book, invoices) -> str:
     """Raise a proper tax invoice from sales already on the book.
@@ -1508,10 +1524,13 @@ def stock_view(c, account, book, org, settings, *, reply=None, question: str = "
 # ===================================================================== 5 · money
 
 def money_view(c, account, book, ledger, org, settings, *, period: str = "all",
-               reply=None, question: str = "", flash: str = "",
-               flash_kind: str = "ok") -> str:
-    body = (_answer_block(c, reply) + _money(c, book, ledger, org, period)
-            + _selling(c, org, book))
+               show: str = "summary", reply=None, question: str = "",
+               flash: str = "", flash_kind: str = "ok") -> str:
+    body = _answer_block(c, reply) + _money(c, book, ledger, org, period, show)
+    # Who is selling is a performance question, so it belongs under Health
+    # rather than on every view of the money screen.
+    if show == "health":
+        body += _selling(c, org, book)
     return shell(c, account, "money", body,
                  counts={"money": len([e for e in ledger.expenses if not e.paid])},
                  question=question, flash=flash, flash_kind=flash_kind)

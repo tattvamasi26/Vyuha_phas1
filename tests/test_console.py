@@ -621,13 +621,26 @@ def test_the_financial_year_runs_april_to_march():
     assert finance.fy_range("2026-27") == ("2026-04-01", "2027-03-31")
 
 
-def test_the_money_panel_renders_every_statement():
+def test_money_asks_which_statement_rather_than_showing_all_of_them():
+    """Eleven statements on one page is a filing cabinet tipped on the floor."""
     slug, _ = _traded("Money Panel Traders")
-    page = client.get(f"/c/{slug}/money").text
-    for probe in ("Profit &amp; loss", "Cost of goods sold", "Cash flow",
-                  "What you own and owe", "Owed to you, by age", "You owe, by age",
-                  "Break-even", "Every cost head", "Partial, on purpose"):
-        assert probe in page, probe
+
+    summary = client.get(f"/c/{slug}/money").text
+    # The four headline numbers are always there; the statements are not.
+    for always in ("In hand", "Profit", "Owed to you", "You owe"):
+        assert always in summary, always
+    assert "Cost of goods sold" not in summary, "the P&L should be behind its own link"
+
+    # Each section answers one question, on its own.
+    for show, probe in [("profit", "Cost of goods sold"),
+                        ("owed", "Customers owe you"),
+                        ("costs", "Every cost head"),
+                        ("health", "Break-even")]:
+        page = client.get(f"/c/{slug}/money?show={show}").text
+        assert probe in page, f"{show}: {probe}"
+
+    # An unknown section falls back rather than erroring at somebody.
+    assert "In hand" in client.get(f"/c/{slug}/money?show=nonsense").text
 
 
 # ============================================== 03 agent · querying the books

@@ -1058,7 +1058,7 @@ _VIEWS = {"today", "sell", "data", "stock", "money", "setup"}
 
 def _render(client, account, view: str, *, flash: str = "", flash_kind: str = "ok",
             reply=None, question: str = "", period: str = "all",
-            fresh_pin: str = "") -> HTMLResponse:
+            show: str = "summary", fresh_pin: str = "") -> HTMLResponse:
     """Load what one view needs and render it.
 
     Every route goes through here so none of them can drift into loading a
@@ -1081,7 +1081,8 @@ def _render(client, account, view: str, *, flash: str = "", flash_kind: str = "o
                                                **common))
     if view == "money":
         return HTMLResponse(console.money_view(client, account, book, ledger_, org,
-                                               settings, period=period, **common))
+                                               settings, period=period, show=show,
+                                               **common))
     if view == "setup":
         invite = auth.invite_for(client.slug) if not account.is_guest else None
         return HTMLResponse(console.setup_view(client, account, book, org, settings,
@@ -1446,7 +1447,7 @@ def invoice_identity(slug: str, gstin: str = Form(""), state: str = Form(""),
 
 @app.get("/c/{slug}/{view}", response_class=HTMLResponse)
 def workspace(slug: str, view: str, request: Request, period: str = "all",
-              account: auth.Account = Depends(_acct)):
+              show: str = "summary", account: auth.Account = Depends(_acct)):
     if view not in _VIEWS:
         return _redirect(f"/c/{slug}/today")
     client, bail = _console_client(account, slug)
@@ -1462,4 +1463,4 @@ def workspace(slug: str, view: str, request: Request, period: str = "all",
 
     msg, kind = _flash(request)
     return _render(client, account, view, flash=msg, flash_kind=kind, period=period,
-                   fresh_pin=request.query_params.get("pin", ""))
+                   show=show, fresh_pin=request.query_params.get("pin", ""))

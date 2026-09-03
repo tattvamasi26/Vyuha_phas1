@@ -352,6 +352,21 @@ def build() -> list[tuple[str, str]]:
 
 
 def main() -> int:
+    if "--bulk" in sys.argv:
+        i = sys.argv.index("--bulk")
+        count = int(sys.argv[i + 1]) if len(sys.argv) > i + 1 else 100
+        rows = bulk(count)
+        target = HERE / "samples" / "bulk"
+        total = sum((target / n).stat().st_size for n, _w in rows)
+        print(f"\n  Bulk corpus -> {target}\n  {'-' * 58}")
+        kinds: dict[str, int] = {}
+        for name, _why in rows:
+            kinds[name.rsplit(".", 1)[-1]] = kinds.get(name.rsplit(".", 1)[-1], 0) + 1
+        for ext, n in sorted(kinds.items()):
+            print(f"  {n:>4} .{ext}")
+        print(f"\n  {len(rows)} files, {total / 1_000_000:.1f} MB\n")
+        return 0
+
     made = build()
     print(f"\n  Demo corpus -> {OUT}\n  {'-' * 58}")
     for name, why in made:
@@ -360,6 +375,226 @@ def main() -> int:
     print(f"\n  {len(made)} files, plus README.md\n")
     return 0
 
+
+# ============================================================ bulk generation
+
+#: Ways a client's own export drifts between months. Real drift, collected from
+#: the shapes a distributor's files actually take: somebody renames a column,
+#: somebody reorders them, somebody's template drops the total and leaves you to
+#: multiply it out.
+_HEADER_SHAPES = [
+    ["Date", "Party", "Item", "Qty", "Rate", "Amount"],
+    ["Invoice Date", "Customer Name", "Product", "Nos", "Unit Price", "Net Amount"],
+    ["Bill Dt", "Buyer", "Item Description", "Quantity", "Rate", "Value"],
+    ["Dt", "Party Name", "Particulars", "Qty", "Price", "Total"],
+    ["Date", "Customer", "Item", "Qty", "Rate"],                 # no amount column
+    ["Sl", "Date", "Party", "Item Code", "Item", "Qty", "Rate", "Amount", "Remarks"],
+]
+
+_STOCK_SHAPES = [
+    ["Item Code", "Description", "Closing Qty", "Reorder Level", "Rate"],
+    ["Code", "Particulars", "In Godown", "Min Level", "MRP"],
+    ["SKU", "Item Name", "Balance Qty", "ROL", "Selling Price", "Godown"],
+]
+
+#: How the numbers are written. All of these appear in real client files, often
+#: three of them inside one column.
+def _money_cell(value: float, style: int, rng) -> object:
+    if style == 0:
+        return value
+    if style == 1:
+        return f"{value:,.2f}"
+    if style == 2:
+        return f"₹ {value:,.2f}"
+    if style == 3:
+        return f"{value:,.0f}/-"
+    if style == 4 and value > 5000:
+        return f"({value:,.0f})"          # a credit note, written as parentheses
+    return value
+
+
+def _date_cell(d: date, style: int) -> object:
+    if style == 0:
+        return d
+    if style == 1:
+        return d.strftime("%d-%m-%Y")
+    if style == 2:
+        return d.strftime("%d/%m/%y")
+    if style == 3:
+        return d.strftime("%d %b %Y")
+    return d.strftime("%Y-%m-%d")
+
+
+def bulk(count: int = 100, out: Path | None = None) -> list[tuple[str, str]]:
+    """Generate ``count`` files spread across every shape a client sends.
+
+    Roughly half Excel and half CSV, plus text exports, WhatsApp threads and a
+    few deliberate wrecks — because a hundred clean files prove nothing that the
+    first one did not.
+    """
+    out = out or (HERE / "samples" / "bulk")
+    out.mkdir(parents=True, exist_ok=True)
+    for old in out.glob("*"):
+        if old.is_file():
+            old.unlink()
+
+    rng = random.Random(SEED + count)
+    made: list[tuple[str, str]] = []
+
+    # A different business per file, so party names are not all identical.
+    firms = ["Ramu Stores", "Basavaraj Agri", "Krishna Traders", "Shetty Farms",
+             "Patil Nursery", "Hanumanth & Sons", "Gouda Agencies", "Nandi Agro",
+             "Bhat Hardware", "Malaprabha Traders", "Kittur Seeds", "Sankeshwar Feeds"]
+
+    for n in range(count):
+        kind = ("xlsx" if n % 10 < 4 else
+                "csv" if n % 10 < 8 else
+                "txt" if n % 10 == 8 else
+                "wreck")
+        month_back = n % 14
+        when = ago(month_back * 30 + rng.randint(0, 27))
+        stamp = when.strftime("%Y-%m")
+
+        if kind == "wreck":
+            # One in ten is broken on purpose. A corpus of only readable files
+            # teaches nobody what a bad day looks like.
+            name = f"{n:03d}-{stamp}-corrupt.xlsx"
+            (out / name).write_bytes(rng.choice([
+                b"%PDF-1.5\n% renamed by accident\n" + b"\x00" * 120,
+                b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"\x00" * 120,  # old .xls
+                b"<html><body>Export failed</body></html>",
+            ]))
+            made.append((name, "must fail cleanly and say what it really is"))
+            continue
+
+        rows = rng.randint(18, 60)
+        headers = rng.choice(_HEADER_SHAPES)
+        dstyle, mstyle = rng.randint(0, 4), rng.randint(0, 4)
+
+        if kind == "csv":
+            name = f"{n:03d}-{stamp}-sales.csv"
+            with (out / name).open("w", newline="", encoding="utf-8") as fh:
+                w = csv.writer(fh)
+                w.writerow(headers)
+                for i in range(rows):
+                    sku, item, _c, _u, rate, _co = rng.choice(ITEMS)
+                    qty = rng.choice([5, 10, 20, 25, 40, 50])
+                    d = ago(month_back * 30 + rng.randint(0, 27))
+                    line = _row(headers, d, dstyle, mstyle, rng.choice(firms),
+                                sku, item, qty, rate, i)
+                    w.writerow(line)
+            made.append((name, f"CSV, {rows} rows, header shape {_HEADER_SHAPES.index(headers)}"))
+
+        elif kind == "txt":
+            name = f"{n:03d}-{stamp}-export.txt"
+            with (out / name).open("w", encoding="utf-8") as fh:
+                fh.write("\t".join(headers) + "\n")
+                for i in range(rows):
+                    sku, item, _c, _u, rate, _co = rng.choice(ITEMS)
+                    qty = rng.choice([10, 20, 30])
+                    d = ago(month_back * 30 + rng.randint(0, 27))
+                    line = _row(headers, d, dstyle, mstyle, rng.choice(firms),
+                                sku, item, qty, rate, i)
+                    fh.write("\t".join(str(x) for x in line) + "\n")
+            made.append((name, "tab-separated accounting export"))
+
+        else:
+            name = f"{n:03d}-{stamp}-book.xlsx"
+            wb = Workbook()
+            ws = wb.active
+            ws.title = rng.choice(["Sales", "Sheet1", "Sales Register", "Data"])
+            # Junk above the header on roughly half of them.
+            if rng.random() < 0.5:
+                ws["A1"] = rng.choice(firms).upper() + " — MONTHLY STATEMENT"
+                ws.merge_cells("A1:F1")
+                ws["A1"].font = Font(bold=True, size=13)
+                ws.append([])
+            ws.append(headers)
+            total = 0.0
+            for i in range(rows):
+                sku, item, _c, _u, rate, _co = rng.choice(ITEMS)
+                qty = rng.choice([5, 10, 20, 25, 40])
+                total += qty * rate
+                d = ago(month_back * 30 + rng.randint(0, 27))
+                ws.append(_row(headers, d, dstyle, mstyle, rng.choice(firms),
+                               sku, item, qty, rate, i))
+                if rng.random() < 0.04:
+                    ws.append([])                     # a blank spacer mid-table
+            if rng.random() < 0.45:
+                ws.append([])
+                ws.append(["", "", "Grand Total", "", "", total])
+
+            # A stock sheet on some of them, so the corpus is not all sales.
+            if rng.random() < 0.35:
+                st = wb.create_sheet("Stock")
+                st.append(rng.choice(_STOCK_SHAPES))
+                for sku, item, _c, _u, rate, cost in ITEMS:
+                    st.append([sku, item, rng.choice([0, 6, 14, 30, 70]),
+                               rng.choice([10, 15, 20]), rate,
+                               rng.choice(["Belagavi", "Hubballi"])][:st.max_column])
+            for sheet in wb.worksheets:
+                _autosize(sheet)
+            wb.save(out / name)
+            made.append((name, f"Excel, {rows} rows"))
+
+    # A handful of WhatsApp threads, because that is a real intake route.
+    for n in range(3):
+        name = f"{count + n:03d}-whatsapp-thread.txt"
+        lines = [f"{ago(n * 9 + 1).strftime('%d/%m/%Y')}, 9:0{n} am - "
+                 f"Messages are end-to-end encrypted."]
+        for _ in range(rng.randint(8, 16)):
+            firm = rng.choice(firms)
+            sku, item, _c, unit, rate, _co = rng.choice(ITEMS)
+            qty = rng.choice([5, 10, 20, 30, 50])
+            d = ago(n * 9 + rng.randint(0, 8))
+            lines.append(f"{d.strftime('%d/%m/%Y')}, "
+                         f"{rng.randint(8,18)}:{rng.randint(10,59)} - {firm}: "
+                         + rng.choice([
+                             f"{qty} {unit} {item.split()[0].lower()} beku",
+                             f"send {qty} {item.split()[0].lower()}",
+                             f"{item.split()[0].lower()} {qty} bags urgent",
+                             f"rate enu {item.split()[0].lower()}?",
+                             "payment done, check madi",
+                         ]))
+        (out / name).write_text("\n".join(lines), encoding="utf-8")
+        made.append((name, "WhatsApp thread with orders in it"))
+
+    (out / "README.md").write_text(
+        "# Bulk corpus\n\n"
+        f"{len(made)} files, generated by `python demo/make_samples.py --bulk "
+        f"{count}`.\n\n"
+        "Not nine chosen messes — a client's fourteen months of exports, written "
+        "by whoever was on shift. Roughly 40% Excel, 40% CSV, 10% tab-separated, "
+        "10% deliberately broken, plus WhatsApp threads.\n\n"
+        "Header shape, date format and number format vary per file and sometimes "
+        "within one. Some have junk rows above the header, some a Grand Total, "
+        "some a blank spacer mid-table, some a stock sheet beside the sales.\n\n"
+        "Use this to answer \"what happens when I send you everything I have\".\n",
+        encoding="utf-8")
+    return made
+
+
+def _row(headers, d, dstyle, mstyle, party, sku, item, qty, rate, i):
+    """One row shaped to whatever headers this file happens to use."""
+    amount = qty * rate
+    by_name = {
+        "date": _date_cell(d, dstyle), "invoice date": _date_cell(d, dstyle),
+        "bill dt": _date_cell(d, dstyle), "dt": _date_cell(d, dstyle),
+        "sl": i + 1,
+        "party": party, "customer name": party, "buyer": party,
+        "party name": party, "customer": party,
+        "item": item, "product": item, "item description": item,
+        "particulars": item, "item name": item,
+        "item code": sku,
+        "qty": qty, "nos": qty, "quantity": qty,
+        "rate": rate, "unit price": rate, "price": rate, "mrp": rate,
+        "amount": _money_cell(amount, mstyle, None),
+        "net amount": _money_cell(amount, mstyle, None),
+        "value": _money_cell(amount, mstyle, None),
+        "total": _money_cell(amount, mstyle, None),
+        "remarks": "",
+    }
+    return [by_name.get(h.lower(), "") for h in headers]
 
 if __name__ == "__main__":
     sys.exit(main())

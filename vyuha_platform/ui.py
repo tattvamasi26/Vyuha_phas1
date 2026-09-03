@@ -573,20 +573,19 @@ def layout(title: str, body: str, active: str = "", account=None,
         return _shell(title, body, header, trade_key, full_bleed)
 
     if tenant:
-        # A shared-link guest has no business on the credentials page, so their
-        # "Setup" points at their own details tab instead of the install's.
-        setup = (f"/c/{account.tenant_slug}/setup"
-                 if getattr(account, "is_guest", False) else "/settings")
-        links = (nav("/", "My business", "clients")
-                 + nav("/activity", "History", "activity")
-                 + nav(setup, "Setup", "settings"))
+        # One business, so there is nowhere to navigate to. Everything they need
+        # is inside their own workspace, and a bar offering to move between
+        # businesses is noise to somebody who has one.
+        links = ""
         wordmark = E(account.org_name or "VYUHA")
         tagline = "POWERED BY VYUHA"
     else:
-        links = (nav("/", "Clients", "clients") + nav("/onboard", "Onboard", "onboard")
-                 + nav("/activity", "Activity", "activity")
+        # Onboarding is something Vyuha does for a client, not a screen the
+        # client drives, so it is a button on the list rather than a nav item.
+        # Activity is a question about one business and now lives inside one.
+        links = (nav("/", "Businesses", "clients")
                  + nav("/settings", "Settings", "settings"))
-        wordmark, tagline = "VYUHA", "OPERATIONS PLATFORM"
+        wordmark, tagline = "VYUHA", "OPERATIONS"
 
     if account is None:
         badge = ""

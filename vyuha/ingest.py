@@ -167,7 +167,15 @@ def _spread_merged_cells(grid: pd.DataFrame, ranges) -> pd.DataFrame:
     Excel stores a merged block as one value plus a pile of ``None``s. Left
     alone, that turns a category header spanning six rows into five blank
     rows. Coordinates from openpyxl are 1-based; the grid is 0-based.
+
+    The grid is forced to ``object`` first. A sheet whose merged title sits
+    above a column pandas inferred as float64 would otherwise raise
+    ``TypeError: Invalid value 'ACME TRADERS - MONTHLY STATEMENT' for dtype
+    'float64'`` — an unhandled crash on a perfectly ordinary file, where every
+    other kind of bad input is reported as a readable message.
     """
+    if not grid.empty:
+        grid = grid.astype(object)
     for cell_range in list(ranges):
         r0, c0 = cell_range.min_row - 1, cell_range.min_col - 1
         r1, c1 = cell_range.max_row - 1, cell_range.max_col - 1
