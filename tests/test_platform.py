@@ -180,7 +180,7 @@ def test_manual_books_flow_end_to_end():
     assert run.revenue == 20 * 450
     assert "Sales" in run.sheets_read and "Stock" in run.sheets_read
 
-    page = client.get(f"/c/{slug}/sell")
+    page = client.get(f"/c/{slug}/operations/record")
     assert page.status_code == 200
     assert "Record a sale" in page.text and "WHAT IS LEFT" in page.text
 
@@ -233,10 +233,10 @@ def test_credit_sale_becomes_a_receivable_the_engine_sees():
 
 # -------------------------------------------------------------- send & export
 
-def test_alerts_tab_offers_whatsapp_email_and_exports():
+def test_the_brief_offers_whatsapp_email_and_exports():
     slug = _onboard("Zeta Brief Co")
     _upload(slug, _sample_workbook())
-    resp = client.get(f"/c/{slug}/today")
+    resp = client.get(f"/c/{slug}/messages/brief")
     assert resp.status_code == 200
     assert "wa.me/919876543210" in resp.text, "WhatsApp deep link missing"
     assert f"/c/{slug}/export/pdf" in resp.text
@@ -407,12 +407,14 @@ def test_cover_photo_upload_shows_on_the_workspace():
 
 
 def test_the_workspace_navigates_by_job_not_by_feature():
-    """Six equal panels became four screens named after what somebody is doing."""
+    """Seven modules, each a job somebody has, rather than a row of features."""
     slug = _onboard("Zeta Actions Co", mode="books", phone="")
     body = client.get(f"/c/{slug}").text
-    for label in (">Today", ">Sell", ">Stock", ">Money", "Setup"):
-        assert label in body, f"missing screen: {label}"
-    # Data belongs to a business that sends files; this one types entries.
+    for label in ("Desk", "Dashboard", "Financials", "Operations", "People",
+                  "Messages"):
+        assert f">{label}<" in body, f"missing module: {label}"
+    # Data belongs to a business that sends files; this one types entries and
+    # would only ever see an empty screen there.
     assert f'href="/c/{slug}/data"' not in body
 
 
@@ -752,7 +754,7 @@ def test_a_sale_captures_the_buyers_number_and_remembers_it():
     assert books.load(slug).customer_phones()["Ramu"] == "919876543210"
 
     # ...and the entry screen ships it to the browser so it can auto-fill.
-    page = client.get(f"/c/{slug}/sell").text
+    page = client.get(f"/c/{slug}/operations/record").text
     assert "919876543210" in page and "Their WhatsApp" in page
 
 
@@ -792,10 +794,10 @@ def test_the_send_button_offers_exactly_one_primary_action():
     """Two competing send buttons was the thing that read as messy."""
     slug = _onboard("Zeta OneClick Co")
     _upload(slug, _sample_workbook())
-    body = client.get(f"/c/{slug}/today").text
+    body = client.get(f"/c/{slug}/messages/brief").text
 
     assert body.count("Send now to") + body.count("Open WhatsApp to send") == 1, \
-        "the alerts tab offered more than one way to send"
+        "the brief offered more than one way to send"
     assert "Send automatically" not in body
 
 
@@ -895,6 +897,15 @@ def _cleanup() -> None:
         (books.BOOKS / f"{slug}.json").unlink(missing_ok=True)
         store.delete_client(slug, ACCOUNT.id)
 
+
+
+    # Accounts too, or every run leaves throwaways behind and the master
+    # console fills up with businesses that never existed.
+    for acct in auth._load_all():
+        if acct.email.endswith("@vyuha.test") and acct.email.startswith(("tests-", "other-",)):
+            for leftover in store.load_clients(acct.id):
+                store.delete_client(leftover.slug, acct.id)
+            auth.delete(acct.id)
 
 def main() -> int:
     tests = [(n, f) for n, f in sorted(globals().items())

@@ -380,6 +380,17 @@ def update(account: Account) -> None:
     _save_all([account if a.id == account.id else a for a in _load_all()])
 
 
+def delete(account_id: str) -> None:
+    """Forget an account entirely.
+
+    There is no route to this — a business does not get to delete itself out
+    from under its own data. It exists so the test suites can clear up after
+    themselves: without it every run left its throwaway accounts behind, and
+    the master console listed them as real customers.
+    """
+    _save_all([a for a in _load_all() if a.id != account_id])
+
+
 # -------------------------------------------------------------------- password
 
 def _hash(password: str, salt: str) -> str:

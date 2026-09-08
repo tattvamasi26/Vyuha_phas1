@@ -32,8 +32,8 @@ from datetime import date
 
 from vyuha import fmt
 
-from . import (agent, books, catalog, finance, followup, invoice, money,
-               people, today as today_mod, ui)
+from . import (agent, books, catalog, finance, followup, invoice, modules,
+               money, people, today as today_mod, ui)
 
 E = ui.E
 
@@ -296,18 +296,41 @@ details.levels[open] summary::before{content:"▾ "}
 .todoline .lbl{flex:1;font-size:13.5px}
 .todoline .lbl small{display:block;font-size:11.5px;color:var(--ink-3);margin-top:2px}
 
-.chooser{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));
-  margin:20px 0 20px}
-.pick-sec{display:flex;flex-direction:column;gap:4px;padding:12px 14px;
-  border:1px solid var(--line);border-radius:var(--r-sm);background:var(--card);
-  transition:.15s}
-.pick-sec:hover{border-color:var(--ink-3)}
-.pick-sec.on{border-color:var(--accent);background:var(--card-2)}
-.pick-sec b{font-size:13.5px;font-weight:600}
-.pick-sec span{font-size:11px;color:var(--ink-3);line-height:1.45}
-.pick-sec.on b{color:var(--accent)}
 .note-line{font-size:12.5px;color:var(--ink-3);line-height:1.6;margin-top:16px;
   padding-left:14px;border-left:2px solid var(--line-2);max-width:74ch}
+
+/* --- module nav --------------------------------------------------- */
+.modnav{display:flex;gap:2px;flex-wrap:wrap;margin-bottom:2px;
+  border-bottom:1px solid var(--line)}
+.modnav a{font-size:13.5px;font-weight:600;padding:11px 15px;color:var(--ink-3);
+  border-bottom:2px solid transparent;margin-bottom:-1px;transition:.14s;
+  white-space:nowrap}
+.modnav a:hover{color:var(--ink)}
+.modnav a.on{color:var(--ink);border-bottom-color:var(--accent)}
+.modnav a .n{font-family:var(--num);font-size:10px;font-weight:600;margin-left:6px;
+  padding:1px 6px;border-radius:99px;background:var(--card-3);color:var(--ink-3)}
+.modnav a .n.hot{background:var(--crit);color:#fff}
+.modnav .gear{margin-left:auto;color:var(--ink-3)}
+.tabnav{display:flex;gap:6px;flex-wrap:wrap;margin:16px 0 4px}
+.tabnav a{font-family:var(--num);font-size:11.5px;font-weight:500;padding:6px 12px;
+  border-radius:6px;color:var(--ink-3);border:1px solid var(--line-2);
+  background:var(--card);transition:.14s}
+.tabnav a:hover{color:var(--ink);border-color:var(--ink-3)}
+.tabnav a.on{background:var(--accent);color:#04120F;border-color:var(--accent);
+  font-weight:600}
+.modhead{margin:20px 0 22px}
+.modhead h1{font-family:var(--display);font-weight:800;font-size:26px;
+  letter-spacing:-.02em}
+.modhead p{color:var(--ink-3);font-size:13px;margin-top:6px}
+.txrow{display:grid;grid-template-columns:1fr auto auto auto;gap:14px;
+  padding:11px 0;border-top:1px solid var(--line);align-items:center;
+  font-size:13px}
+.txrow:first-child{border-top:0}
+.txrow .w{font-weight:600}
+.txrow .m{font-family:var(--num);font-size:10.5px;color:var(--ink-3);margin-top:3px}
+.txrow .amt{font-family:var(--num);text-align:right;white-space:nowrap;
+  font-variant-numeric:tabular-nums}
+.txrow .amt.in{color:var(--ok)} .txrow .amt.out{color:var(--crit)}
 """
 
 JS = """
@@ -695,23 +718,29 @@ def _followups(c, queue: list, settings) -> str:
 # ------------------------------------------------------------------ 08 · money
 
 #: What somebody can ask to see. Each is one question, answered on its own.
+#: The statements, and the Financials tab that renders each. This is no longer
+#: a chooser — the tab row is the chooser, and having both meant two rows of
+#: navigation for one module. It survives as the whitelist for `show`, so an
+#: unknown section falls back rather than raising a KeyError at somebody.
 MONEY_SECTIONS = [
-    ("summary",  "Where I stand",   "The short version — what came in, what went out"),
-    ("profit",   "Profit",          "What was earned, what it cost, what is left"),
-    ("owed",     "Who owes what",   "Money out to customers, and money you owe suppliers"),
-    ("costs",    "Costs",           "Every head, and what share of turnover it eats"),
-    ("health",   "Health check",    "The ratios a lender asks for, and break-even"),
+    ("balance",  "Balance sheet",  "What you own, what you owe, what is left"),
+    ("profit",   "Profit & loss",  "What was earned, what it cost, what is left"),
+    ("summary",  "Cash flow",      "What actually moved, and what lands next"),
+    ("owed",     "Who owes what",  "Money out to customers, and money you owe suppliers"),
+    ("costs",    "Costs",          "Every head, and what share of turnover it eats"),
+    ("health",   "Analytics",      "The ratios a lender asks for, and break-even"),
 ]
 
 
-def _money(c, book, ledger, org, period: str = "all", show: str = "summary") -> str:
+def _money(c, book, ledger, org, period: str = "all", show: str = "summary",
+           tab: str = "position") -> str:
     """Four numbers, then whichever statement was asked for.
 
     The period selector and the headline figures stay put; everything below is
     one section. Somebody looking for last month's profit should not have to
     scroll past a balance sheet to reach it.
     """
-    show = show if show in {k for k, _l, _d in MONEY_SECTIONS} else "summary"
+    show = show if show in {k for k, _l, _d in MONEY_SECTIONS} else "balance"
     st = finance.statements(c and book, ledger, period) if False else \
         finance.statements(book, ledger, period)
     pl, cf, bs = st["pl"], st["cash"], st["balance"]
@@ -719,7 +748,7 @@ def _money(c, book, ledger, org, period: str = "all", show: str = "summary") -> 
     label = st["period"]["label"]
 
     periods = "".join(
-        f'<a href="/c/{c.slug}/money?show={E(show)}&period={E(key)}"'
+        f'<a href="/c/{c.slug}/financials/{E(tab)}?period={E(key)}"'
         f'{" class=\'on\'" if key == period else ""}>{E(text)}</a>'
         for key, text, _k in finance.periods(book, ledger)[:8])
 
@@ -734,21 +763,14 @@ def _money(c, book, ledger, org, period: str = "all", show: str = "summary") -> 
               f"{short(ap['overdue'])} of it late" if ap["overdue"] else "none late"),
     ])
 
-    chooser = "".join(
-        f'<a class="pick-sec{" on" if k == show else ""}" '
-        f'href="/c/{c.slug}/money?show={k}&period={E(period)}">'
-        f'<b>{E(lab)}</b><span>{E(desc)}</span></a>'
-        for k, lab, desc in MONEY_SECTIONS)
-
     body = {
         "summary": _m_summary, "profit": _m_profit, "owed": _m_owed,
         "costs": _m_costs, "health": _m_health,
+        "balance": _m_balance,
     }[show](c, book, ledger, st)
 
-    return (_head("Money", f'<div class="periods">{periods}</div>')
-            + f'<div class="grid g4">{tiles}</div>'
-            + f'<div class="chooser">{chooser}</div>'
-            + body)
+    return (f'<div class="periods">{periods}</div>'
+            + f'<div class="grid g4">{tiles}</div>' + body)
 
 
 def _ln(lab, amount, cls="", pct=None, sub=False) -> str:
@@ -756,6 +778,54 @@ def _ln(lab, amount, cls="", pct=None, sub=False) -> str:
     return (f'<div class="ln {cls}{" sub" if sub else ""}">'
             f'<span class="l">{E(lab)}</span>'
             f'<span class="a">{rs(amount)}{p}</span></div>')
+
+
+def _m_balance(c, book, ledger, st) -> str:
+    """What the business owns, what it owes, and what that leaves.
+
+    A balance sheet Vyuha can honestly draw is narrower than the one an
+    accountant files: there are no opening balances, no fixed assets and no
+    capital account, because nothing in the books records them. So it says so,
+    in the panel, rather than presenting a partial statement as a whole one and
+    letting somebody take it to a bank.
+    """
+    bs, ar, ap = st["balance"], st["receivables"], st["payables"]
+    assume = "".join(f'<div class="tiny" style="margin-top:6px">· {E(a)}</div>'
+                     for a in bs["assumptions"])
+    worth = bs["net_worth_from_trading"]
+    return f"""<div class="two">
+  <div class="card">
+    <div class="row" style="justify-content:space-between;margin-bottom:14px">
+      <div style="font-size:16px;font-weight:700">What you own</div>
+      <span class="pill dim">as at {E(bs["as_of"])}</span></div>
+    <div class="stmt">
+      {_ln("Cash from trading", bs["cash_from_trading"])}
+      {_ln("Owed by customers", bs["receivables"])}
+      {_ln("Stock on the shelf", bs["stock_value"])}
+      {_ln("Total", bs["current_assets"], cls="tot pos")}
+    </div></div>
+  <div class="card">
+    <div class="row" style="justify-content:space-between;margin-bottom:14px">
+      <div style="font-size:16px;font-weight:700">What you owe</div>
+      <span class="pill dim">bills raised against you</span></div>
+    <div class="stmt">
+      {_ln("Owed to suppliers", bs["payables"])}
+      {_ln("Total", bs["current_liabilities"], cls="tot neg")}
+    </div>
+    <div class="stmt" style="margin-top:18px">
+      {_ln("Working capital", bs["working_capital"], cls="tot " + ("pos" if bs["working_capital"] >= 0 else "neg"))}
+      {_ln("Net worth from trading", worth, cls="tot " + ("pos" if worth >= 0 else "neg"))}
+    </div></div></div>
+<div class="card" style="margin-top:16px">
+  <div style="font-size:16px;font-weight:700">What this does not include</div>
+  <div class="tiny" style="margin-top:7px">Take it as a picture of the trading
+    position, not as a filed balance sheet.</div>{assume}
+  <div class="tiny" style="margin-top:6px">· No fixed assets, capital account or
+    loans — the books do not record them.</div>
+  <div class="row" style="margin-top:14px;gap:8px">
+    <a class="btn sm ghost" href="/c/{c.slug}/financials/cashflow">Cash flow</a>
+    <a class="btn sm ghost" href="/c/{c.slug}/financials/profit">Profit &amp; loss</a>
+  </div></div>{_m_owed(c, book, ledger, st)}"""
 
 
 def _m_summary(c, book, ledger, st) -> str:
@@ -1215,53 +1285,62 @@ def _people(c, org, book, ledger) -> str:
 
 # ==================================================================== the shell
 
-def shell(c, account, active: str, body: str, *, counts: dict | None = None,
+def shell(c, account, module, tab, body: str, *, counts: dict | None = None,
           stats: list | None = None, question: str = "", flash: str = "",
           flash_kind: str = "ok") -> str:
-    """Nav, the question box, and one view's body.
+    """Module nav, tab nav, the question box, and one tab's body.
 
-    The question box sits in the header rather than on a screen of its own. That
-    is the whole reason anybody will use it: a panel has to be remembered, a box
-    in front of you does not.
+    Two levels rather than one. Seven modules on a single row of equal buttons
+    would be the same mistake as six panels — the level below says which *step*
+    of a job you are on, and that is information the flat version threw away.
     """
     counts = counts or {}
-    hero_stats = stats or []
-    nav = ""
-    for key, label in views_for(c):
-        n = counts.get(key, 0)
-        hot = key == "today" and any(f.severity == "critical"
-                                     for f in counts.get("_findings", []))
-        badge = (f'<span class="n{" hot" if hot else ""}">{n}</span>') if n else ""
-        nav += (f'<a href="/c/{c.slug}/{key}" class="{"on" if key == active else ""}">'
-                f'{E(label)}{badge}</a>')
-    nav += (f'<a href="/c/{c.slug}/setup" class="gear'
-            f'{" on" if active == "setup" else ""}">⚙ Setup</a>')
+    findings = counts.get("_findings") or []
+
+    mods = ""
+    for m in modules.visible(c, account):
+        n = counts.get(m.key, 0)
+        hot = m.key == "desk" and any(f.severity == "critical" for f in findings)
+        badge = f'<span class="n{" hot" if hot else ""}">{n}</span>' if n else ""
+        mods += (f'<a href="/c/{c.slug}/{m.key}"'
+                 f'{" class=\'on\'" if m.key == module.key else ""}>'
+                 f'{E(m.label)}{badge}</a>')
+    mods += (f'<a class="gear{" on" if module.key == "setup" else ""}" '
+             f'href="/c/{c.slug}/setup">⚙</a>')
+
+    tabs = ""
+    if len(module.tabs) > 1:
+        tabs = '<div class="tabnav">' + "".join(
+            f'<a href="/c/{c.slug}/{module.key}/{t.key}"'
+            f'{" class=\'on\'" if t.key == tab.key else ""}>{E(t.label)}</a>'
+            for t in module.tabs) + "</div>"
 
     head = f"""<div class="wsbar">
-  <a href="/c/{c.slug}/today" class="biz">{E(c.name)}
+  <a href="/c/{c.slug}/desk" class="biz">{E(c.name)}
     <small>{E((c.industry or 'BUSINESS').upper())}</small></a>
   <form class="askform" method="post" action="/c/{c.slug}/ask">
     <input name="question" value="{E(question)}" autocomplete="off"
            placeholder="Ask anything about your business…" aria-label="Ask a question">
-    <input type="hidden" name="from" value="{E(active)}">
+    <input type="hidden" name="from" value="{E(module.key)}">
+    <input type="hidden" name="tab" value="{E(tab.key)}">
   </form>
   <a class="btn ghost sm" href="/">All businesses</a>
 </div>
-<div class="wsnav">{nav}</div>"""
+<div class="modnav">{mods}</div>{tabs}
+<div class="modhead"><h1>{E(tab.label if len(module.tabs) > 1 else module.label)}</h1>
+  <p>{E(tab.blurb or module.purpose)}</p></div>"""
 
-    # Vyuha staff inside somebody else's workspace must be able to see that they
-    # are. It was on the old page and has to stay wherever the page went.
     support = ""
     if getattr(account, "is_master", False) and c.owner_id != account.id:
         support = ('<div class="support-bar">Vyuha support view — this is not '
                    'your data. The visit is recorded in the client\'s own '
                    'activity trail.</div>')
 
-    return ui.layout(f"{c.name} · {active.title()}",
+    return ui.layout(f"{c.name} · {module.label}",
                      f"<style>{EXTRA}</style>{support}{head}"
                      f"{ui._flash(flash, flash_kind)}{body}",
                      active="clients", account=account, trade_key=c.trade,
-                     full_bleed=ui.cover_hero(c, None, hero_stats))
+                     full_bleed=ui.cover_hero(c, None, stats or []))
 
 
 def _answer_block(c, reply) -> str:
@@ -1306,123 +1385,489 @@ def _answer_block(c, reply) -> str:
             f'{E(reply.label)}{E(consulted)}</div></div>')
 
 
-# ==================================================================== 1 · today
+# ================================================================ the router
 
-def today_view(c, account, book, ledger, org, invoices, settings, *,
-               reply=None, question: str = "", flash: str = "",
-               flash_kind: str = "ok") -> str:
-    """What needs a decision, ranked, each with one button."""
-    items = today_mod.findings(c, book, ledger, org, invoices)
+def render(c, account, module, tab, *, book, ledger, org, invoices, settings,
+           reply=None, question: str = "", flash: str = "", flash_kind: str = "ok",
+           period: str = "all", show: str = "", entries=None,
+           invite=None, fresh_pin: str = "") -> str:
+    """One entry point for every screen.
+
+    A single dispatch rather than seven view functions with seven signatures:
+    every screen needs the same state, and letting each route decide what to
+    load is how two of them end up disagreeing about the numbers.
+    """
     queue = followup.queue(c.slug, book)
+    summary = books.summary(book)
+    findings = today_mod.findings(c, book, ledger, org, invoices)
 
-    hello = (f'<div class="hello"><h1>{E(today_mod.greeting(c, account))}</h1>'
-             f'<p>{E(("Nothing needs you today. " if not items else "")) }'
-             f'{E(today_mod.summary_line(c, book, ledger))}</p></div>')
+    counts = {
+        "desk": len(findings),
+        "_findings": findings,
+        "operations": len(summary["low_stock"]) + len(summary["out_of_stock"]),
+        "financials": len([e for e in ledger.expenses if not e.paid]),
+        "messages": len(queue),
+        "data": len(c.runs),
+    }
 
-    if items:
-        head = (f'<div class="hello"><h1>{E(today_mod.greeting(c, account))}</h1>'
-                f'<p>{len(items)} thing(s) need you — {E(today_mod.minutes(items))}.'
-                f' {E(today_mod.summary_line(c, book, ledger))}</p></div>')
-        cards = "".join(
-            f'<div class="td {E(f.severity)}"><div class="txt">'
-            f'<div class="t">{E(f.title)}</div>'
-            f'<div class="d">{E(f.detail)}</div></div>'
-            f'<a class="btn sm{" primary" if f.severity == "critical" else ""} go"'
-            f' href="{E(f.href)}">{E(f.action)}</a></div>' for f in items)
-        body = head + f'<div class="todo">{cards}</div>'
-    else:
-        body = hello + ('<div class="allclear"><div class="big">All clear</div>'
-                        '<div class="muted">Nothing is out of stock, nobody is '
-                        'overdue, and no money is sitting idle. Close this and '
-                        'get on with your day.</div></div>')
-
-    # --- the chase list, in place, so "send reminders" resolves here
-    chase = ""
-    if queue:
-        rows = ""
-        for f in queue[:8]:
-            text = followup.draft(f, c.name)
-            if f.has_phone:
-                from . import channels
-                send = (f'<a class="btn sm wa" target="_blank" rel="noopener" '
-                        f'href="{channels.whatsapp_link(f.party_phone, text)}">'
-                        f'WhatsApp</a>')
-            else:
-                send = '<span class="pill dim">no number</span>'
-            rows += (f'<div class="chase"><div><div class="who">{E(f.party)}</div>'
-                     f'<div class="why">{E(f.reason)}</div></div>'
-                     f'<div class="act">{send}'
-                     f'<form method="post" action="/c/{c.slug}/followup">'
-                     f'<input type="hidden" name="key" value="{E(f.key)}">'
-                     f'<input type="hidden" name="status" value="done">'
-                     f'<button class="btn sm ghost" type="submit">Done</button></form>'
-                     f'<form method="post" action="/c/{c.slug}/followup">'
-                     f'<input type="hidden" name="key" value="{E(f.key)}">'
-                     f'<input type="hidden" name="status" value="snoozed">'
-                     f'<input type="hidden" name="days" value="7">'
-                     f'<button class="btn sm ghost" type="submit">Later</button>'
-                     f'</form></div></div>')
-        chase = (f'<div id="chase"></div>'
-                 f'<div class="section-h"><h2>WHO TO CHASE</h2><div class="rule"></div>'
-                 f'<span class="tiny">message already written</span></div>'
-                 f'<div class="card">{rows}</div>')
-
-    # --- the register, if this business keeps one
-    register = people.today_register(org)
-    marks = ""
-    if register:
-        rows = ""
-        for r in register:
-            buttons = "".join(
-                f'<form method="post" action="/c/{c.slug}/staff/{E(r["id"])}/attendance">'
-                f'<input type="hidden" name="state" value="{k}">'
-                f'<button class="btn sm ghost" type="submit">{label}</button></form>'
-                for k, label in [("present", "In"), ("half", "Half"),
-                                 ("leave", "Leave"), ("absent", "Out")])
-            rows += (f'<div class="chase"><div><div class="who">{E(r["name"])}</div>'
-                     f'<div class="why">{E(r["role"])}'
-                     f'{" · " + E(r["branch"]) if r["branch"] else ""} · '
-                     f'<span class="st-{E(r["state"])}">{E(r["state"])}</span>'
-                     f'</div></div><div class="act">{buttons}</div></div>')
-        marks = (f'<div id="register"></div>'
-                 f'<div class="section-h"><h2>TODAY&#39;S REGISTER</h2>'
-                 f'<div class="rule"></div></div><div class="card">{rows}</div>')
-
-    send = _send_block(c, settings, book, ledger)
+    body = _answer_block(c, reply) + _body(
+        c, account, module, tab, book=book, ledger=ledger, org=org,
+        invoices=invoices, settings=settings, queue=queue, summary=summary,
+        findings=findings, period=period, show=show, entries=entries,
+        invite=invite, fresh_pin=fresh_pin)
 
     pos = money.position(book, ledger)
-    last = c.latest
-    if c.data_mode != "books" and last is not None and last.status == "ok":
-        hero = [("Revenue", short(last.revenue)), ("Stock", short(last.stock_value)),
-                ("Outstanding", short(last.outstanding)),
-                ("Alerts", str(last.alert_count))]
-    else:
-        hero = [("Earned", short(book.earned)), ("In hand", short(pos["net"])),
-                ("Owed to you", short(book.owed)), ("To chase", str(len(queue)))]
+    stats = [("Earned", short(book.earned)), ("In hand", short(pos["net"])),
+             ("Owed to you", short(book.owed)), ("To chase", str(len(queue)))]
 
-    return shell(c, account, "today",
-                 _answer_block(c, reply) + body + send + chase + marks,
-                 stats=hero,
-                 counts={"today": len(items), "_findings": items,
-                         "stock": len(books.summary(book)["low_stock"])
-                                  + len(books.summary(book)["out_of_stock"])},
+    return shell(c, account, module, tab, body, counts=counts, stats=stats,
                  question=question, flash=flash, flash_kind=flash_kind)
 
 
-# ===================================================================== 2 · sell
+def _body(c, account, module, tab, **st) -> str:
+    """Whichever tab was asked for."""
+    key = f"{module.key}.{tab.key}"
+    handler = _TABS.get(key)
+    if handler is None:
+        return _empty("Nothing here yet", "This part is still being built.")
+    return handler(c, account, st)
 
-def sell_view(c, account, book, org, invoices, settings, *, reply=None,
-              question: str = "", flash: str = "", flash_kind: str = "ok") -> str:
-    """The daily job for a business that types entries: sell, bill, pay out."""
-    entry = ui.books_tab(c, book)
-    bills = _bills(c, book, invoices)
-    spend = _money_out_form(c, org)
-    body = (_answer_block(c, reply) + entry
-            + f'<div id="bills"></div>{bills}' + spend)
-    return shell(c, account, "sell", body,
-                 counts={"sell": len([s for s in book.sales
-                                      if s.date == date.today().isoformat()])},
-                 question=question, flash=flash, flash_kind=flash_kind)
+
+# ====================================================================== desk
+
+def _desk_today(c, account, st) -> str:
+    findings, book, ledger = st["findings"], st["book"], st["ledger"]
+    line = today_mod.summary_line(c, book, ledger)
+
+    if not findings:
+        return (f'<div class="hello" style="margin-bottom:18px">'
+                f'<h1>{E(today_mod.greeting(c, account))}</h1></div>'
+                '<div class="allclear"><div class="big">All clear</div>'
+                '<div class="muted">Nothing is out of stock, nobody is overdue, '
+                'and no money is sitting idle. Close this and get on with your '
+                f'day.</div></div><div class="note-line">{E(line)}</div>')
+
+    cards = "".join(
+        f'<div class="td {E(f.severity)}"><div class="txt">'
+        f'<div class="t">{E(f.title)}</div><div class="d">{E(f.detail)}</div></div>'
+        f'<a class="btn sm{" primary" if f.severity == "critical" else ""} go"'
+        f' href="{E(f.href)}">{E(f.action)}</a></div>' for f in findings)
+    return (f'<div class="hello" style="margin-bottom:18px">'
+            f'<h1>{E(today_mod.greeting(c, account))}</h1>'
+            f'<p>{len(findings)} thing(s) need you — '
+            f'{E(today_mod.minutes(findings))}. {E(line)}</p></div>'
+            f'<div class="todo">{cards}</div>')
+
+
+def _desk_chase(c, account, st) -> str:
+    queue = st["queue"]
+    if not queue:
+        return _empty("Nobody to chase",
+                      "No overdue payments and every regular has bought recently.")
+    from . import channels
+    rows = ""
+    for f in queue[:25]:
+        text = followup.draft(f, c.name)
+        send = (f'<a class="btn sm wa" target="_blank" rel="noopener" '
+                f'href="{channels.whatsapp_link(f.party_phone, text)}">WhatsApp</a>'
+                if f.has_phone else '<span class="pill dim">no number</span>')
+        rows += (f'<div class="chase"><div><div class="who">{E(f.party)}</div>'
+                 f'<div class="why">{E(f.reason)}</div></div>'
+                 f'<div class="act">{send}'
+                 f'<form method="post" action="/c/{c.slug}/followup">'
+                 f'<input type="hidden" name="key" value="{E(f.key)}">'
+                 f'<input type="hidden" name="status" value="done">'
+                 f'<button class="btn sm ghost" type="submit">Done</button></form>'
+                 f'<form method="post" action="/c/{c.slug}/followup">'
+                 f'<input type="hidden" name="key" value="{E(f.key)}">'
+                 f'<input type="hidden" name="status" value="snoozed">'
+                 f'<input type="hidden" name="days" value="7">'
+                 f'<button class="btn sm ghost" type="submit">Later</button>'
+                 f'</form></div></div>')
+    return f'<div class="card">{rows}</div>'
+
+
+def _desk_register(c, account, st) -> str:
+    register = people.today_register(st["org"])
+    if not register:
+        return _empty("Nobody on the register",
+                      "Add your team under People and the register appears here.")
+    rows = ""
+    for r in register:
+        buttons = "".join(
+            f'<form method="post" action="/c/{c.slug}/staff/{E(r["id"])}/attendance">'
+            f'<input type="hidden" name="state" value="{k}">'
+            f'<button class="btn sm ghost" type="submit">{label}</button></form>'
+            for k, label in [("present", "In"), ("half", "Half"),
+                             ("leave", "Leave"), ("absent", "Out")])
+        rows += (f'<div class="chase"><div><div class="who">{E(r["name"])}</div>'
+                 f'<div class="why">{E(r["role"])}'
+                 f'{" · " + E(r["branch"]) if r["branch"] else ""} · '
+                 f'<span class="st-{E(r["state"])}">{E(r["state"])}</span>'
+                 f'</div></div><div class="act">{buttons}</div></div>')
+    return (f'<div class="card">{rows}<div class="tiny" style="margin-top:14px">'
+            f'Nobody is absent until somebody says so — an unmarked day is a '
+            f'forgotten register, not unpaid leave.</div></div>')
+
+
+# ================================================================= dashboard
+
+def _dash_sales(c, account, st) -> str:
+    from . import analysis
+    book, org = st["book"], st["org"]
+    if not book.sales:
+        return _empty("No sales yet", "Record one under Operations, or send a file.")
+
+    by_month = analysis.query_sales(book, org, group_by="month", measure="revenue",
+                                    top_n=12)
+    rows = list(reversed(by_month["rows"]))
+    chart = ""
+    if len(rows) > 1:
+        peak = max(r["revenue"] for r in rows) or 1
+        chart = ('<div class="card"><div style="font-size:16px;font-weight:700">'
+                 'Month by month</div><div class="trend">' + "".join(
+                     f'<div class="c"><div class="stk"><div class="rev" '
+                     f'style="height:{r["revenue"] / peak * 100:.0f}%" '
+                     f'title="{rs(r["revenue"])}"></div></div>'
+                     f'<div class="lb">{E(r["group"])}</div></div>' for r in rows)
+                 + "</div></div>")
+
+    def table(title, out, label):
+        body = "".join(
+            f'<tr><td><b>{E(r["group"])}</b></td>'
+            f'<td class="num">{rs(r["revenue"])}</td>'
+            f'<td class="num">{r["bills"]}</td>'
+            f'<td class="num">{rs(r["margin"]) if r["margin"] else "—"}</td></tr>'
+            for r in out["rows"][:10])
+        return (f'<div class="card" style="padding:0;overflow:hidden">'
+                f'<div style="font-size:16px;font-weight:700;padding:18px 20px">'
+                f'{E(title)}</div><div class="scroll-x"><table class="mtable">'
+                f'<tr><th>{E(label)}</th><th class="num">Revenue</th>'
+                f'<th class="num">Bills</th><th class="num">Margin</th></tr>'
+                f'{body}</table></div></div>')
+
+    tiles = "".join([
+        _stat("Revenue", short(book.earned), f"{len(book.sales)} bill(s)"),
+        _stat("Collected", short(book.collected), "money in hand"),
+        _stat("Owed to you", short(book.owed), "on credit"),
+        _stat("Customers", str(len(book.customers())), "who have bought"),
+    ])
+    top_items = analysis.query_sales(book, org, group_by="item", top_n=10)
+    top_party = analysis.query_sales(book, org, group_by="party", top_n=10)
+    return (f'<div class="grid g4">{tiles}</div><div style="height:16px"></div>'
+            + chart + '<div class="two" style="margin-top:16px">'
+            + table("What sells", top_items, "Item")
+            + table("Who buys", top_party, "Customer") + "</div>")
+
+
+def _dash_inventory(c, account, st) -> str:
+    return _stock(c, st["book"], st["org"])
+
+
+def _dash_transactions(c, account, st) -> str:
+    """Every movement, in and out, in one list.
+
+    Sales, purchases and stock transfers sit in three different stores, and
+    "what happened on Tuesday" was unanswerable without opening all three.
+    """
+    book, ledger, org = st["book"], st["ledger"], st["org"]
+    rows = []
+    for sale in book.sales:
+        rows.append((sale.date, "in", sale.party or "Cash sale",
+                     f"{sale.item} · {sale.qty:g} × {rs(sale.rate)}",
+                     sale.amount, "paid" if sale.paid else "on credit"))
+    for e in ledger.expenses:
+        rows.append((e.date, "out", e.party or e.category,
+                     e.category + (f" · {e.note}" if e.note else ""),
+                     e.amount, "paid" if e.paid else "owed"))
+    for t in org.transfers:
+        rows.append((t.date, "move", f"{org.name_of(t.from_branch)} → "
+                     f"{org.name_of(t.to_branch)}",
+                     f"{t.item} · {t.qty:g}", 0.0, "transfer"))
+
+    if not rows:
+        return _empty("Nothing has moved yet", "Sales and payments appear here.")
+
+    rows.sort(key=lambda r: r[0] or "", reverse=True)
+    total_in = sum(r[4] for r in rows if r[1] == "in")
+    total_out = sum(r[4] for r in rows if r[1] == "out")
+    tiles = "".join([
+        _stat("Movements", f"{len(rows):,}", "sales, payments and transfers"),
+        _stat("In", short(total_in), "billed to customers"),
+        _stat("Out", short(total_out), "paid to suppliers and staff"),
+        _stat("Net", short(total_in - total_out), "on what is recorded"),
+    ])
+    listed = "".join(
+        f'<div class="txrow"><div><div class="w">{E(who)}</div>'
+        f'<div class="m">{E(what)[:70]}</div></div>'
+        f'<span class="tiny">{E(when or "—")}</span>'
+        f'<span class="pill dim">{E(state)}</span>'
+        f'<span class="amt {"in" if kind == "in" else "out" if kind == "out" else ""}">'
+        f'{rs(amount) if amount else "—"}</span></div>'
+        for when, kind, who, what, amount, state in rows[:120])
+    more = ("" if len(rows) <= 120 else
+            f'<div class="tiny" style="margin-top:14px">Showing the most recent '
+            f'120 of {len(rows):,}.</div>')
+    return (f'<div class="grid g4">{tiles}</div><div style="height:16px"></div>'
+            f'<div class="card">{listed}{more}</div>')
+
+
+# ================================================================ financials
+
+def _fin_position(c, account, st) -> str:
+    """The founder's first Financials item: what you own, owe, and are worth."""
+    return _money(c, st["book"], st["ledger"], st["org"], st["period"],
+                  "balance", "position")
+
+
+def _fin_profit(c, account, st) -> str:
+    return (_money(c, st["book"], st["ledger"], st["org"], st["period"],
+                   "profit", "profit")
+            + _m_costs(c, st["book"], st["ledger"],
+                       finance.statements(st["book"], st["ledger"], st["period"])))
+
+
+def _fin_cashflow(c, account, st) -> str:
+    return _money(c, st["book"], st["ledger"], st["org"], st["period"],
+                  "summary", "cashflow")
+
+
+def _fin_analytics(c, account, st) -> str:
+    return (_money(c, st["book"], st["ledger"], st["org"], st["period"],
+                   "health", "analytics")
+            + _selling(c, st["org"], st["book"]))
+
+
+def _fin_taxes(c, account, st) -> str:
+    """GST collected, GST paid, and what that leaves.
+
+    Output tax comes from invoices actually raised — not from sales, because a
+    sale with no invoice has collected no tax and claiming otherwise would
+    overstate what is owed. Input tax is only claimable against a purchase with
+    a GSTIN behind it, which the expense ledger does not record, so it is shown
+    as an estimate and labelled as one rather than quietly netted off.
+    """
+    invoices, ledger = st["invoices"], st["ledger"]
+    taxed = [i for i in invoices if i.taxed]
+    output = sum(i.tax for i in taxed)
+    taxable = sum(i.taxable for i in taxed)
+    cgst = sum(i.cgst for i in taxed)
+    igst = sum(i.igst for i in taxed)
+
+    purchases = [e for e in ledger.expenses if e.category == "Purchase"]
+    # A rough input credit at the commonest rate, clearly flagged.
+    est_input = sum(e.amount for e in purchases) * 5 / 105
+
+    if not c.gstin:
+        return ('<div class="card"><div style="font-size:16px;font-weight:700">'
+                'No GSTIN set</div><div class="muted" style="margin-top:9px">'
+                'Bills print as a bill of supply and no tax is collected on them. '
+                f'Add your GSTIN in <a href="/c/{c.slug}/setup/billing">'
+                'what prints on your bills</a> and this '
+                'fills in.</div></div>')
+
+    tiles = "".join([
+        _stat("Tax collected", short(output), f"on {len(taxed)} invoice(s)"),
+        _stat("Taxable value", short(taxable), "before tax"),
+        _stat("CGST + SGST", short(cgst * 2), "sales within the state"),
+        _stat("IGST", short(igst), "sales outside it"),
+    ])
+
+    by_rate: dict[float, dict] = {}
+    for inv in taxed:
+        for g in inv.by_rate():
+            row = by_rate.setdefault(g["gst_rate"], {"taxable": 0.0, "tax": 0.0})
+            row["taxable"] += g["taxable"]
+            row["tax"] += g["tax"]
+    rate_rows = "".join(
+        f'<tr><td><b>{r:g}%</b></td><td class="num">{rs(v["taxable"])}</td>'
+        f'<td class="num">{rs(v["tax"])}</td></tr>'
+        for r, v in sorted(by_rate.items()))
+
+    return (f'<div class="grid g4">{tiles}</div><div style="height:16px"></div>'
+            f'<div class="two">'
+            f'<div class="card" style="padding:0;overflow:hidden">'
+            f'<div style="font-size:16px;font-weight:700;padding:18px 20px">'
+            f'By rate</div><div class="scroll-x"><table class="mtable">'
+            f'<tr><th>Rate</th><th class="num">Taxable</th><th class="num">Tax</th></tr>'
+            f'{rate_rows or "<tr><td colspan=3 class=tiny>No taxed invoices yet.</td></tr>"}'
+            f'</table></div></div>'
+            f'<div class="card"><div style="font-size:16px;font-weight:700">'
+            f'What this does not know</div>'
+            f'<div class="stmt" style="margin-top:12px">'
+            f'{_ln("Tax you collected", output)}'
+            f'{_ln("Input credit, estimated", -est_input)}'
+            f'{_ln("Rough net", output - est_input, cls="tot")}</div>'
+            f'<div class="note-line">Input credit is an <b>estimate</b> at 5% on '
+            f'recorded purchases. Vyuha does not hold your suppliers\' GSTINs or '
+            f'their invoice numbers, so this is not a return and must not be filed '
+            f'from. It is here to tell you roughly where you stand between '
+            f'filings.</div></div></div>')
+
+
+# ================================================================ operations
+
+def _ops_record(c, account, st) -> str:
+    book, org = st["book"], st["org"]
+    entry = (ui.books_tab(c, book) if c.data_mode == "books"
+             else _quick_sale(c, book, org))
+    return entry + _money_out_form(c, org)
+
+
+def _quick_sale(c, book, org) -> str:
+    """Even a business that sends files sometimes rings one up by hand."""
+    if not book.items:
+        return ('<div class="card"><div style="font-size:16px;font-weight:700">'
+                'Nothing to sell yet</div><div class="muted" style="margin-top:9px">'
+                f'Send a stock file under <a href="/c/{c.slug}/data">Data</a> and '
+                'items appear here.</div></div>')
+    return ui.books_tab(c, book)
+
+
+def _ops_alerts(c, account, st) -> str:
+    return _stock(c, st["book"], st["org"])
+
+
+def _ops_invoices(c, account, st) -> str:
+    return _bills(c, st["book"], st["invoices"])
+
+
+# ==================================================================== people
+
+def _people_team(c, account, st) -> str:
+    return _people_setup(c, st["org"])
+
+
+def _people_performance(c, account, st) -> str:
+    out = _selling(c, st["org"], st["book"])
+    return out or _empty("Nobody attributed yet",
+                         "Pick who sold it on the entry form and this fills in.")
+
+
+def _people_branches(c, account, st) -> str:
+    org, book, ledger = st["org"], st["book"], st["ledger"]
+    if not org.has_branches:
+        return _empty("One location",
+                      "Add a second branch under Team and the comparison appears.")
+    rows = people.performance(org, book, ledger)
+    top = max((r["revenue"] for r in rows), default=1) or 1
+    cards = "".join(
+        f'<div class="card"><div class="row" style="justify-content:space-between">'
+        f'<div><div style="font-size:17px;font-weight:700">{E(r["name"])}</div>'
+        + (f'<div class="tiny" style="margin-top:4px">{E(r["place"])}</div>'
+           if r["place"] else "")
+        + f'</div><span class="pill {"ok" if r["share"] >= 0.5 else "dim"}">'
+          f'{int(r["share"] * 100)}%</span></div>'
+          f'<div class="meter"><i style="width:{r["revenue"] / top * 100:.0f}%"></i></div>'
+          f'<div class="grid g4" style="margin-top:15px;gap:10px">'
+          f'<div><div class="tiny">REVENUE</div><div style="font-weight:700;margin-top:3px">'
+          f'{short(r["revenue"])}</div></div>'
+          f'<div><div class="tiny">SPENT</div><div style="font-weight:700;margin-top:3px">'
+          f'{short(r["spend"])}</div></div>'
+          f'<div><div class="tiny">BILLS</div><div style="font-weight:700;margin-top:3px">'
+          f'{r["bills"]}</div></div>'
+          f'<div><div class="tiny">PEOPLE</div><div style="font-weight:700;margin-top:3px">'
+          f'{r["staff"]}</div></div></div></div>' for r in rows)
+    return f'<div class="grid g3">{cards}</div>'
+
+
+# ================================================================== messages
+
+def _msg_brief(c, account, st) -> str:
+    block = _send_block(c, st["settings"], st["book"], st["ledger"])
+    return block or _empty("Nothing to send yet",
+                           "A brief is built from your alerts. Send a file or "
+                           "record a sale and one appears.")
+
+
+def _msg_outbox(c, account, st) -> str:
+    entries = st.get("entries") or []
+    sent = [e for e in entries
+            if e.kind in {"alert.sent", "receipt.sent", "export.created",
+                          "alert.send_failed", "receipt.failed"}]
+    if not sent:
+        return _empty("Nothing sent yet",
+                      "Briefs, receipts and downloads appear here once they go.")
+    rows = "".join(
+        f'<div class="chase"><div><div class="who">{E(e.summary)}</div>'
+        f'<div class="why">{E(e.ts[:16].replace("T", " "))}'
+        f'{" · " + E(e.channel) if e.channel else ""}</div></div>'
+        f'<div class="act"><span class="pill '
+        f'{"crit" if "failed" in e.kind else "ok"}">'
+        f'{"failed" if "failed" in e.kind else "sent"}</span></div></div>'
+        for e in sent[:40])
+    return f'<div class="card">{rows}</div>'
+
+
+# ====================================================================== data
+
+def _data_sources(c, account, st) -> str:
+    return _drop_zone(c, account)
+
+
+def _data_readback(c, account, st) -> str:
+    return _read_back(c)
+
+
+def _data_history(c, account, st) -> str:
+    if not c.runs:
+        return _empty("Nothing sent yet", "Files you send appear here.")
+    rows = "".join(
+        f'<div class="chase"><div><div class="who">{E(r.filename)}</div>'
+        f'<div class="why">{E(r.uploaded_at[:16].replace("T", " "))} · '
+        f'{E(", ".join(r.sheets_read) or "—")}'
+        f'{" · " + str(r.alert_count) + " alert(s)" if r.status == "ok" else ""}'
+        f'</div></div><div class="act"><span class="pill '
+        f'{"ok" if r.status == "ok" else "crit"}">'
+        f'{E(r.confidence if r.status == "ok" else "failed")}</span></div></div>'
+        for r in c.runs[:30])
+    return f'<div class="card">{rows}</div>'
+
+
+
+
+# ============================================================ shared pieces
+
+def _answer_block(c, reply) -> str:
+    """The agent's reply, above whatever screen it was asked from."""
+    if reply is None:
+        return ""
+    if not reply.ok:
+        return (f'<div class="card" style="margin-bottom:22px;'
+                f'border-color:rgba(229,163,58,.32)">'
+                f'<div style="font-size:15px;font-weight:700">Could not answer that</div>'
+                f'<div class="muted" style="margin-top:8px">{E(reply.error)}</div></div>')
+
+    deck = ""
+    if reply.deck:
+        deck = (f'<div class="deckout"><div>'
+                f'<div style="font-size:15px;font-weight:700">Your deck is ready</div>'
+                f'<div class="tiny" style="margin-top:5px">{E(reply.deck_label)}</div></div>'
+                f'<div class="row" style="gap:8px">'
+                f'<a class="btn sm primary" href="{E(reply.deck)}" target="_blank"'
+                f' rel="noopener">Open the deck</a>'
+                f'<a class="btn sm ghost" href="/c/{c.slug}/deck/pptx">PPTX</a>'
+                f'<a class="btn sm ghost" href="/c/{c.slug}/deck/pdf">PDF</a></div></div>')
+
+    consulted = ""
+    if reply.source == "claude" and reply.used:
+        words = {"query_sales": "your sales", "stock_report": "your stock",
+                 "customer_detail": "that customer", "item_detail": "that item",
+                 "compare_periods": "last month against this",
+                 "financial_statements": "your statements",
+                 "list_followups": "who owes you", "list_branches": "your branches",
+                 "make_deck": "built a deck"}
+        seen = []
+        for name in reply.used:
+            w = words.get(name, name)
+            if w not in seen:
+                seen.append(w)
+        consulted = " · looked at " + ", ".join(seen[:4])
+
+    return (f'<div class="card" style="margin-bottom:22px">'
+            f'<div class="answer" style="margin-top:0">{E(reply.text)}</div>{deck}'
+            f'<div class="tiny" style="margin-top:14px">'
+            f'{E(reply.label)}{E(consulted)}</div></div>')
 
 
 def _money_out_form(c, org) -> str:
@@ -1453,22 +1898,25 @@ def _money_out_form(c, org) -> str:
   </form></div>"""
 
 
-# ====================================================================== 3 · data
+def _drop_zone(c, account) -> str:
+    """Send files — as many as you like, or point at a folder."""
+    folder = "" if account.is_guest else f"""<div class="card" style="margin-top:16px">
+  <div style="font-size:16px;font-weight:700">Or read a folder already on this machine</div>
+  <div class="tiny" style="margin:7px 0 15px">Nobody wants to select ninety files
+    in a dialog. Nothing is moved — the folder is read where it sits.</div>
+  <form method="post" action="/c/{c.slug}/folder">
+    <div class="field"><input name="path"
+      placeholder="C:\\Users\\you\\Desktop\\client files" autocomplete="off"></div>
+    <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:12px">
+      <label class="chk"><input type="checkbox" name="recursive" value="1" checked>
+        Include sub-folders</label>
+      <button class="btn" type="submit">Read the folder</button></div>
+  </form></div>"""
 
-def data_view(c, account, settings, activity_entries, *, reply=None,
-              question: str = "", flash: str = "", flash_kind: str = "ok") -> str:
-    """Send files — as many as you like, or point at a folder.
-
-    One file at a time was the wrong shape for the job. A client's data arrives
-    as fourteen months of exports, and reading them one by one and keeping the
-    last reports whichever happened to be dropped last as the whole business.
-    """
-    last = c.latest
-
-    drop = f"""<div class="card">
+    return f"""<div class="card">
   <div style="font-size:16px;font-weight:700">Send files</div>
-  <div class="tiny" style="margin:7px 0 16px">Select as many as you like — they
-    are read together, not one at a time. Do not clean them up first.</div>
+  <div class="tiny" style="margin:7px 0 16px">Select as many as you like — they are
+    read together and reconciled, not one at a time. Do not clean them up first.</div>
   <form method="post" action="/c/{c.slug}/upload" enctype="multipart/form-data" id="uf">
     <label class="drop" for="fi">
       <div class="big">Drop files here</div>
@@ -1478,56 +1926,54 @@ def data_view(c, account, settings, activity_entries, *, reply=None,
       <input type="file" name="file" id="fi" multiple
              onchange="document.getElementById('picked').textContent =
                        this.files.length + ' file(s) chosen';
-                       document.getElementById('go').hidden = false">
-    </label>
+                       document.getElementById('go').hidden = false"></label>
     <div class="row" style="justify-content:space-between;margin-top:14px;
                             flex-wrap:wrap;gap:12px">
       <span class="tiny" id="picked">Nothing chosen yet</span>
       <button class="btn primary" type="submit" id="go" hidden>Read them</button>
-    </div>
-  </form></div>"""
+    </div></form></div>{folder}
+<div class="note-line">Sales from different months add up; a stock count is a
+  snapshot, so the newest file wins rather than being added to the last one; and
+  a row appearing in two overlapping exports is counted once.</div>"""
 
-    folder = "" if account.is_guest else f"""<div class="card" style="margin-top:16px">
-  <div style="font-size:16px;font-weight:700">Or read a folder already on this machine</div>
-  <div class="tiny" style="margin:7px 0 15px">Nobody wants to select ninety files
-    in a dialog. Nothing is moved or changed — the folder is read where it sits.</div>
-  <form method="post" action="/c/{c.slug}/folder">
-    <div class="field"><input name="path" placeholder="C:\\Users\\you\\Desktop\\client files"
-      autocomplete="off"></div>
-    <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:12px">
-      <label class="chk"><input type="checkbox" name="recursive" value="1" checked>
-        Include sub-folders</label>
-      <button class="btn" type="submit">Read the folder</button></div>
-  </form></div>"""
 
-    # --- what happened last time, file by file
-    read = ""
-    if last:
-        if last.status == "ok":
-            rows = "".join(
-                f'<div class="chase"><div><div class="who">{E(n)}</div>'
-                f'<div class="why">{E(n2)}</div></div></div>'
-                for n, n2 in [(x.split(":", 1)[0], x.split(":", 1)[1].strip())
-                              for x in last.source_notes if ":" in x][:10])
-            plain = "".join(f'<div class="tiny" style="margin-top:7px">· {E(x)}</div>'
-                            for x in last.source_notes if ":" not in x)
-            skipped = ""
-            if last.sheets_skipped:
-                skipped = (f'<div class="tiny" style="margin-top:14px">'
-                           f'Could not read: {E(", ".join(last.sheets_skipped[:8]))}'
-                           + (f" and {len(last.sheets_skipped) - 8} more"
-                              if len(last.sheets_skipped) > 8 else "") + "</div>")
-            read = f"""<div class="card" style="margin-top:16px">
+def _read_back(c) -> str:
+    """What Vyuha made of the last pile. The panel that is the pitch."""
+    last = c.latest
+    if last is None:
+        return _empty("Nothing read yet", "Send a file and this fills in.")
+    if last.status != "ok":
+        return (f'<div class="card" style="border-color:rgba(240,90,98,.32)">'
+                f'<div style="font-size:16px;font-weight:700">That did not read</div>'
+                f'<div class="muted" style="margin-top:8px">{E(last.error)}</div>'
+                + "".join(f'<div class="tiny" style="margin-top:7px">· {E(n)}</div>'
+                          for n in last.source_notes[:10]) + "</div>")
+
+    per_file = "".join(
+        f'<div class="chase"><div><div class="who">{E(x.split(":", 1)[0])}</div>'
+        f'<div class="why">{E(x.split(":", 1)[1].strip())}</div></div></div>'
+        for x in last.source_notes if ":" in x)
+    plain = "".join(f'<div class="tiny" style="margin-top:7px">· {E(x)}</div>'
+                    for x in last.source_notes if ":" not in x)
+    skipped = ""
+    if last.sheets_skipped:
+        skipped = (f'<div class="tiny" style="margin-top:14px">Could not read: '
+                   f'{E(", ".join(last.sheets_skipped[:8]))}'
+                   + (f" and {len(last.sheets_skipped) - 8} more"
+                      if len(last.sheets_skipped) > 8 else "") + "</div>")
+
+    return f"""<div class="card">
   <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:12px">
-    <div><div style="font-size:16px;font-weight:700">What Vyuha read</div>
-      <div class="tiny" style="margin-top:6px">{E(last.filename)} ·
+    <div><div style="font-size:16px;font-weight:700">{E(last.filename)}</div>
+      <div class="tiny" style="margin-top:6px">
         {E(", ".join(last.sheets_read) or "nothing named")} ·
+        {E(last.source_method or "read directly")} ·
         {last.alert_count} alert(s)</div></div>
     <div class="row" style="gap:9px">
       <a class="btn sm primary" href="/c/{c.slug}/dashboard" target="_blank"
          rel="noopener">Open the dashboard</a>
       <a class="btn sm ghost" href="/c/{c.slug}/export/pdf">PDF</a></div></div>
-  {plain}{rows}{skipped}
+  {plain}{per_file}{skipped}
   <div class="grid g4" style="margin-top:18px;gap:10px">
     <div><div class="tiny">REVENUE</div><div style="font-weight:700;margin-top:3px">
       {short(last.revenue)}</div></div>
@@ -1537,68 +1983,64 @@ def data_view(c, account, settings, activity_entries, *, reply=None,
       {short(last.outstanding)}</div></div>
     <div><div class="tiny">CONFIDENCE</div><div style="font-weight:700;margin-top:3px">
       {E(last.confidence)}</div></div></div></div>"""
-        else:
-            read = (f'<div class="card" style="margin-top:16px;'
-                    f'border-color:rgba(240,90,98,.32)">'
-                    f'<div style="font-size:16px;font-weight:700">'
-                    f'That did not read</div>'
-                    f'<div class="muted" style="margin-top:8px">{E(last.error)}</div>'
-                    + "".join(f'<div class="tiny" style="margin-top:7px">· {E(n)}</div>'
-                              for n in last.source_notes[:8]) + "</div>")
-
-    # --- history
-    history = ""
-    if len(c.runs) > 1:
-        rows = "".join(
-            f'<div class="chase"><div><div class="who">{E(r.filename)}</div>'
-            f'<div class="why">{E(r.uploaded_at[:16].replace("T", " "))} · '
-            f'{E(", ".join(r.sheets_read) or "—")}</div></div>'
-            f'<div class="act"><span class="pill '
-            f'{"ok" if r.status == "ok" else "crit"}">'
-            f'{E(r.confidence if r.status == "ok" else "failed")}</span></div></div>'
-            for r in c.runs[1:9])
-        history = (f'<div class="section-h"><h2>EARLIER</h2><div class="rule"></div>'
-                   f'</div><div class="card">{rows}</div>')
-
-    how = """<div class="note-line" style="margin-top:20px">Files are reconciled,
-      not stacked. Sales from different months add up; a stock count is a
-      snapshot, so the newest file wins rather than being added to the last one;
-      and a row appearing in two overlapping exports is counted once.</div>"""
-
-    return shell(c, account, "data",
-                 _answer_block(c, reply) + drop + folder + read + history + how,
-                 counts={"data": len(c.runs)},
-                 question=question, flash=flash, flash_kind=flash_kind)
 
 
-# ===================================================================== 4 · stock
+def _send_block(c, settings, book, ledger) -> str:
+    """The brief, the email and the exports. Exactly one primary button."""
+    from . import channels
+    last = c.latest
+    alerts = (last.alerts or []) if (last and last.status == "ok") else []
+    if not alerts:
+        return ""
 
-def stock_view(c, account, book, org, settings, *, reply=None, question: str = "",
-               flash: str = "", flash_kind: str = "ok") -> str:
-    body = _answer_block(c, reply) + _stock(c, book, org)
-    summary = books.summary(book)
-    return shell(c, account, "stock", body,
-                 counts={"stock": len(summary["low_stock"]) + len(summary["out_of_stock"])},
-                 question=question, flash=flash, flash_kind=flash_kind)
+    lines = [f"*{c.name}* — {len(alerts)} thing(s) to know", ""]
+    for a in alerts[:5]:
+        mark = {"critical": "!!", "warning": "!"}.get(a.get("severity", ""), "-")
+        lines.append(f"{mark} {a.get('title', '')}")
+        if a.get("detail"):
+            lines.append(f"   {a['detail']}")
+    text = "\n".join(lines)[:1024]
 
+    if not c.phone:
+        action = (f'<a class="btn" href="/c/{c.slug}/setup/business">'
+                  f'Add their WhatsApp number →</a>')
+        sub = "Alerts go to the number in Setup. There isn't one yet."
+    elif settings.whatsapp_live:
+        action = (f'<form method="post" action="/c/{c.slug}/whatsapp">'
+                  f'<input type="hidden" name="text" value="{E(text)}">'
+                  f'<button class="btn primary" type="submit">'
+                  f'Send now to {E(c.name)} →</button></form>')
+        sub = f"Goes straight to +{E(c.phone)}. One click, no new tab."
+    else:
+        action = (f'<a class="btn wa" target="_blank" rel="noopener" '
+                  f'href="{channels.whatsapp_link(c.phone, text)}">'
+                  f'Open WhatsApp to send →</a>')
+        sub = ("No provider connected, so this opens WhatsApp with the brief "
+               "typed out and you tap send.")
 
-# ===================================================================== 5 · money
+    mail = ""
+    if c.email:
+        subject = f"{c.name} — {len(alerts)} thing(s) to know"
+        mail = (f'<a class="btn ghost sm" '
+                f'href="{channels.mailto_link(c.email, subject, text)}">Email it</a>')
 
-def money_view(c, account, book, ledger, org, settings, *, period: str = "all",
-               show: str = "summary", reply=None, question: str = "",
-               flash: str = "", flash_kind: str = "ok") -> str:
-    body = _answer_block(c, reply) + _money(c, book, ledger, org, period, show)
-    # Who is selling is a performance question, so it belongs under Health
-    # rather than on every view of the money screen.
-    if show == "health":
-        body += _selling(c, org, book)
-    return shell(c, account, "money", body,
-                 counts={"money": len([e for e in ledger.expenses if not e.paid])},
-                 question=question, flash=flash, flash_kind=flash_kind)
+    return f"""<div class="card">
+  <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:14px">
+    <div style="max-width:46ch"><div style="font-size:16px;font-weight:700">
+      WhatsApp brief</div>
+      <div class="tiny" style="margin-top:6px">{sub}</div></div>
+    <div class="row" style="gap:8px">{action}{mail}</div></div>
+  <pre class="msg" style="margin-top:16px">{E(text)}</pre>
+  <div class="row" style="margin-top:14px;gap:8px;flex-wrap:wrap">
+    <span class="tiny" style="margin-right:6px">Download:</span>
+    <a class="btn sm ghost" href="/c/{c.slug}/export/pdf">PDF</a>
+    <a class="btn sm ghost" href="/c/{c.slug}/export/pptx">PPTX</a>
+    <a class="btn sm ghost" href="/c/{c.slug}/dashboard" target="_blank"
+       rel="noopener">Dashboard ↗</a></div></div>"""
 
 
 def _selling(c, org, book) -> str:
-    """Who is actually selling — a performance report, so it lives with the money."""
+    """Who is actually selling — a performance report."""
     perf = people.by_person(org, book)
     sellers = [r for r in perf[1:] if r["revenue"] or r["target"]]
     if not sellers:
@@ -1622,119 +2064,111 @@ def _selling(c, org, book) -> str:
                  f'<div class="why">{r["bills"]} bill(s)</div></div></div>')
     note = ("" if not unattributed else
             f'<div class="tiny" style="margin-top:14px">{short(unattributed)} of the '
-            f'last 30 days has nobody recorded against it. Pick who sold it on the '
-            f'entry form and these sharpen up.</div>')
-    branches = people.performance(org, book)
-    bysite = ""
-    if org.has_branches:
-        top = max((r["revenue"] for r in branches), default=1) or 1
-        bysite = "".join(
-            f'<div class="chase"><div style="min-width:150px">'
-            f'<div class="who">{E(r["name"])}</div>'
-            f'<div class="why">{r["bills"]} bill(s) · {r["customers"]} customer(s)</div></div>'
-            f'<div style="flex:1;min-width:130px"><div class="meter">'
-            f'<i style="width:{r["revenue"] / top * 100:.0f}%"></i></div></div>'
-            f'<div style="text-align:right"><div class="mono">{short(r["revenue"])}</div>'
-            f'<div class="why">{int(r["share"] * 100)}%</div></div></div>'
-            for r in branches)
-        bysite = (f'<div id="branches"></div><div class="section-h"><h2>BY BRANCH</h2>'
-                  f'<div class="rule"></div></div><div class="card">{bysite}</div>')
-
-    return (f'<div id="customers"></div>'
-            f'<div class="section-h"><h2>WHO IS SELLING</h2><div class="rule"></div>'
+            f'last 30 days has nobody recorded against it.</div>')
+    return (f'<div class="section-h"><h2>WHO IS SELLING</h2><div class="rule"></div>'
             f'<span class="tiny">last 30 days</span></div>'
-            f'<div class="card">{rows}{note}</div>{bysite}')
+            f'<div class="card">{rows}{note}</div>')
 
 
-# ===================================================================== 6 · setup
+def _people_setup(c, org) -> str:
+    branch_opts = "".join(f'<option value="{E(b.id)}">{E(b.name)}</option>'
+                          for b in org.branches if b.active)
+    branch_rows = "".join(
+        f'<div class="chase"><div><div class="who">{E(b.name)}</div>'
+        f'<div class="why">{E(b.place or "no place set")}'
+        f'{" · " + E(b.manager) if b.manager else ""} · '
+        f'{len(org.staff_at(b.id))} person(s)</div></div>'
+        f'<form method="post" action="/c/{c.slug}/branch/{E(b.id)}/delete" class="act">'
+        f'<button class="btn sm danger" type="submit">Close</button></form></div>'
+        for b in org.branches if b.active)
+    roles = "".join(f'<option value="{E(r)}">{E(r)} — sees {E(people.SEES[r][0])}</option>'
+                    for r in people.ROLES)
+    staff_rows = "".join(
+        f'<div class="chase"><div><div class="who">{E(pp.name)}</div>'
+        f'<div class="why">{E(pp.role)}'
+        f'{" · " + E(org.name_of(pp.branch)) if pp.branch else ""}'
+        f'{" · target " + short(pp.target) if pp.target else ""}</div></div>'
+        f'<div class="act">'
+        f'<form method="post" action="/c/{c.slug}/staff/{E(pp.id)}/target" class="row" '
+        f'style="gap:6px">'
+        f'<input class="inline-in" name="target" value="{pp.target:g}" '
+        f'aria-label="Target for {E(pp.name)}">'
+        f'<input class="inline-in" name="commission" style="width:52px" '
+        f'value="{pp.commission_pct:g}" aria-label="Commission for {E(pp.name)}">'
+        f'<button class="btn sm ghost" type="submit">Set</button></form>'
+        f'<form method="post" action="/c/{c.slug}/staff/{E(pp.id)}/delete">'
+        f'<button class="btn sm danger" type="submit">×</button></form></div></div>'
+        for pp in org.staff if pp.active)
 
-def setup_view(c, account, book, org, settings, invoices, *, invite=None,
-               fresh_pin: str = "", reply=None, question: str = "",
-               flash: str = "", flash_kind: str = "ok") -> str:
-    """Everything done once, in one place, as a list that empties.
+    return f"""<div class="setup-grid">
+  <div class="card">
+    <div style="font-size:16px;font-weight:700">Branches</div>
+    <div class="tiny" style="margin:7px 0 4px">Closing one keeps its past sales.</div>
+    {branch_rows or '<div class="muted" style="margin-top:12px">None yet.</div>'}
+    <form method="post" action="/c/{c.slug}/branch" style="margin-top:16px">
+      <div class="field"><input name="name" placeholder="Branch name" required></div>
+      <div class="two">
+        <div class="field"><input name="place" placeholder="Town or area"></div>
+        <div class="field"><input name="manager" placeholder="Who runs it"></div></div>
+      <button class="btn" type="submit">Add branch</button></form></div>
+  <div class="card">
+    <div style="font-size:16px;font-weight:700">Your team</div>
+    <div class="tiny" style="margin:7px 0 4px">The role decides what they would see
+      once staff logins exist.</div>
+    {staff_rows or '<div class="muted" style="margin-top:12px">Nobody added yet.</div>'}
+    <form method="post" action="/c/{c.slug}/staff" style="margin-top:16px">
+      <div class="field"><input name="name" placeholder="Name" required></div>
+      <div class="two">
+        <div class="field"><select name="role" aria-label="Role">{roles}</select></div>
+        <div class="field"><select name="branch" aria-label="Branch">
+          <option value="">No branch</option>{branch_opts}</select></div></div>
+      <div class="two">
+        <div class="field"><input name="phone" placeholder="Phone"></div>
+        <div class="field"><input name="target" placeholder="Monthly target"
+          inputmode="decimal"></div></div>
+      <button class="btn" type="submit">Add person</button></form></div></div>"""
 
-    These were spread across four working screens as permanent form fields.
-    Nobody touches them after the first week, and every one of them was taking
-    up room on a screen used every day.
-    """
+
+# ===================================================================== setup
+
+def _setup_checklist(c, account, st) -> str:
+    """What is still to be filled in, as a list that empties and then stops
+    asking. These were permanent form fields on screens used every day."""
+    book, org, invoices = st["book"], st["org"], st["invoices"]
     gaps = invoice.missing(c)
-    unset_levels = [i for i in book.items if not i.reorder_level]
-    checklist = [
-        (bool(c.phone), "A WhatsApp number for this business",
-         "Alerts and reminders go here"),
+    unset = [i for i in book.items if not i.reorder_level]
+    rows = [
+        (bool(c.phone), "A WhatsApp number", "Alerts and reminders go here",
+         "business"),
         (not gaps, "Invoice details",
-         "Missing: " + ", ".join(gaps) if gaps else "GSTIN, address and state are set"),
-        (not unset_levels, "Reorder levels",
-         f"{len(unset_levels)} item(s) still at zero — Vyuha cannot warn you about those"
-         if unset_levels else "Every item has a level"),
-        (bool([s for s in org.staff if s.active]), "Your team",
-         f"{len([s for s in org.staff if s.active])} person(s) added"),
+         "Missing: " + ", ".join(gaps) if gaps else "GSTIN, address and state set",
+         "billing"),
+        (not unset, "Stock levels",
+         f"{len(unset)} item(s) at zero — Vyuha cannot warn you about those"
+         if unset else "Every item has a level", "levels"),
+        (bool([x for x in org.staff if x.active]), "Your team",
+         f"{len([x for x in org.staff if x.active])} person(s) added", None),
     ]
-    done = sum(1 for ok, _, _ in checklist if ok)
+    done = sum(1 for ok, *_ in rows if ok)
     lines = "".join(
         f'<div class="todoline"><span class="tick{" done" if ok else ""}">'
         f'{"✓" if ok else ""}</span>'
-        f'<span class="lbl">{E(label)}<small>{E(note)}</small></span></div>'
-        for ok, label, note in checklist)
-
-    top = (f'<div class="card" style="margin-bottom:18px">'
-           f'<div class="row" style="justify-content:space-between">'
-           f'<div style="font-size:16px;font-weight:700">Setup</div>'
-           f'<span class="pill {"ok" if done == len(checklist) else "warn"}">'
-           f'{done} of {len(checklist)} done</span></div>'
-           f'<div class="tiny" style="margin:8px 0 4px">Done once. Nothing here '
-           f'needs looking at again.</div>{lines}</div>')
-
-    # --- reorder levels, moved off the stock screen
-    level_rows = "".join(
-        f'<tr><td><b>{E(i.name)}</b></td><td class="num">{i.stock_qty:g}</td>'
-        f'<td class="num"><input class="inline-in" name="lvl_{E(i.sku)}" '
-        f'value="{i.reorder_level:g}" inputmode="decimal" '
-        f'aria-label="Reorder level for {E(i.name)}"></td>'
-        f'<td class="num">{rs(i.rate)}</td><td class="num">{rs(i.cost)}</td></tr>'
-        for i in sorted(book.items, key=lambda x: x.name))
-    levels = f"""<div class="card" style="padding:0;overflow:hidden">
-  <div class="row" style="justify-content:space-between;padding:18px 20px">
-    <div><div style="font-size:16px;font-weight:700">Stock levels</div>
-      <div class="tiny" style="margin-top:5px">A level of 0 means Vyuha will never
-        warn you about that item.</div></div></div>
-  <form method="post" action="/c/{c.slug}/stock/reorder">
-    <div class="scroll-x"><table class="mtable">
-      <tr><th>Item</th><th class="num">In stock</th><th class="num">Reorder at</th>
-          <th class="num">Sells at</th><th class="num">Costs</th></tr>
-      {level_rows or '<tr><td colspan="5" class="tiny">No items yet.</td></tr>'}
-    </table></div>
-    <div style="padding:16px 20px"><button class="btn primary" type="submit">
-      Save levels</button></div></form></div>"""
-
-    people_setup = _people_setup(c, org)
-    invoice_setup = _invoice_setup(c)
-    details = _client_details(c)
-
-    share = ui._share_card(c, invite, fresh_pin) if not account.is_guest else ""
-    cover = f"""<div class="card">
-  <div style="font-size:16px;font-weight:700">Cover photo</div>
-  <div class="tiny" style="margin:7px 0 15px">Their own photo at the top of the
-    workspace, instead of a stock trade picture.</div>
-  <form method="post" action="/c/{c.slug}/cover" enctype="multipart/form-data" id="cvf">
-    <label class="drop" for="cvi" style="padding:26px 18px">
-      <div class="big">{'Change the photo' if c.has_cover else 'Add a photo'}</div>
-      <div class="muted">JPG or PNG</div>
-      <input type="file" name="file" id="cvi" accept="image/*"
-             onchange="document.getElementById('cvf').submit()"></label>
-  </form></div>"""
-
-    body = (_answer_block(c, reply) + top
-            + f'<div class="setup-grid">{details}{invoice_setup}</div>'
-            + f'<div style="height:16px"></div>{people_setup}'
-            + f'<div style="height:16px"></div>'
-            + f'<div class="setup-grid">{share}{cover}</div>'
-            + f'<div style="height:16px"></div>{levels}')
-    return shell(c, account, "setup", body, question=question,
-                 flash=flash, flash_kind=flash_kind)
+        f'<span class="lbl">{E(label)}<small>{E(note)}</small></span>'
+        + (f'<a class="btn sm ghost" href="/c/{c.slug}/setup/{where}">Fix</a>'
+           if where and not ok else
+           f'<a class="btn sm ghost" href="/c/{c.slug}/people/team">Team</a>'
+           if not ok else "")
+        + "</div>" for ok, label, note, where in rows)
+    return (f'<div class="card"><div class="row" '
+            f'style="justify-content:space-between">'
+            f'<div style="font-size:16px;font-weight:700">Getting set up</div>'
+            f'<span class="pill {"ok" if done == len(rows) else "warn"}">'
+            f'{done} of {len(rows)} done</span></div>'
+            f'<div class="tiny" style="margin:8px 0 4px">Done once. Nothing here '
+            f'needs looking at again.</div>{lines}</div>')
 
 
-def _client_details(c) -> str:
+def _setup_business(c, account, st) -> str:
     return f"""<div class="card">
   <div style="font-size:16px;font-weight:700">This business</div>
   <div class="tiny" style="margin:7px 0 15px">Where alerts go, and when to warn you.</div>
@@ -1754,12 +2188,12 @@ def _client_details(c) -> str:
         <div class="tiny" style="margin-top:5px">Days before stock counts as dead</div></div>
       <div class="field"><input name="low_cover_days" value="{c.low_cover_days}"
         inputmode="numeric">
-        <div class="tiny" style="margin-top:5px">Warn when this many days of cover left</div></div>
+        <div class="tiny" style="margin-top:5px">Warn at this many days of cover</div></div>
     </div>
     <button class="btn primary" type="submit">Save</button></form></div>"""
 
 
-def _invoice_setup(c) -> str:
+def _setup_billing(c, account, st) -> str:
     tpl = "".join(
         f'<label class="seg" style="margin:0 8px 8px 0">'
         f'<input type="radio" name="invoice_template" value="{E(k)}"'
@@ -1793,138 +2227,77 @@ def _invoice_setup(c) -> str:
     <button class="btn primary" type="submit">Save</button></form></div>"""
 
 
-def _people_setup(c, org) -> str:
-    branch_opts = "".join(f'<option value="{E(b.id)}">{E(b.name)}</option>'
-                          for b in org.branches if b.active)
-    branch_rows = "".join(
-        f'<div class="chase"><div><div class="who">{E(b.name)}</div>'
-        f'<div class="why">{E(b.place or "no place set")}'
-        f'{" · " + E(b.manager) if b.manager else ""} · '
-        f'{len(org.staff_at(b.id))} person(s)</div></div>'
-        f'<form method="post" action="/c/{c.slug}/branch/{E(b.id)}/delete" class="act">'
-        f'<button class="btn sm danger" type="submit">Close</button></form></div>'
-        for b in org.branches if b.active)
-    roles = "".join(f'<option value="{E(r)}">{E(r)} — sees {E(people.SEES[r][0])}</option>'
-                    for r in people.ROLES)
-    staff_rows = "".join(
-        f'<div class="chase"><div><div class="who">{E(p.name)}</div>'
-        f'<div class="why">{E(p.role)}'
-        f'{" · " + E(org.name_of(p.branch)) if p.branch else ""}'
-        f'{" · target " + short(p.target) if p.target else ""}</div></div>'
-        f'<div class="act">'
-        f'<form method="post" action="/c/{c.slug}/staff/{E(p.id)}/target" class="row" '
-        f'style="gap:6px">'
-        f'<input class="inline-in" name="target" value="{p.target:g}" '
-        f'aria-label="Target for {E(p.name)}">'
-        f'<input class="inline-in" name="commission" style="width:52px" '
-        f'value="{p.commission_pct:g}" aria-label="Commission for {E(p.name)}">'
-        f'<button class="btn sm ghost" type="submit">Set</button></form>'
-        f'<form method="post" action="/c/{c.slug}/staff/{E(p.id)}/delete">'
-        f'<button class="btn sm danger" type="submit">×</button></form></div></div>'
-        for p in org.staff if p.active)
-
-    return f"""<div class="setup-grid">
-  <div class="card">
-    <div style="font-size:16px;font-weight:700">Branches</div>
-    <div class="tiny" style="margin:7px 0 4px">Closing one keeps its past sales.</div>
-    {branch_rows or '<div class="muted" style="margin-top:12px">None yet.</div>'}
-    <form method="post" action="/c/{c.slug}/branch" style="margin-top:16px">
-      <div class="field"><input name="name" placeholder="Branch name" required></div>
-      <div class="two">
-        <div class="field"><input name="place" placeholder="Town or area"></div>
-        <div class="field"><input name="manager" placeholder="Who runs it"></div></div>
-      <button class="btn" type="submit">Add branch</button></form></div>
-  <div class="card">
-    <div style="font-size:16px;font-weight:700">Your team</div>
-    <div class="tiny" style="margin:7px 0 4px">The role decides what they would see
-      once staff logins exist.</div>
-    {staff_rows or '<div class="muted" style="margin-top:12px">Nobody added yet.</div>'}
-    <form method="post" action="/c/{c.slug}/staff" style="margin-top:16px">
-      <div class="field"><input name="name" placeholder="Name" required></div>
-      <div class="two">
-        <div class="field"><select name="role" aria-label="Role">{roles}</select></div>
-        <div class="field"><select name="branch" aria-label="Branch">
-          <option value="">No branch</option>{branch_opts}</select></div></div>
-      <div class="two">
-        <div class="field"><input name="phone" placeholder="Phone"></div>
-        <div class="field"><input name="target" placeholder="Monthly target"
-          inputmode="decimal"></div></div>
-      <button class="btn" type="submit">Add person</button></form></div></div>"""
+def _setup_levels(c, account, st) -> str:
+    book = st["book"]
+    rows = "".join(
+        f'<tr><td><b>{E(i.name)}</b></td><td class="num">{i.stock_qty:g}</td>'
+        f'<td class="num"><input class="inline-in" name="lvl_{E(i.sku)}" '
+        f'value="{i.reorder_level:g}" inputmode="decimal" '
+        f'aria-label="Reorder level for {E(i.name)}"></td>'
+        f'<td class="num">{rs(i.rate)}</td><td class="num">{rs(i.cost)}</td></tr>'
+        for i in sorted(book.items, key=lambda x: x.name))
+    return f"""<div class="card" style="padding:0;overflow:hidden">
+  <div style="padding:18px 20px">
+    <div style="font-size:16px;font-weight:700">Stock levels</div>
+    <div class="tiny" style="margin-top:5px">A level of 0 means Vyuha will never
+      warn you about that item.</div></div>
+  <form method="post" action="/c/{c.slug}/stock/reorder">
+    <div class="scroll-x"><table class="mtable">
+      <tr><th>Item</th><th class="num">In stock</th><th class="num">Reorder at</th>
+          <th class="num">Sells at</th><th class="num">Costs</th></tr>
+      {rows or '<tr><td colspan="5" class="tiny">No items yet.</td></tr>'}
+    </table></div>
+    <div style="padding:16px 20px"><button class="btn primary" type="submit">
+      Save levels</button></div></form></div>"""
 
 
-def _send_block(c, settings, book, ledger) -> str:
-    """The brief, the email and the exports.
+def _setup_access(c, account, st) -> str:
+    if account.is_guest:
+        return _empty("Not available on a shared link",
+                      "Ask whoever set this up.")
+    share = ui._share_card(c, st.get("invite"), st.get("fresh_pin", ""))
+    cover = f"""<div class="card">
+  <div style="font-size:16px;font-weight:700">Cover photo</div>
+  <div class="tiny" style="margin:7px 0 15px">Their own photo at the top of the
+    workspace, instead of a stock trade picture.</div>
+  <form method="post" action="/c/{c.slug}/cover" enctype="multipart/form-data" id="cvf">
+    <label class="drop" for="cvi" style="padding:26px 18px">
+      <div class="big">{'Change the photo' if c.has_cover else 'Add a photo'}</div>
+      <div class="muted">JPG or PNG</div>
+      <input type="file" name="file" id="cvi" accept="image/*"
+             onchange="document.getElementById('cvf').submit()"></label>
+  </form></div>"""
+    return f'<div class="setup-grid">{share}{cover}</div>'
 
-    A daily action, so it lives on Today rather than behind a tab called
-    "Alerts". Exactly one primary button: offering "Send now" and "Open
-    WhatsApp" side by side made the operator decide which was the real one
-    every single time.
-    """
-    from . import channels, exports
-    last = c.latest
-    if not (last and last.status == "ok"):
-        return ""
 
-    from vyuha import pipeline
-    from pathlib import Path
-    insights = None
-    try:
-        dash = Path(str(getattr(__import__("vyuha_platform.store", fromlist=["x"]),
-                                "DASHBOARDS")))
-    except Exception:
-        dash = None
-
-    # The brief is rendered from the alerts already stored on the run, so this
-    # never re-runs the engine just to draw a screen.
-    alerts = last.alerts or []
-    if not alerts:
-        return ""
-
-    lines = [f"*{c.name}* — {len(alerts)} thing(s) to know", ""]
-    for a in alerts[:5]:
-        mark = {"critical": "!!", "warning": "!"}.get(a.get("severity", ""), "-")
-        lines.append(f"{mark} {a.get('title', '')}")
-        if a.get("detail"):
-            lines.append(f"   {a['detail']}")
-    text = "\n".join(lines)[:1024]
-
-    if not c.phone:
-        action = (f'<a class="btn" href="/c/{c.slug}/setup">'
-                  f'Add their WhatsApp number →</a>')
-        sub = "Alerts go to the number in Setup. There isn't one yet."
-    elif settings.whatsapp_live:
-        action = (f'<form method="post" action="/c/{c.slug}/whatsapp">'
-                  f'<input type="hidden" name="text" value="{E(text)}">'
-                  f'<button class="btn primary" type="submit">'
-                  f'Send now to {E(c.name)} →</button></form>')
-        sub = f"Goes straight to +{E(c.phone)}. One click, no new tab."
-    else:
-        action = (f'<a class="btn wa" target="_blank" rel="noopener" '
-                  f'href="{channels.whatsapp_link(c.phone, text)}">'
-                  f'Open WhatsApp to send →</a>')
-        sub = ("No provider connected, so this opens WhatsApp with the brief "
-               "typed out and you tap send.")
-
-    mail = ""
-    if c.email:
-        subject = f"{c.name} — {len(alerts)} thing(s) to know"
-        mail = (f'<a class="btn ghost sm" '
-                f'href="{channels.mailto_link(c.email, subject, text)}">Email it</a>')
-
-    return f"""<div id="send"></div>
-<div class="section-h"><h2>SEND THE BRIEF</h2><div class="rule"></div></div>
-<div class="card">
-  <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:14px">
-    <div style="max-width:46ch"><div style="font-size:16px;font-weight:700">
-      WhatsApp brief</div>
-      <div class="tiny" style="margin-top:6px">{sub}</div></div>
-    <div class="row" style="gap:8px">{action}{mail}</div></div>
-  <pre class="msg" style="margin-top:16px">{E(text)}</pre>
-  <div class="row" style="margin-top:14px;gap:8px;flex-wrap:wrap">
-    <span class="tiny" style="margin-right:6px">Download:</span>
-    <a class="btn sm ghost" href="/c/{c.slug}/export/pdf">PDF</a>
-    <a class="btn sm ghost" href="/c/{c.slug}/export/pptx">PPTX</a>
-    <a class="btn sm ghost" href="/c/{c.slug}/export/html">Dashboard</a>
-    <a class="btn sm ghost" href="/c/{c.slug}/dashboard" target="_blank"
-       rel="noopener">Open the dashboard ↗</a>
-  </div></div>"""
+#: Every tab, bound to what draws it. Declared last so it can name
+#: functions defined anywhere above without ordering them by hand.
+_TABS = {
+    "desk.today": _desk_today,
+    "desk.chase": _desk_chase,
+    "desk.register": _desk_register,
+    "dashboard.sales": _dash_sales,
+    "dashboard.inventory": _dash_inventory,
+    "dashboard.transactions": _dash_transactions,
+    "financials.position": _fin_position,
+    "financials.profit": _fin_profit,
+    "financials.cashflow": _fin_cashflow,
+    "financials.taxes": _fin_taxes,
+    "financials.analytics": _fin_analytics,
+    "operations.record": _ops_record,
+    "operations.alerts": _ops_alerts,
+    "operations.invoices": _ops_invoices,
+    "people.team": _people_team,
+    "people.performance": _people_performance,
+    "people.branches": _people_branches,
+    "messages.brief": _msg_brief,
+    "messages.outbox": _msg_outbox,
+    "data.sources": _data_sources,
+    "data.readback": _data_readback,
+    "data.history": _data_history,
+    "setup.checklist": _setup_checklist,
+    "setup.business": _setup_business,
+    "setup.billing": _setup_billing,
+    "setup.levels": _setup_levels,
+    "setup.access": _setup_access,
+}

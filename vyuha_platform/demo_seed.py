@@ -454,7 +454,7 @@ def main() -> None:
     email, slug = build()
     print(f"\n  Start it:  .venv/Scripts/python -m vyuha_platform --open")
     print(f"  Log in:    {email} / {PASSWORD}")
-    print(f"  Typed in:  http://127.0.0.1:8000/c/{slug}/today")
+    print(f"  Typed in:  http://127.0.0.1:8000/c/{slug}/desk")
     print(f"  Send files to the second business, from demo/samples/\n")
 
 

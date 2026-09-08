@@ -144,7 +144,7 @@ def findings(client, book, ledger, org, invoices=None) -> list[Finding]:
             key="stock", severity="critical" if gone else "warning",
             title=title,
             detail=f"{_fmt(at_stake)} of orders you would have to turn away · {names}",
-            action="Order these", href=f"/c/{slug}/stock", weight=at_stake,
+            action="Order these", href=f"/c/{slug}/operations/alerts", weight=at_stake,
             tags=["stock"]))
 
     # ---- money already earned and not collected
@@ -160,7 +160,7 @@ def findings(client, book, ledger, org, invoices=None) -> list[Finding]:
                    f"{len(overdue)} customers owe you {_fmt(total)}"),
             detail=(f"Worst is {worst.party}, {worst.days} days · "
                     f"the message is already written"),
-            action="Send reminders", href=f"/c/{slug}/today#chase", weight=total,
+            action="Send reminders", href=f"/c/{slug}/desk/chase", weight=total,
             tags=["money"]))
 
     # ---- cash sitting on the shelf
@@ -174,7 +174,7 @@ def findings(client, book, ledger, org, invoices=None) -> list[Finding]:
             key="dead", severity="warning",
             title=f"{_fmt(locked)} is sitting in {len(never)} item(s) that never sold",
             detail=f"Most of it is {biggest.name} — {_fmt(biggest.value)}",
-            action="See them", href=f"/c/{slug}/stock?show=dead", weight=locked,
+            action="See them", href=f"/c/{slug}/operations/alerts?show=dead", weight=locked,
             tags=["stock"]))
 
     # ---- a regular who stopped coming
@@ -183,7 +183,7 @@ def findings(client, book, ledger, org, invoices=None) -> list[Finding]:
             key=f"quiet:{f.key}", severity="warning",
             title=f"{f.party} hasn't ordered in {f.days} days",
             detail=f"Used to spend {_fmt(f.amount)} with you",
-            action="Message them", href=f"/c/{slug}/today#chase",
+            action="Message them", href=f"/c/{slug}/desk/chase",
             weight=f.amount * 0.25,      # past spend is a weaker claim than money owed
             tags=["customers"]))
 
@@ -196,7 +196,7 @@ def findings(client, book, ledger, org, invoices=None) -> list[Finding]:
             key="payables", severity="warning" if week["overdue_out"] else "info",
             title=f"{len(week['outgoing'])} supplier bill(s) due this week — {_fmt(due)}",
             detail=f"Soonest: {soonest.party or soonest.category} on {soonest.due_date}",
-            action="See them", href=f"/c/{slug}/money#payables", weight=due,
+            action="See them", href=f"/c/{slug}/financials/position", weight=due,
             tags=["money"]))
 
     # ---- sales with no bill against them
@@ -208,7 +208,7 @@ def findings(client, book, ledger, org, invoices=None) -> list[Finding]:
             key="unbilled", severity="info",
             title=f"{len(unbilled)} credit sale(s) have no invoice — {_fmt(value)}",
             detail="A customer who has no bill has a reason not to pay",
-            action="Raise bills", href=f"/c/{slug}/sell#bills", weight=value * 0.5,
+            action="Raise bills", href=f"/c/{slug}/operations/invoices", weight=value * 0.5,
             tags=["billing"]))
 
     # ---- too much of the business in one place
@@ -228,7 +228,7 @@ def findings(client, book, ledger, org, invoices=None) -> list[Finding]:
                        if top["share"] >= 0.45 else
                        f"{int(top['share'] * 100)}% of revenue is one customer"),
                 detail=f"{top['party']} — {int(top['share'] * 100)}%. Losing them would hurt",
-                action="See customers", href=f"/c/{slug}/money#customers",
+                action="See customers", href=f"/c/{slug}/financials/analytics",
                 weight=top["amount"] * 0.1, tags=["risk"]))
 
     # ---- the register, if this business keeps one
@@ -239,7 +239,7 @@ def findings(client, book, ledger, org, invoices=None) -> list[Finding]:
             key="register", severity="info",
             title=f"{len(unmarked)} of {len(register)} not marked in today",
             detail="Takes ten seconds and the month adds up on its own",
-            action="Mark the register", href=f"/c/{slug}/today#register",
+            action="Mark the register", href=f"/c/{slug}/desk/register",
             weight=500, tags=["people"]))
 
     # ---- nothing to read from at all
@@ -252,7 +252,7 @@ def findings(client, book, ledger, org, invoices=None) -> list[Finding]:
                     "Add what you sell and start recording sales"),
             action=("Add a file" if client.data_mode == "upload" else "Set up stock"),
             href=(f"/c/{slug}/data" if client.data_mode == "upload"
-                  else f"/c/{slug}/stock"),
+                  else f"/c/{slug}/operations/alerts"),
             weight=10 ** 9, tags=["setup"]))
 
     # Severity first. Sorting on money alone put "48% of revenue is one

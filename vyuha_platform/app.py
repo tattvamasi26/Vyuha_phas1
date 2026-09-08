@@ -31,7 +31,7 @@ from vyuha import analyze, pipeline, report
 
 from . import (agent, auth, books, channels, config, console, deck_render, decks,
                exports, finance, followup, invoice, invoice_render, ledger, library,
-               money, people, sources, store, theme, ui, whatsapp)
+               modules, money, people, sources, store, theme, ui, whatsapp)
 
 app = FastAPI(title="Vyuha Operations Platform", docs_url=None, redoc_url=None)
 
@@ -350,7 +350,7 @@ def share_create(slug: str, request: Request,
     ledger.log("share.created", f"Workspace link issued for {client.name}",
                client=client, channel="whatsapp")
     # The PIN is shown exactly once, here, because it is not stored in clear.
-    return _redirect(f"/c/{slug}/setup?pin={pin}&m={_msg('Link ready. Send it with the PIN.')}")
+    return _redirect(f"/c/{slug}/setup/access?pin={pin}&m={_msg('Link ready. Send it with the PIN.')}")
 
 
 @app.post("/c/{slug}/share/revoke")
@@ -437,7 +437,7 @@ def onboard_submit(name: str = Form(...), phone: str = Form(""),
             return _redirect(f"/c/{client.slug}?m={_msg('Workspace created and a test message was sent.')}")
         ledger.log("alert.send_failed", f"Connection test not sent: {result.detail}",
                    client=client, channel="whatsapp")
-        return _redirect(f"/c/{client.slug}/today?m={_msg('Workspace created. ' + result.needs_action)}&k=bad")
+        return _redirect(f"/c/{client.slug}/desk?m={_msg('Workspace created. ' + result.needs_action)}&k=bad")
 
     return _redirect(f"/c/{client.slug}?m={_msg('Workspace created. Drop their data in.')}")
 
@@ -509,7 +509,7 @@ def client_page(slug: str, request: Request, account: auth.Account = Depends(_ac
         ledger.log("master.viewed", f"Vyuha staff opened {client.name}",
                    client=client, channel="support")
     msg, kind = _flash(request)
-    return _render(client, account, "today", flash=msg, flash_kind=kind)
+    return _render(client, account, "desk", flash=msg, flash_kind=kind)
 
 
 # ---------------------------------------------------------------- manual books
@@ -525,7 +525,7 @@ def book_add_item(slug: str, name: str = Form(...), category: str = Form("Other"
     _, note = books.add_item(slug, name, category, unit, rate, cost, stock_qty, reorder_level)
     ledger.log("source.received", note, client=client, channel="manual")
     _rebuild_from_book(client)
-    return _redirect(f"/c/{slug}/sell?m={_msg(note)}")
+    return _redirect(f"/c/{slug}/operations/record?m={_msg(note)}")
 
 
 @app.post("/c/{slug}/book/sale")
@@ -542,7 +542,7 @@ def book_add_sale(slug: str, sku: str = Form(...), party: str = Form(""),
                                        paid=(payment == "paid"), due_date=due_date,
                                        party_phone=phone)
     if not ok:
-        return _redirect(f"/c/{slug}/sell?m={_msg(note)}&k=bad")
+        return _redirect(f"/c/{slug}/operations/record?m={_msg(note)}&k=bad")
     ledger.log("source.received", note, client=client, channel="manual")
     _rebuild_from_book(client)
 
@@ -550,7 +550,7 @@ def book_add_sale(slug: str, sku: str = Form(...), party: str = Form(""),
     # goes out now or realistically never.
     if phone and send_receipt and book.sales:
         note += " " + _send_receipt(client, book.sales[-1])
-    return _redirect(f"/c/{slug}/sell?m={_msg(note)}")
+    return _redirect(f"/c/{slug}/operations/record?m={_msg(note)}")
 
 
 def _send_receipt(client: store.Client, sale) -> str:
@@ -577,11 +577,11 @@ def book_send_receipt(slug: str, sale_id: str,
         return _redirect("/?m=That+client+no+longer+exists.&k=bad")
     sale = books.load(slug).sale(sale_id)
     if sale is None:
-        return _redirect(f"/c/{slug}/sell?m=That+bill+is+gone.&k=bad")
+        return _redirect(f"/c/{slug}/operations/record?m=That+bill+is+gone.&k=bad")
     if not sale.party_phone:
-        return _redirect(f"/c/{slug}/sell?m="
+        return _redirect(f"/c/{slug}/operations/record?m="
                          f"{_msg('No number was taken for ' + sale.party + '.')}&k=bad")
-    return _redirect(f"/c/{slug}/sell?m={_msg(_send_receipt(client, sale))}")
+    return _redirect(f"/c/{slug}/operations/record?m={_msg(_send_receipt(client, sale))}")
 
 
 @app.post("/c/{slug}/book/sale/{sale_id}/delete")
@@ -592,7 +592,7 @@ def book_delete_sale(slug: str, sale_id: str, account: auth.Account = Depends(_a
     _, note = books.delete_sale(slug, sale_id)
     ledger.log("settings.changed", note, client=client, channel="manual")
     _rebuild_from_book(client)
-    return _redirect(f"/c/{slug}/sell?m={_msg(note)}")
+    return _redirect(f"/c/{slug}/operations/record?m={_msg(note)}")
 
 
 @app.post("/c/{slug}/book/sale/{sale_id}/paid")
@@ -603,7 +603,7 @@ def book_mark_paid(slug: str, sale_id: str, account: auth.Account = Depends(_acc
     _, note = books.mark_paid(slug, sale_id)
     ledger.log("settings.changed", note, client=client, channel="manual")
     _rebuild_from_book(client)
-    return _redirect(f"/c/{slug}/sell?m={_msg(note)}")
+    return _redirect(f"/c/{slug}/operations/record?m={_msg(note)}")
 
 
 @app.post("/c/{slug}/book/item/{sku}/delete")
@@ -614,7 +614,7 @@ def book_delete_item(slug: str, sku: str, account: auth.Account = Depends(_acct)
     _, note = books.delete_item(slug, sku)
     ledger.log("settings.changed", note, client=client, channel="manual")
     _rebuild_from_book(client)
-    return _redirect(f"/c/{slug}/sell?m={_msg(note)}")
+    return _redirect(f"/c/{slug}/operations/record?m={_msg(note)}")
 
 
 def _rebuild_from_book(client: store.Client) -> None:
@@ -926,7 +926,7 @@ def email_send(slug: str, subject: str = Form(...), body: str = Form(...),
     ok, detail = exports.send_email(settings, client.email, subject, body, attachments)
     ledger.log("alert.sent" if ok else "alert.send_failed",
                f"Email to {client.name}: {detail}", client=client, channel="email")
-    return _redirect(f"/c/{slug}/today?m={_msg(detail)}&k={'ok' if ok else 'bad'}")
+    return _redirect(f"/c/{slug}/desk?m={_msg(detail)}&k={'ok' if ok else 'bad'}")
 
 
 @app.post("/c/{slug}/whatsapp")
@@ -941,7 +941,7 @@ def whatsapp_send(slug: str, text: str = Form(...), account: auth.Account = Depe
                f"WhatsApp to {client.name}: {result.detail}", client=client,
                channel="whatsapp", provider=result.provider)
     note = result.detail + (" " + result.needs_action if result.needs_action else "")
-    return _redirect(f"/c/{slug}/today?m={_msg(note)}&k={'ok' if result.ok else 'bad'}")
+    return _redirect(f"/c/{slug}/desk?m={_msg(note)}&k={'ok' if result.ok else 'bad'}")
 
 
 # -------------------------------------------------------------------- activity
@@ -1086,16 +1086,20 @@ def _console_state(client: store.Client) -> dict:
 #: Where each kind of action lands afterwards. The old console had one URL and
 #: a ?panel= query; now every screen has its own address, so a form has to say
 #: which one it belongs to rather than which tab to reopen.
+#: Where each kind of action lands afterwards. A form belongs to the job it is
+#: part of, so recording a sale returns to Operations and not to a tab strip.
 _AFTER = {
-    "stock": "stock", "money": "money", "bills": "sell", "sell": "sell",
-    "followups": "today", "people": "setup", "setup": "setup",
-    "deck": "today", "ask": "today", "data": "data", "today": "today",
+    "stock": "operations/alerts", "money": "financials/position",
+    "bills": "operations/invoices", "sell": "operations/record",
+    "followups": "desk/chase", "people": "people/team", "setup": "setup/checklist",
+    "share": "setup/access",
+    "deck": "desk", "ask": "desk", "data": "data/readback", "today": "desk",
 }
 
 
 def _console_back(slug: str, panel: str, note: str = "") -> RedirectResponse:
     """Back to the screen this action belongs to, with a word about what happened."""
-    view = _AFTER.get(panel, "today")
+    view = _AFTER.get(panel, "desk")
     tail = f"?m={_msg(note)}" if note else ""
     return _redirect(f"/c/{slug}/{view}{tail}")
 
@@ -1117,50 +1121,31 @@ def _console_client(account, slug: str):
     return client, None
 
 
-#: The workspace is four screens plus setup, each on its own URL. The previous
-#: build rendered all six panels into one 141KB document and toggled them with
-#: JavaScript: instant to switch, slow at everything else, and the wrong trade
-#: once a screen carries real content.
-_VIEWS = {"today", "sell", "data", "stock", "money", "setup"}
+#: The workspace is seven modules with tabs inside them, following the founder's
+#: own structure. A module is a *job* somebody has; its tabs are steps within it.
+#: The four screens this replaces were named after features that happened to
+#: exist, which is how a product ends up being a feature list wearing a UI.
+def _render(client, account, module_key: str, tab_key: str = "", *,
+            flash: str = "", flash_kind: str = "ok", reply=None,
+            question: str = "", period: str = "all", show: str = "",
+            fresh_pin: str = "") -> HTMLResponse:
+    """Load the state every screen needs, once, and render one tab.
 
-
-def _render(client, account, view: str, *, flash: str = "", flash_kind: str = "ok",
-            reply=None, question: str = "", period: str = "all",
-            show: str = "summary", fresh_pin: str = "") -> HTMLResponse:
-    """Load what one view needs and render it.
-
-    Every route goes through here so none of them can drift into loading a
-    different set of state than the others.
+    One dispatch rather than a view function per screen: they all need the same
+    state, and letting each route decide what to load is how two of them end up
+    disagreeing about the numbers.
     """
+    module, tab = modules.resolve(module_key, tab_key)
     state = _console_state(client)
-    book, ledger_, org = state["book"], state["ledger"], state["org"]
-    settings, invoices = state["settings"], state["invoices"]
-    common = dict(reply=reply, question=question, flash=flash, flash_kind=flash_kind)
+    return HTMLResponse(console.render(
+        client, account, module, tab,
+        book=state["book"], ledger=state["ledger"], org=state["org"],
+        invoices=state["invoices"], settings=state["settings"],
+        entries=ledger.read(client.owner_id, limit=60, client=client.slug),
+        reply=reply, question=question, flash=flash, flash_kind=flash_kind,
+        period=period, show=show, fresh_pin=fresh_pin,
+        invite=(auth.invite_for(client.slug) if not account.is_guest else None)))
 
-    if view == "sell":
-        return HTMLResponse(console.sell_view(client, account, book, org, invoices,
-                                              settings, **common))
-    if view == "data":
-        entries = ledger.read(client.owner_id, limit=20, client=client.slug)
-        return HTMLResponse(console.data_view(client, account, settings, entries,
-                                              **common))
-    if view == "stock":
-        return HTMLResponse(console.stock_view(client, account, book, org, settings,
-                                               **common))
-    if view == "money":
-        return HTMLResponse(console.money_view(client, account, book, ledger_, org,
-                                               settings, period=period, show=show,
-                                               **common))
-    if view == "setup":
-        invite = auth.invite_for(client.slug) if not account.is_guest else None
-        return HTMLResponse(console.setup_view(client, account, book, org, settings,
-                                               invoices, invite=invite,
-                                               fresh_pin=fresh_pin, **common))
-    return HTMLResponse(console.today_view(client, account, book, ledger_, org,
-                                           invoices, settings, **common))
-
-
-# ---------------------------------------------------------------- 02 · stock
 
 @app.post("/c/{slug}/stock/receive")
 def stock_receive(slug: str, sku: str = Form(...), qty: str = Form("0"),
@@ -1229,13 +1214,8 @@ async def console_ask(slug: str, request: Request,
 
     form = await request.form()
     question = str(form.get("question", "")).strip()
-    view = str(form.get("from", "today"))
-    if view not in _VIEWS:
-        view = "today"
-    if client.data_mode == "books" and view == "data":
-        view = "sell"
-    if client.data_mode != "books" and view == "sell":
-        view = "data"
+    view = str(form.get("from", "desk"))
+    tab = str(form.get("tab", ""))
 
     state = _console_state(client)
     # investigate() lets the model query the books itself rather than reading a
@@ -1245,7 +1225,7 @@ async def console_ask(slug: str, request: Request,
                               ledger=state["ledger"], org=state["org"])
     ledger.log("agent.asked", f"Asked: {question[:90]}", client=client,
                channel="agent", answered_by=reply.source, ok=reply.ok)
-    return _render(client, account, view, reply=reply, question=question)
+    return _render(client, account, view, tab, reply=reply, question=question)
 
 
 # ----------------------------------------------------------- 07 · follow-ups
@@ -1513,22 +1493,21 @@ def invoice_identity(slug: str, gstin: str = Form(""), state: str = Form(""),
 # path parameter this broad placed earlier would swallow /dashboard, /cover,
 # /deck/view and every export.
 
-@app.get("/c/{slug}/{view}", response_class=HTMLResponse)
-def workspace(slug: str, view: str, request: Request, period: str = "all",
-              show: str = "summary", account: auth.Account = Depends(_acct)):
-    if view not in _VIEWS:
-        return _redirect(f"/c/{slug}/today")
+@app.get("/c/{slug}/{module}", response_class=HTMLResponse)
+def workspace(slug: str, module: str, request: Request, period: str = "all",
+              show: str = "", account: auth.Account = Depends(_acct)):
+    """A module, on its default tab."""
+    return workspace_tab(slug, module, "", request, period, show, account)
+
+
+@app.get("/c/{slug}/{module}/{tab}", response_class=HTMLResponse)
+def workspace_tab(slug: str, module: str, tab: str, request: Request,
+                  period: str = "all", show: str = "",
+                  account: auth.Account = Depends(_acct)):
     client, bail = _console_client(account, slug)
     if bail is not None:
         return bail
-
-    # A business that types entries has no Data screen, and one that sends files
-    # has no Sell screen. Asking for the wrong one lands on its own daily job.
-    if view == "sell" and client.data_mode != "books":
-        return _redirect(f"/c/{slug}/data")
-    if view == "data" and client.data_mode == "books":
-        return _redirect(f"/c/{slug}/sell")
-
     msg, kind = _flash(request)
-    return _render(client, account, view, flash=msg, flash_kind=kind, period=period,
-                   show=show, fresh_pin=request.query_params.get("pin", ""))
+    return _render(client, account, module, tab, flash=msg, flash_kind=kind,
+                   period=period, show=show,
+                   fresh_pin=request.query_params.get("pin", ""))

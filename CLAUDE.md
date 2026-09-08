@@ -195,23 +195,44 @@ but **not yet declared in `pyproject.toml`**.
   to today make it **deterministic** — the same command on two machines gives
   the same numbers, and re-running it after a messy rehearsal puts it back.
   Idempotent: it wipes the account's workspaces first. Never demo off live data.
-- **`console.py`** — **the workspace: four screens plus a gear**, each on its own
-  URL. It replaced a console of six equal panels that had no opinion about which
-  mattered, opened on a stock table because that was built first, and carried
-  setup forms on every screen used daily.
-  * **`today`** is the landing and is a *ranked list of decisions*, not tiles.
-    `today.py` computes them — severity gates the order and money ranks within it,
+- **`modules.py`** — **the seven modules, as data.** The founder's own structure,
+  drawn on paper, and a better map than what the code had grown into: the previous
+  four screens were named after *features that happened to exist*, and these are
+  named after **jobs somebody has**.
+
+      Desk · Dashboard · Financials · Operations · People · Messages · Data
+
+  Two rules keep it from rotting back into a feature list. **A module is a job and
+  its tabs are steps within it** — a screen that cannot answer "which job is this
+  part of" gets a home inside an existing module rather than a tab of its own. And
+  **nothing appears in two modules**: a figure lives where the job that acts on it
+  lives and every other screen links to it, which is why invoices are Operations
+  and not Financials. `SETUP` is registered in `BY_KEY` but is deliberately **not**
+  in `MODULES` — nothing on it is part of running the business, and putting it in
+  the module row would say that it was. `MOVED` maps every old address to its new
+  one and `resolve()` lands an unknown module on the Desk, so a stale bookmark
+  reaches the product rather than an apology. `visible()` hides Data from a
+  business that types its entries, because a screen that only ever says "nothing
+  here" teaches somebody to stop looking at the nav.
+- **`console.py`** — draws all of it. `render()` is a **single dispatch**: it loads
+  the state every screen needs once, then looks the tab up in `_TABS`
+  (`"financials.position"` → `_fin_position`). Letting each route decide what to
+  load is how two screens end up disagreeing about the same number. `_TABS` is
+  declared at the **foot of the file** so it can name handlers defined anywhere
+  above without ordering them by hand.
+  * **`shell()` renders two levels of nav** — the module row, then that module's
+    tabs — and nothing else. An earlier build had a tab row *and* an in-body
+    section chooser inside Financials, which is two rows of navigation for one
+    module and exactly how a product starts feeling like a control panel.
+  * **The Desk is the landing**, and is a *ranked list of decisions*, not tiles.
+    `today.py` computes them; severity gates the order and money ranks within it,
     because sorting on money alone put customer-mix above an empty shelf.
-  * **The second item is that business's own daily job** — `sell` for one that
-    types entries, `data` for one that sends files. Asking for the wrong one
-    redirects to the right one.
-  * **`stock`**, **`money`**, and **`setup`** behind the gear.
-  * **Ask is the bar in the header of every screen**, and its answer returns on
-    the screen it was asked from. A panel has to be remembered; a box in front of
-    somebody does not.
-  Each view renders on its own request. The previous build put all six panels in
-  one 141KB document and toggled them with JavaScript — instant to switch and
-  slow at everything else, which is the wrong trade once a screen has content.
+  * **Ask is the bar in the header of every screen**, and its answer returns on the
+    screen it was asked from. The agent is not a module: a panel has to be
+    remembered, and a box in front of somebody does not.
+  Each tab renders on its own request. The build before last put six panels in one
+  141KB document and toggled them with JavaScript — instant to switch and slow at
+  everything else, which is the wrong trade once a screen has content.
 - **`today.py`** — what needs a decision, ranked by what it costs to ignore. Every
   finding was already being computed and was sitting one click inside a different
   panel, which is why nobody found any of them. A business that sends files has an
@@ -222,9 +243,15 @@ but **not yet declared in `pyproject.toml`**.
   balance sheet, both ageing schedules, eight ratios, concentration, monthly trend,
   cost heads as a share of turnover, break-even. Accrual and cash are reported
   side by side and never blended, and `balance_sheet()` **declares what it cannot
-  see** rather than omitting it. The Money screen shows four headline numbers and
-  then *one* section you pick — eleven statements at once is a filing cabinet
-  tipped onto the floor.
+  see** rather than omitting it — the Balance sheet tab prints those assumptions
+  under the statement, because a trading position taken to a bank as a filed one
+  is worse than no statement at all. Financials is **one statement per tab**
+  (Balance sheet · Profit & loss · Cash flow · Taxes · Analytics) with the four
+  headline numbers on every one; eleven statements on a single page is a filing
+  cabinet tipped onto the floor. Taxes computes output GST **from invoices
+  actually raised**, never from sales — a sale with no invoice collected no tax —
+  and shows input credit as a labelled *estimate*, because the expense ledger does
+  not record supplier GSTINs. It refuses to be a filing document.
 - **`analysis.py`** — one general `query_sales` (group by any dimension, filter on
   any combination, measure revenue/qty/margin/bills) plus stock, customer, item and
   period-comparison queries. This is what the agent calls; nothing here touches a
@@ -247,10 +274,11 @@ but **not yet declared in `pyproject.toml`**.
   the transient Windows locks OneDrive's sync client takes.
 - **`app.py`** — routes: `/` (landing when signed out, portfolio when signed in),
   `GET|POST /signup`, `GET|POST /login`, `POST /logout`, `POST /install`, `/onboard`, `/setup`,
-  `/settings`, `/activity`, `/c/{slug}` and
-  `/c/{slug}/{today|sell|data|stock|money|setup}` (declared **last**, since
-  FastAPI matches in definition order and a path parameter that broad would
-  otherwise swallow `/dashboard`, `/cover`, `/deck/view` and every export),
+  `/settings`, `/activity`, `/c/{slug}`, and `/c/{slug}/{module}` +
+  `/c/{slug}/{module}/{tab}` (declared **last**, since FastAPI matches in
+  definition order and a path parameter that broad would otherwise swallow
+  `/dashboard`, `/cover`, `/deck/view` and every export; the module route just
+  calls the tab route with the tab blank, so there is one code path),
   `POST /c/{slug}/upload`, `POST /c/{slug}/book/item|sale`,
   `/c/{slug}/export/{pdf|pptx|html}`, `POST /c/{slug}/email|whatsapp|delete`,
   and the console block (`# ---- vishak`) at the foot of the file:
@@ -304,6 +332,12 @@ client deletion, and re-sharing. The PIN is stored only as a scrypt hash and sho
 operator exactly once, when minted; a lost PIN means a new link, never a lookup. Revoking
 (`POST /c/<slug>/share/revoke`) kills the remembered device immediately, because `auth.current()`
 re-reads the invite on every request.
+
+`auth.delete()` exists but has **no route** — a business does not get to delete itself
+out from under its own data. It is there so the test suites can clear up
+their throwaway accounts, which they previously left behind: a full run used to
+add eight accounts to `accounts.json` forever, and the master console listed
+every one of them as a real customer.
 
 **Wrong PINs cost time.** After `auth.PIN_TRIES` (5) failures the link stops answering for
 `auth.PIN_LOCKOUT` (15 minutes) — turning a 10,000-guess sweep into roughly a month of waiting.

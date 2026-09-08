@@ -281,20 +281,19 @@ def test_saving_the_identity_does_not_change_invoices_already_sent():
     assert again.intra_state, "the issued invoice keeps the split it was raised with"
 
 
-def test_billing_lives_with_selling():
-    """Raising a bill follows a sale, so it is on the Sell screen — and the
-    identity that prints on it is setup, so that moved to Setup."""
+def test_billing_lives_in_operations_and_its_setup_does_not():
+    """Raising a bill follows a sale, so it is in Operations — and the identity
+    that prints on it is a once-only decision, so that is in Setup."""
     slug, c = _shop("Panel Traders")
     _raise(slug, [_sell(slug, "urea", 4, 320)])
     _sell(slug, "paddy", 2, 640)     # leave one unbilled, or the form is hidden
 
-    sell = client.get(f"/c/{slug}/sell").text
-    assert "Raise an invoice" in sell
-    assert "Invoices raised" in sell
-    assert "What prints on your bills" not in sell, "setup does not belong here"
+    bills = client.get(f"/c/{slug}/operations/invoices").text
+    assert "Raise an invoice" in bills
+    assert "Invoices raised" in bills
+    assert "What prints on your bills" not in bills, "setup does not belong here"
 
-    setup = client.get(f"/c/{slug}/setup").text
-    assert "What prints on your bills" in setup
+    assert "What prints on your bills" in client.get(f"/c/{slug}/setup/billing").text
 
 
 def _cleanup() -> None:
@@ -308,6 +307,15 @@ def _cleanup() -> None:
             path.unlink(missing_ok=True)
         store.delete_client(slug, ACCOUNT.id)
 
+
+
+    # Accounts too, or every run leaves throwaways behind and the master
+    # console fills up with businesses that never existed.
+    for acct in auth._load_all():
+        if acct.email.endswith("@vyuha.test") and acct.email.startswith(("inv-",)):
+            for leftover in store.load_clients(acct.id):
+                store.delete_client(leftover.slug, acct.id)
+            auth.delete(acct.id)
 
 def main() -> int:
     tests = [(n, f) for n, f in sorted(globals().items())

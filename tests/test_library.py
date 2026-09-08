@@ -310,7 +310,7 @@ def test_an_uploaded_file_reaches_the_stock_screen():
     assert book.items, "nothing landed in the book"
     assert book.sales, "no sales landed in the book"
 
-    stock = client.get(f"/c/{slug}/stock").text
+    stock = client.get(f"/c/{slug}/operations/alerts").text
     assert 'class="sk ' in stock, "the shelf is empty"
     assert book.items[0].name.split()[0] in stock
 
@@ -398,6 +398,15 @@ def _cleanup() -> None:
         store.delete_client(slug, ACCOUNT.id)
     shutil.rmtree(WORK, ignore_errors=True)
 
+
+
+    # Accounts too, or every run leaves throwaways behind and the master
+    # console fills up with businesses that never existed.
+    for acct in auth._load_all():
+        if acct.email.endswith("@vyuha.test") and acct.email.startswith(("lib-",)):
+            for leftover in store.load_clients(acct.id):
+                store.delete_client(leftover.slug, acct.id)
+            auth.delete(acct.id)
 
 def main() -> int:
     tests = [(n, f) for n, f in sorted(globals().items())
