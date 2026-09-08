@@ -972,13 +972,9 @@ def _cleanup() -> None:
     _login()
     _as_operator()
     for slug in set(_SLUGS):
-        shutil.rmtree(store.UPLOADS / slug, ignore_errors=True)
-        shutil.rmtree(store.DASHBOARDS / slug, ignore_errors=True)
-        for path in (books.BOOKS / f"{slug}.json",
-                     money.MONEY / f"{slug}.json",
-                     people.PEOPLE / f"{slug}.json",
-                     followup.FOLLOWUPS / f"{slug}.json",
-                     store.DATA / "exports" / f"{slug}-deck.pptx",
+        # Decks are not keyed by slug alone, so they stay here; everything that
+        # is, `store.delete_client` purges itself.
+        for path in (store.DATA / "exports" / f"{slug}-deck.pptx",
                      store.DATA / "exports" / f"{slug}-deck.pdf"):
             path.unlink(missing_ok=True)
         store.delete_client(slug, ACCOUNT.id)

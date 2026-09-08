@@ -27,9 +27,11 @@ python -m venv .venv
 .venv/Scripts/python -m vyuha check FILE.xlsx   # what was understood, no report written
 .venv/Scripts/python -m tests.test_pipeline     # 19 engine tests, no pytest required
 .venv/Scripts/python -m tests.test_platform     # 57 platform tests, same runner
-.venv/Scripts/python -m tests.test_console      # 41 console tests, runs VYUHA_LLM=offline
+.venv/Scripts/python -m tests.test_console      # 71 console tests, runs VYUHA_LLM=offline
 .venv/Scripts/python -m tests.test_intake       # 23 intake tests, over the demo corpus
 .venv/Scripts/python -m tests.test_invoice      # 19 invoice tests: tax, numbering, document
+.venv/Scripts/python -m tests.test_library      # 22 tests over many files at once
+.venv/Scripts/python -m tests.test_agents       # 47 agent-lane tests: gate, notify, routines
 .venv/Scripts/python demo/make_samples.py       # the nine messy sample files
 .venv/Scripts/python demo/make_samples.py --bulk 100   # 103 files over 14 months
 .venv/Scripts/python -m vyuha_platform seed     # both demo businesses
@@ -83,7 +85,14 @@ but **not yet declared in `pyproject.toml`**.
   the account that created it. **Every read here takes `owner_id` as a required argument**
   (`load_clients(owner_id)`, `get_client(slug, owner_id)`) so a route that forgets to scope
   is a `TypeError` on the first request rather than one business quietly reading another's
-  numbers.
+  numbers. **`delete_client` purges every per-slug store** (`store.PER_SLUG` — books,
+  money, people, invoices, followups, outbox, notices, routines, plus uploads and
+  dashboards), because slugs are freed on delete and globally unique: the next business
+  onboarded under the same name gets the same slug and used to inherit the deleted one's
+  book, staff and outbox with it. The list is written out by hand rather than imported,
+  since `store` sits underneath all of those modules; a test asserts it stays complete.
+  The activity ledger is the deliberate exception — append-only, so "this business was
+  deleted on the 14th" stays answerable.
 - **`channels.py`** — the Phase 2 alert renderers: pure `Insights -> str` functions
   (`as_whatsapp`, `as_email`) sitting beside `report.render()` rather than in a new pipeline.
   `as_whatsapp` respects a 1024-char cap by shedding entity lines first, then whole alerts
@@ -203,6 +212,13 @@ but **not yet declared in `pyproject.toml`**.
 
       Desk · Dashboard · Financials · Operations · People · Messages · Data
 
+  Messages carries four tabs — Send a brief, **Waiting** (drafts, and anything the
+  gate is holding for approval), **Who gets told** (the Notification Agent made
+  visible: who Vyuha *would* warn, before it warns them, plus who it already has)
+  and Sent. Setup gained **Routine jobs**. The Messages nav badge counts what is
+  waiting *on a person*, not what exists — a badge that never reaches zero is a
+  badge people stop reading.
+
   Two rules keep it from rotting back into a feature list. **A module is a job and
   its tabs are steps within it** — a screen that cannot answer "which job is this
   part of" gets a home inside an existing module rather than a tab of its own. And
@@ -234,6 +250,82 @@ but **not yet declared in `pyproject.toml`**.
   Each tab renders on its own request. The build before last put six panels in one
   141KB document and toggled them with JavaScript — instant to switch and slow at
   everything else, which is the wrong trade once a screen has content.
+- **`gate.py`** — **the one way out of the system.** Every message and document
+  leaves through `submit()`; `whatsapp.send` and `exports.send_email` refuse a
+  caller that does not hold the key this module owns, so forgetting the gate
+  fails loudly at the boundary instead of quietly putting a wrong number in front
+  of a customer. That refusal is the point — a comment saying "always go through
+  the gate" is a convention, and the architecture asks for a boundary. Three
+  dispositions: `AUTO` (WhatsApp alerts to the business's own owner — worthless
+  tomorrow morning), `DRAFT` (**every** email, whatever it contains, because
+  email reaches accountants and banks where a wrong message is a document), and
+  `APPROVAL` (money leaving, or a filing — it waits). **The classification is on
+  the action, not the channel**: a payment reminder is money *arriving* and goes
+  out like any alert, while a GST summary waits even though it travels the same
+  wire. An unprovisioned channel degrades `AUTO` to `DRAFT` rather than reporting
+  a failure every morning for something that is about to go out fine by hand.
+- **`orchestrator.py`** — **one per client tenant, not one per platform.** Not a
+  performance decision: config, schedules and the audit trail are isolated per
+  client so a bespoke build can later be lifted into a shared platform without
+  re-architecting. It owns four things — schedule (`tick()` is called on request;
+  there is no daemon, so opening the Desk is this deployment's clock, and
+  `last_fired` makes that idempotent), retry (bounded, and never in the same tick
+  as the attempt), audit (into `ledger`, never a second log file), and **the gate
+  key** — `approve()` is the only path to `gate.release()`, so an approval always
+  carries the name of whoever granted it. `context()` is public because the
+  console reuses it: a screen and a scheduled brief must never quote different
+  numbers for the same morning. Each tick fires due routines *and* runs the
+  Notification Agent, because a shelf that empties at eleven must not wait until
+  tomorrow's brief.
+- **`routines.py`** — **configuration, not code.** A routine names who it is for,
+  when it fires, which `SECTIONS` go in it, and nothing else; every section reads
+  from an agent that already exists. Adding "a Friday stock summary for the
+  purchase head" is a row in a JSON file. If a client request means writing a new
+  agent, the request was modelled wrong.
+- **`agents.py`** — **the sixteen agents, as data**, and the one rule worth
+  enforcing mechanically. The architecture spec (`vyuha-agent-architecture.md`,
+  kept outside the repo) asks that each agent carry an explicit read/write
+  contract "in code, not implicit", so each `Agent` names the stores it may touch
+  and `check()` reads those declarations back. The rule it enforces is **the
+  backend never surfaces**: nothing past the pipeline may read the raw or
+  cleaned-but-unclassified store. A test proves the checker is not vacuous by
+  putting an illegal agent in the roster and insisting it is caught. This is
+  deliberately data and not a base class — fourteen of the sixteen agents already
+  existed as working modules written before the spec was drawn, and what was
+  missing was the *map*, not an ABC. `implemented_by` is the honest column:
+  several agents share a module, because the lanes are jobs rather than files.
+- **`notify.py`** — **the Notification Agent**, the one box in the flow diagram
+  with nothing behind it. `Tax / Operations / Invoicing → Notification →
+  Communication`: the product could already tell that a shelf was empty and could
+  already send a WhatsApp, and had no answer to *whose phone this lands on*.
+  Everything went to the business's own number, which meant the manager found out
+  about the empty shelf when the owner told him. Four rules: **it computes
+  nothing** (every event comes from `today.findings()` or `tax.events()`, so a
+  notification cannot disagree with the screen it points at); **only what somebody
+  can act on tonight** (`PUSHED` is critical and warning only, and `NEVER_PUSHED`
+  drops "Vyuha has nothing to read yet" — as a Desk item that is the most
+  important thing on an empty workspace, as a WhatsApp to a new client it is a
+  complaint about our own emptiness); **nothing is said twice** (the queue is
+  recomputed every tick and never stored, exactly as `followup.py` does it — only
+  the *telling* persists, so a cooldown can hold its tongue); and **it never
+  sends**, handing to `gate.submit()`. `AUDIENCES` maps a finding's existing tag
+  to the roles that own the problem, and **the business's own number stands in for
+  Owner** — almost nobody adds themselves to their own staff list.
+- **`tax.py`** — **the Tax & GST agent**: liabilities *and* filing dates. The
+  liability was already computed, inline, inside the Financials screen; the filing
+  dates were computed nowhere, which is why the arrow into the Notification Agent
+  had nothing travelling down it. A tax agent that cannot say when a return is due
+  has no event to raise. `liability()` is now the single answer and `_fin_taxes`
+  renders it rather than deriving it — the moment a second caller wanted those
+  figures, computing them twice meant a phone and a screen that could disagree.
+  Due dates are the **standard monthly cadence** (GSTR-1 on the 11th, GSTR-3B on
+  the 20th, each covering the month before); `SCHEME_ASSUMED` says so out loud
+  because a business on the QRMP quarterly scheme has different dates, and
+  guessing silently is how somebody misses a deadline while being told they had
+  nine days. **This is what finally makes the gate's `APPROVAL` disposition real**
+  — it had been declared since `gate.py` was written and no caller ever produced
+  one, so the rule that anything touching a filing waits for a human had never
+  once fired in the running product.
 - **`today.py`** — what needs a decision, ranked by what it costs to ignore. Every
   finding was already being computed and was sitting one click inside a different
   panel, which is why nobody found any of them. A business that sends files has an
@@ -284,9 +376,16 @@ but **not yet declared in `pyproject.toml`**.
   `/c/{slug}/export/{pdf|pptx|html}`, `POST /c/{slug}/email|whatsapp|delete`,
   and the console block (`# ---- vishak`) at the foot of the file:
   `/c/{slug}/console`, `POST /c/{slug}/ask|followup|expense|deck|branch|staff`,
-  `POST /c/{slug}/stock/{receive|count|reorder}`, `GET /c/{slug}/deck/{pptx|pdf}`.
+  `POST /c/{slug}/stock/{receive|count|reorder}`, `GET /c/{slug}/deck/{pptx|pdf}`,
+  and the gate/schedule block: `POST /c/{slug}/outbox/{id}/{send|cancel|sent}`,
+  `POST /c/{slug}/routine` (+ `/{id}/{toggle|delete}` and `/run`).
   Every console handler starts with `_console_client()`, which resolves and
-  authorises in one step.
+  authorises in one step. `outbox/{id}/send` goes through
+  `orchestrator.approve()`, never `gate.release()` — a route holds no key.
+  `outbox/{id}/sent` is separate and deliberately so: with no provider
+  connected the operator taps a `wa.me` link and sends from their own phone,
+  and calling the release path would attempt an impossible delivery and log a
+  failure for a message that actually went.
   A single `require_login` **middleware** closes everything outside `PUBLIC =
   {"/", "/login", "/signup", "/logout"}`, so a route added later is private by default —
   the safe direction to forget in. Handlers take the account via

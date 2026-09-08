@@ -30,8 +30,9 @@ from fastapi.staticfiles import StaticFiles
 from vyuha import analyze, pipeline, report
 
 from . import (agent, auth, books, channels, config, console, deck_render, decks,
-               exports, finance, followup, invoice, invoice_render, ledger, library,
-               modules, money, people, sources, store, theme, ui, whatsapp)
+               exports, finance, followup, gate, invoice, invoice_render, ledger,
+               library, modules, money, orchestrator, people, routines, sources,
+               store, theme, ui, whatsapp)
 
 app = FastAPI(title="Vyuha Operations Platform", docs_url=None, redoc_url=None)
 
@@ -430,14 +431,12 @@ def onboard_submit(name: str = Form(...), phone: str = Form(""),
                channel="whatsapp" if client.phone else "")
 
     if client.phone:
-        result = whatsapp.send_test(settings, client.phone)
-        if result.ok:
-            ledger.log("alert.sent", f"Connection test delivered to {client.name}",
-                       client=client, channel="whatsapp", provider=result.provider)
+        item = gate.submit(client, settings, kind="test", channel="whatsapp",
+                           to=client.phone, body=whatsapp.TEST_MESSAGE,
+                           source="onboarding")
+        if item.status == gate.SENT:
             return _redirect(f"/c/{client.slug}?m={_msg('Workspace created and a test message was sent.')}")
-        ledger.log("alert.send_failed", f"Connection test not sent: {result.detail}",
-                   client=client, channel="whatsapp")
-        return _redirect(f"/c/{client.slug}/desk?m={_msg('Workspace created. ' + result.needs_action)}&k=bad")
+        return _redirect(f"/c/{client.slug}/desk?m={_msg('Workspace created. ' + item.detail)}&k=bad")
 
     return _redirect(f"/c/{client.slug}?m={_msg('Workspace created. Drop their data in.')}")
 
@@ -556,17 +555,13 @@ def book_add_sale(slug: str, sku: str = Form(...), party: str = Form(""),
 def _send_receipt(client: store.Client, sale) -> str:
     """Deliver a bill to the buyer, and say plainly whether it left the machine."""
     settings = config.load()
-    text = channels.as_receipt(client.name, sale)
-    result = whatsapp.send(settings, sale.party_phone, text)
-
-    ledger.log("receipt.sent" if result.ok else "receipt.failed",
-               f"Receipt for {sale.id} to {sale.party}: {result.detail}",
-               client=client, channel="whatsapp", provider=result.provider,
-               bill=sale.id)
-    if result.ok:
+    item = gate.submit(client, settings, kind="receipt", channel="whatsapp",
+                       to=sale.party_phone, body=channels.as_receipt(client.name, sale),
+                       source=f"sale:{sale.id}")
+    if item.status == gate.SENT:
         books.mark_receipt_sent(client.slug, sale.id)
         return f"Receipt sent to {sale.party}."
-    return result.needs_action or result.detail
+    return item.detail
 
 
 @app.post("/c/{slug}/book/sale/{sale_id}/receipt")
@@ -668,8 +663,9 @@ def client_delete(slug: str, account: auth.Account = Depends(_acct)):
         return denied
     client = _client_for(account, slug)
     name = client.name if client else slug
-    shutil.rmtree(store.UPLOADS / slug, ignore_errors=True)
-    shutil.rmtree(store.DASHBOARDS / slug, ignore_errors=True)
+    # `delete_client` purges the uploads, dashboards and every per-slug store.
+    # Doing it here as well used to leave the book, staff and outbox behind for
+    # whoever next onboarded a business with the same name.
     store.delete_client(slug, client.owner_id)
     ledger.log("client.deleted", f"{name} was deleted", client=slug,
                owner=account.id)
@@ -923,10 +919,12 @@ def email_send(slug: str, subject: str = Form(...), body: str = Form(...),
     if client.latest and client.latest.dashboard:
         attachments.append(store.DASHBOARDS / client.latest.dashboard)
 
-    ok, detail = exports.send_email(settings, client.email, subject, body, attachments)
-    ledger.log("alert.sent" if ok else "alert.send_failed",
-               f"Email to {client.name}: {detail}", client=client, channel="email")
-    return _redirect(f"/c/{slug}/desk?m={_msg(detail)}&k={'ok' if ok else 'bad'}")
+    item = gate.submit(client, settings, kind="report", channel="email",
+                       to=client.email, subject=subject, body=body,
+                       attachments=attachments, source="brief")
+    note = (f"{item.detail} It is in Messages, waiting for you to send it."
+            if item.status == gate.DRAFTED else item.detail)
+    return _redirect(f"/c/{slug}/messages/outbox?m={_msg(note)}")
 
 
 @app.post("/c/{slug}/whatsapp")
@@ -936,12 +934,10 @@ def whatsapp_send(slug: str, text: str = Form(...), account: auth.Account = Depe
         return _redirect("/?m=That+client+no+longer+exists.&k=bad")
 
     settings = config.load()
-    result = whatsapp.send(settings, client.phone, text)
-    ledger.log("alert.sent" if result.ok else "alert.send_failed",
-               f"WhatsApp to {client.name}: {result.detail}", client=client,
-               channel="whatsapp", provider=result.provider)
-    note = result.detail + (" " + result.needs_action if result.needs_action else "")
-    return _redirect(f"/c/{slug}/desk?m={_msg(note)}&k={'ok' if result.ok else 'bad'}")
+    item = gate.submit(client, settings, kind="brief", channel="whatsapp",
+                       to=client.phone, body=text, source="manual")
+    return _redirect(f"/c/{slug}/messages/outbox?m={_msg(item.detail)}"
+                     f"&k={'ok' if item.status == gate.SENT else 'bad'}")
 
 
 # -------------------------------------------------------------------- activity
@@ -979,7 +975,10 @@ def settings_test_whatsapp(to: str = Form(...),
         return denied
 
     settings = config.load()
-    result = whatsapp.send_test(settings, to)
+    # No client here — this is a deployment-level check of the operator's own
+    # credentials, so there is no workspace outbox to file it in. It still goes
+    # through the gate's key rather than around it.
+    result = whatsapp.send_test(settings, to, _token=gate.key())
     ledger.log("alert.sent" if result.ok else "alert.send_failed",
                f"Connection test via {result.provider}: {result.detail}",
                owner=account.id, channel="whatsapp", provider=result.provider)
@@ -1136,6 +1135,20 @@ def _render(client, account, module_key: str, tab_key: str = "", *,
     disagreeing about the numbers.
     """
     module, tab = modules.resolve(module_key, tab_key)
+
+    # Opening the Desk is the closest thing this deployment has to a clock.
+    # There is no daemon, so the schedule is advanced on the first screen
+    # somebody looks at — `Routine.due()` is a cheap JSON read, and nothing
+    # heavier runs unless something is actually due. `last_fired` makes it
+    # idempotent, so ten page loads before breakfast still send one brief.
+    if module.key == "desk":
+        try:
+            orchestrator.for_client(client, config.load()).tick()
+        except Exception:                                    # noqa: BLE001
+            # A broken routine must never take the Desk down with it; the
+            # failure is already in the audit trail.
+            pass
+
     state = _console_state(client)
     return HTMLResponse(console.render(
         client, account, module, tab,
@@ -1492,6 +1505,128 @@ def invoice_identity(slug: str, gstin: str = Form(""), state: str = Form(""),
 # Declared last on purpose. FastAPI matches routes in definition order, so a
 # path parameter this broad placed earlier would swallow /dashboard, /cover,
 # /deck/view and every export.
+
+
+# ------------------------------------------------- the gate and the schedule
+#
+# Nothing here calls a send path. `orchestrator.approve()` is the only way a
+# held item is released, and it is the only holder of the gate's key, so every
+# approval carries the name of whoever granted it.
+
+def _orch(client) -> orchestrator.Orchestrator:
+    """One Orchestrator per tenant, per request. Cheap to make, not shared."""
+    return orchestrator.for_client(client, config.load())
+
+
+@app.post("/c/{slug}/outbox/{item_id}/send")
+def outbox_send(slug: str, item_id: str, account: auth.Account = Depends(_acct)):
+    """Release a draft, or approve something held.
+
+    A guest may not: releasing a held item is the approval, and approval is the
+    operator's job, not something a shared link should be able to do.
+    """
+    client, bail = _console_client(account, slug)
+    if bail is not None:
+        return bail
+    denied = _deny_guest(account)
+    if denied:
+        return denied
+    ok, detail = _orch(client).approve(item_id, approved_by=account.name or account.email)
+    return _redirect(f"/c/{slug}/messages/{'outbox' if ok else 'approvals'}"
+                     f"?m={_msg(detail)}&k={'ok' if ok else 'bad'}")
+
+
+@app.post("/c/{slug}/outbox/{item_id}/cancel")
+def outbox_cancel(slug: str, item_id: str, account: auth.Account = Depends(_acct)):
+    """Refuse to send something. Always allowed — a person who cannot discard a
+    draft will send it instead just to clear the screen."""
+    client, bail = _console_client(account, slug)
+    if bail is not None:
+        return bail
+    _ok, detail = _orch(client).cancel(item_id, why="Discarded without sending.")
+    return _redirect(f"/c/{slug}/messages/approvals?m={_msg(detail)}")
+
+
+
+@app.post("/c/{slug}/outbox/{item_id}/sent")
+def outbox_mark_sent(slug: str, item_id: str, account: auth.Account = Depends(_acct)):
+    """The operator sent it themselves, from their own WhatsApp.
+
+    Separate from ``/send`` because nothing is transmitted here — this only
+    records what already happened outside the system. Calling the release path
+    would attempt a delivery the deployment cannot make and log a failure for a
+    message that actually went.
+    """
+    client, bail = _console_client(account, slug)
+    if bail is not None:
+        return bail
+    _ok, detail = gate.mark_sent(client, item_id,
+                                 by=account.name or account.email)
+    return _redirect(f"/c/{slug}/messages/approvals?m={_msg(detail)}")
+
+
+@app.post("/c/{slug}/routine")
+async def routine_add(slug: str, request: Request,
+                      account: auth.Account = Depends(_acct)):
+    """Add a scheduled brief.
+
+    Reads the raw form because `sections` and `days` are repeated checkbox
+    fields, which a declared parameter cannot express.
+    """
+    client, bail = _console_client(account, slug)
+    if bail is not None:
+        return bail
+    form = await request.form()
+    _r, note = routines.add(
+        slug, str(form.get("name", "")), client.phone,
+        staff_id=str(form.get("staff_id", "")),
+        at=str(form.get("at", "08:00")),
+        days=[str(d) for d in form.getlist("days")],
+        sections=[str(x) for x in form.getlist("sections")])
+    ledger.log("routine.changed", note, client=client)
+    return _redirect(f"/c/{slug}/setup/routines?m={_msg(note)}")
+
+
+@app.post("/c/{slug}/routine/{routine_id}/toggle")
+def routine_toggle(slug: str, routine_id: str, account: auth.Account = Depends(_acct)):
+    client, bail = _console_client(account, slug)
+    if bail is not None:
+        return bail
+    note = routines.toggle(slug, routine_id)
+    ledger.log("routine.changed", note, client=client)
+    return _redirect(f"/c/{slug}/setup/routines?m={_msg(note)}")
+
+
+@app.post("/c/{slug}/routine/{routine_id}/delete")
+def routine_delete(slug: str, routine_id: str, account: auth.Account = Depends(_acct)):
+    client, bail = _console_client(account, slug)
+    if bail is not None:
+        return bail
+    note = routines.remove(slug, routine_id)
+    ledger.log("routine.changed", note, client=client)
+    return _redirect(f"/c/{slug}/setup/routines?m={_msg(note)}")
+
+
+@app.post("/c/{slug}/routine/run")
+def routine_run(slug: str, account: auth.Account = Depends(_acct)):
+    """Fire whatever is due now, without waiting for the clock.
+
+    Useful for a demo, and the honest way to test a routine: it goes through
+    exactly the same path the schedule uses, so what somebody sees here is what
+    they will get at eight tomorrow.
+    """
+    client, bail = _console_client(account, slug)
+    if bail is not None:
+        return bail
+    result = _orch(client).tick()
+    note = (f"Ran {len(result.fired)} routine job(s)."
+            if result.fired else
+            "Nothing is due right now — routines that already went out today "
+            "will not go again.")
+    if result.errors:
+        note += " " + "; ".join(result.errors[:2])
+    return _redirect(f"/c/{slug}/setup/routines?m={_msg(note)}"
+                     f"&k={'ok' if result.fired else 'info'}")
 
 @app.get("/c/{slug}/{module}", response_class=HTMLResponse)
 def workspace(slug: str, module: str, request: Request, period: str = "all",

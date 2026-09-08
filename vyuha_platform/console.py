@@ -32,8 +32,9 @@ from datetime import date
 
 from vyuha import fmt
 
-from . import (agent, books, catalog, finance, followup, invoice, modules,
-               money, people, today as today_mod, ui)
+from . import (agent, agents, books, catalog, channels, finance, followup, gate,
+               invoice, modules,
+               money, notify, people, routines, tax, today as today_mod, ui)
 
 E = ui.E
 
@@ -1406,7 +1407,9 @@ def render(c, account, module, tab, *, book, ledger, org, invoices, settings,
         "_findings": findings,
         "operations": len(summary["low_stock"]) + len(summary["out_of_stock"]),
         "financials": len([e for e in ledger.expenses if not e.paid]),
-        "messages": len(queue),
+        # Messages counts what is *waiting on a person*, not what exists. A
+        # badge that never reaches zero is a badge people stop reading.
+        "messages": gate.counts(c.slug)["waiting"],
         "data": len(c.runs),
     }
 
@@ -1638,6 +1641,31 @@ def _fin_analytics(c, account, st) -> str:
             + _selling(c, st["org"], st["book"]))
 
 
+def _filing_calendar(c) -> str:
+    """When the returns are due, and how close.
+
+    A liability figure with no date next to it is a number; a date is a
+    decision. This is also the Tax agent's own view of what it will notify
+    about, so what somebody reads here is exactly what the accountant's phone
+    will say — the calendar and the reminder come from `tax.calendar_()`.
+    """
+    upcoming = tax.calendar_()
+    if not upcoming:
+        return ""
+    rows = ""
+    for f in upcoming[:4]:
+        tone = {"critical": "crit", "warning": "warn"}.get(f.severity, "dim")
+        rows += (f'<div class="chase"><div style="min-width:0">'
+                 f'<div class="who">{E(f.name)} &middot; {E(f.period)}</div>'
+                 f'<div class="why">{E(f.covers)}</div></div>'
+                 f'<div class="act"><span class="pill {tone}">{E(f.when)}</span>'
+                 f'</div></div>')
+    return (f'<div class="card" style="margin-bottom:16px">'
+            f'<div style="font-size:16px;font-weight:700">Filing dates</div>'
+            f'<div style="margin-top:12px">{rows}</div>'
+            f'<div class="note-line">{E(tax.SCHEME_ASSUMED)}</div></div>')
+
+
 def _fin_taxes(c, account, st) -> str:
     """GST collected, GST paid, and what that leaves.
 
@@ -1648,15 +1676,14 @@ def _fin_taxes(c, account, st) -> str:
     as an estimate and labelled as one rather than quietly netted off.
     """
     invoices, ledger = st["invoices"], st["ledger"]
+    # `tax.liability()` is the single answer. This screen used to compute the
+    # figures inline, which was fine while it was the only reader — the moment
+    # the Notification Agent needed the same numbers for a filing reminder,
+    # deriving them twice meant a phone and a screen that could disagree.
+    owed = tax.liability(invoices, ledger)
+    output, taxable = owed["output"], owed["taxable"]
+    cgst, igst, est_input = owed["cgst"], owed["igst"], owed["est_input"]
     taxed = [i for i in invoices if i.taxed]
-    output = sum(i.tax for i in taxed)
-    taxable = sum(i.taxable for i in taxed)
-    cgst = sum(i.cgst for i in taxed)
-    igst = sum(i.igst for i in taxed)
-
-    purchases = [e for e in ledger.expenses if e.category == "Purchase"]
-    # A rough input credit at the commonest rate, clearly flagged.
-    est_input = sum(e.amount for e in purchases) * 5 / 105
 
     if not c.gstin:
         return ('<div class="card"><div style="font-size:16px;font-weight:700">'
@@ -1673,18 +1700,13 @@ def _fin_taxes(c, account, st) -> str:
         _stat("IGST", short(igst), "sales outside it"),
     ])
 
-    by_rate: dict[float, dict] = {}
-    for inv in taxed:
-        for g in inv.by_rate():
-            row = by_rate.setdefault(g["gst_rate"], {"taxable": 0.0, "tax": 0.0})
-            row["taxable"] += g["taxable"]
-            row["tax"] += g["tax"]
     rate_rows = "".join(
         f'<tr><td><b>{r:g}%</b></td><td class="num">{rs(v["taxable"])}</td>'
         f'<td class="num">{rs(v["tax"])}</td></tr>'
-        for r, v in sorted(by_rate.items()))
+        for r, v in owed["by_rate"].items())
 
     return (f'<div class="grid g4">{tiles}</div><div style="height:16px"></div>'
+            f'{_filing_calendar(c)}'
             f'<div class="two">'
             f'<div class="card" style="padding:0;overflow:hidden">'
             f'<div style="font-size:16px;font-weight:700;padding:18px 20px">'
@@ -1778,25 +1800,6 @@ def _msg_brief(c, account, st) -> str:
     return block or _empty("Nothing to send yet",
                            "A brief is built from your alerts. Send a file or "
                            "record a sale and one appears.")
-
-
-def _msg_outbox(c, account, st) -> str:
-    entries = st.get("entries") or []
-    sent = [e for e in entries
-            if e.kind in {"alert.sent", "receipt.sent", "export.created",
-                          "alert.send_failed", "receipt.failed"}]
-    if not sent:
-        return _empty("Nothing sent yet",
-                      "Briefs, receipts and downloads appear here once they go.")
-    rows = "".join(
-        f'<div class="chase"><div><div class="who">{E(e.summary)}</div>'
-        f'<div class="why">{E(e.ts[:16].replace("T", " "))}'
-        f'{" · " + E(e.channel) if e.channel else ""}</div></div>'
-        f'<div class="act"><span class="pill '
-        f'{"crit" if "failed" in e.kind else "ok"}">'
-        f'{"failed" if "failed" in e.kind else "sent"}</span></div></div>'
-        for e in sent[:40])
-    return f'<div class="card">{rows}</div>'
 
 
 # ====================================================================== data
@@ -2270,6 +2273,279 @@ def _setup_access(c, account, st) -> str:
     return f'<div class="setup-grid">{share}{cover}</div>'
 
 
+
+# ============================================ the gate, and what it is holding
+
+#: How each disposition reads to somebody looking at the queue. The wording
+#: matters more than it looks: "waiting for you to send" and "held for approval"
+#: are different jobs, and a single "pending" would flatten them into one.
+_DISPO = {
+    "approval": ("Held for approval", "crit",
+                 "This touches money or a filing. Nothing leaves until you release it."),
+    "draft":    ("Waiting for you to send", "warn",
+                 "Written and saved. Nothing was sent."),
+    "auto":     ("Sent automatically", "ok", ""),
+}
+
+
+def _outbound_card(c, item, settings, *, actionable: bool) -> str:
+    label, tone, why = _DISPO.get(item.disposition, ("Queued", "dim", ""))
+    acts = ""
+    if actionable:
+        live = (settings.whatsapp_live if item.channel == "whatsapp"
+                else settings.email_live)
+        discard = (f'<form method="post" '
+                   f'action="/c/{c.slug}/outbox/{E(item.id)}/cancel">'
+                   f'<button class="btn sm danger" type="submit">Discard</button>'
+                   f'</form>')
+        if live or item.disposition == "approval":
+            # There is a provider behind this, so the machine can send it once
+            # a person says so.
+            verb = "Approve and send" if item.disposition == "approval" else "Send it"
+            primary = (f'<form method="post" '
+                       f'action="/c/{c.slug}/outbox/{E(item.id)}/send">'
+                       f'<button class="btn sm primary" type="submit">{verb}</button>'
+                       f'</form>')
+        else:
+            # No provider. The machine cannot deliver this, so offering "Send"
+            # would attempt an impossible send and report failure for something
+            # that is about to go out perfectly well by hand. Hand over the link
+            # instead, and let the operator record that it went.
+            href = (channels.whatsapp_link(item.to, item.body)
+                    if item.channel == "whatsapp"
+                    else channels.mailto_link(item.to, item.subject, item.body))
+            primary = (f'<a class="btn sm primary" target="_blank" rel="noopener" '
+                       f'href="{href}">Open '
+                       f'{"WhatsApp" if item.channel == "whatsapp" else "email"}</a>'
+                       f'<form method="post" '
+                       f'action="/c/{c.slug}/outbox/{E(item.id)}/sent">'
+                       f'<button class="btn sm ghost" type="submit">'
+                       f'I sent it</button></form>')
+        acts = f'<div class="act">{primary}{discard}</div>' 
+    subject = (f'<div class="tiny" style="margin-top:6px">Subject: '
+               f'<b>{E(item.subject)}</b></div>' if item.subject else "")
+    reason = f'<div class="tiny" style="margin-top:9px">{E(why)}</div>' if why else ""
+    return (f'<div class="card" style="margin-bottom:12px">'
+            f'<div class="row" style="justify-content:space-between;gap:12px;'
+            f'flex-wrap:wrap;align-items:flex-start">'
+            f'<div style="min-width:0"><div style="font-weight:700;font-size:15px">'
+            f'{E(item.label)}</div>'
+            f'<div class="tiny" style="margin-top:4px">to '
+            f'{E(item.to) or "nobody on file"} &middot; {E(item.channel)} &middot; '
+            f'{E(item.created[:16].replace("T", " "))}</div></div>'
+            f'<span class="pill {tone}">{E(label)}</span></div>'
+            f'{reason}{subject}'
+            f'<pre class="msg" style="margin-top:12px">{E(item.body[:900])}</pre>'
+            f'{acts}</div>')
+
+
+def _msg_approvals(c, account, st) -> str:
+    """Everything that has not left, and why it has not.
+
+    An empty screen here is the good outcome, so it says so plainly rather than
+    apologising for having nothing to show.
+    """
+    items = gate.waiting(c.slug)
+    if not items:
+        return _empty("Nothing waiting",
+                      "Drafts, and anything held for approval, land here. "
+                      "Nothing is stuck.")
+    held = [i for i in items if i.disposition == "approval"]
+    lead = (f'<div class="note-line">{len(items)} thing(s) have not left. '
+            + (f'{len(held)} need approving before they can. ' if held else "")
+            + "Nothing on this screen was sent.</div>")
+    return lead + "".join(
+        _outbound_card(c, i, st["settings"], actionable=True) for i in items)
+
+
+def _msg_outbox(c, account, st) -> str:
+    """What actually left, and what tried and could not.
+
+    Reads the outbox rather than the activity log. The log records *that* a send
+    happened; this has to show the message itself, because "what exactly did we
+    tell this customer" is the question somebody actually asks.
+    """
+    items = [i for i in gate.history(c.slug, 60)
+             if i.status in ("sent", "failed", "cancelled")]
+    if not items:
+        return _empty("Nothing has gone out yet",
+                      "Briefs, receipts and routine jobs appear here once they go.")
+    rows = ""
+    for i in items:
+        tone = {"sent": "ok", "failed": "crit"}.get(i.status, "dim")
+        released = f' &middot; released by {E(i.approved_by)}' if i.approved_by else ""
+        why = f' &middot; {E(i.detail[:70])}' if i.status != "sent" else ""
+        rows += (f'<div class="chase"><div style="min-width:0">'
+                 f'<div class="who">{E(i.label)} &rarr; {E(i.to) or "&mdash;"}</div>'
+                 f'<div class="why">'
+                 f'{E((i.settled or i.created)[:16].replace("T", " "))} &middot; '
+                 f'{E(i.channel)}{released}{why}</div></div>'
+                 f'<div class="act"><span class="pill {tone}">{E(i.status)}</span>'
+                 f'</div></div>')
+    return f'<div class="card">{rows}</div>'
+
+
+def _msg_notices(c, account, st) -> str:
+    """The Notification Agent, made visible.
+
+    Two halves, and the top one is the point. An operator setting a business up
+    needs to see *who Vyuha would tell* before it starts telling them — the
+    routing is the part that is easy to get wrong and impossible to notice being
+    wrong, because a message that went to the wrong person looks exactly like no
+    message at all from every screen in the product.
+
+    Nothing here sends. The preview is computed from the same `collect()` and
+    `recipients()` the orchestrator calls, so it cannot flatter itself.
+    """
+    ctx = {"book": st["book"], "ledger": st["ledger"], "org": st["org"],
+           "invoices": st["invoices"]}
+    rows = notify.preview(c, ctx)
+    told = notify.history(c.slug, 40)
+
+    if not rows:
+        upcoming = _empty("Nothing to warn anybody about",
+                          "When stock runs out, a payment goes late or a return "
+                          "falls due, Vyuha works out who should hear about it "
+                          "and shows it here first.")
+    else:
+        cards = ""
+        for row in rows:
+            e, people_to, quiet = row["event"], row["to"], row["quiet"]
+            tone = "crit" if e.severity == "critical" else "warn"
+            who = " · ".join(f"{E(r.who)} <span class='tiny'>({E(r.role)})</span>"
+                             for r in people_to) or "nobody — no number on file"
+            state = ("<span class='pill dim'>already told, staying quiet</span>"
+                     if quiet and len(quiet) == len(people_to) else
+                     "<span class='pill crit'>waits for your approval</span>"
+                     if row["held"] else
+                     "<span class='pill ok'>goes out on its own</span>")
+            cards += (f'<div class="chase"><div style="min-width:0">'
+                      f'<div class="who">{E(e.title)}</div>'
+                      f'<div class="why">{E(e.detail[:110])}<br>'
+                      f'&rarr; {who}</div></div>'
+                      f'<div class="act"><span class="pill {tone}">'
+                      f'{E(e.severity)}</span>{state}</div></div>')
+        upcoming = (f'<div class="card" style="margin-bottom:16px">'
+                    f'<div style="font-size:16px;font-weight:700">'
+                    f'What Vyuha would say, and to whom</div>'
+                    f'<div class="tiny" style="margin:7px 0 14px">Nothing on '
+                    f'this list has been sent by looking at it. A filing waits '
+                    f'for you; the rest go out on their own once, then stay '
+                    f'quiet for a few days.</div>{cards}</div>')
+
+    if told:
+        history = "".join(
+            f'<div class="chase"><div style="min-width:0">'
+            f'<div class="who">{E(n.title)}</div>'
+            f'<div class="why">{E(n.who)} ({E(n.role)}) &middot; {E(n.sent)}</div>'
+            f'</div></div>' for n in told)
+        past = (f'<div class="card"><div style="font-size:16px;font-weight:700">'
+                f'Already told</div><div style="margin-top:12px">{history}</div>'
+                f'</div>')
+    else:
+        past = ""
+
+    roles = "".join(
+        f'<div class="chase"><div style="min-width:0">'
+        f'<div class="who">{E(tag.title())}</div>'
+        f'<div class="why">{E(", ".join(a.roles))} &middot; at most once every '
+        f'{a.cooldown} day(s)</div></div></div>'
+        for tag, a in notify.AUDIENCES.items())
+    who_rules = (f'<div class="card" style="margin-bottom:16px">'
+                 f'<div style="font-size:16px;font-weight:700">Who hears what'
+                 f'</div><div class="tiny" style="margin:7px 0 12px">A person '
+                 f'is found by their role in <a href="/c/{c.slug}/people/team">'
+                 f'your team</a>. With nobody in a role, it goes to you.</div>'
+                 f'{roles}</div>')
+
+    return upcoming + who_rules + past
+
+
+# ================================================================ routine jobs
+
+def _setup_routines(c, account, st) -> str:
+    """Scheduled briefs, as configuration.
+
+    The architecture's rule is that a routine is a schedule over agents that
+    already exist, so this screen is a form rather than a feature. Adding "a
+    Friday stock summary for the purchase head" must never mean writing code.
+    """
+    org = st["org"]
+    items = routines.load(c.slug)
+    staff = [p for p in org.staff if p.active]
+
+    rows = ""
+    for r in items:
+        picked = ", ".join(routines.SECTIONS[k][0] for k in r.sections
+                           if k in routines.SECTIONS)
+        who = next((p.name for p in staff if p.id == r.staff_id), "") or (
+            r.to or "the business number")
+        last = f"last sent {r.last_fired}" if r.last_fired else "never sent yet"
+        rows += (f'<div class="chase"><div style="min-width:0">'
+                 f'<div class="who">{E(r.name)}</div>'
+                 f'<div class="why">{E(who)} &middot; {E(r.when)} &middot; {E(last)}'
+                 f'<br>{E(picked)}</div></div>'
+                 f'<div class="act">'
+                 f'<span class="pill {"ok" if r.active else "dim"}">'
+                 f'{"on" if r.active else "paused"}</span>'
+                 f'<form method="post" action="/c/{c.slug}/routine/{E(r.id)}/toggle">'
+                 f'<button class="btn sm ghost" type="submit">'
+                 f'{"Pause" if r.active else "Resume"}</button></form>'
+                 f'<form method="post" action="/c/{c.slug}/routine/{E(r.id)}/delete">'
+                 f'<button class="btn sm danger" type="submit">&times;</button></form>'
+                 f'</div></div>')
+
+    who_opts = (f'<option value="">The business number'
+                f'{" (" + E(c.phone) + ")" if c.phone else " &mdash; none set"}</option>'
+                + "".join(f'<option value="{E(p.id)}">{E(p.name)} &mdash; {E(p.role)}'
+                          f'{"" if p.phone else " (no number)"}</option>'
+                          for p in staff))
+    checks = "".join(
+        f'<label class="chk"><input type="checkbox" name="sections" value="{E(k)}"'
+        f'{" checked" if k in ("decisions", "money") else ""}> '
+        f'{E(label)} <span class="tiny">&mdash; {E(desc)}</span></label>'
+        for k, (label, desc) in routines.SECTIONS.items())
+    days = "".join(
+        f'<label class="chk" style="margin-right:10px"><input type="checkbox" '
+        f'name="days" value="{E(d)}" checked> {E(d)}</label>'
+        for d in routines.DAYS)
+
+    run_now = (f'<form method="post" action="/c/{c.slug}/routine/run" '
+               f'style="margin-bottom:16px">'
+               f'<button class="btn" type="submit">Run whatever is due now</button>'
+               f'<span class="tiny" style="margin-left:11px">Same path the '
+               f'schedule uses, so what you see here is what goes out.</span>'
+               f'</form>') if items else ""
+
+    listed = (f'<div class="card" style="margin-bottom:16px">{rows}</div>' + run_now
+              if rows else
+              _empty("No routine jobs yet",
+                     "A routine is a schedule over what Vyuha already knows, so "
+                     "nobody has to remember to open the app."))
+
+    return f"""{listed}
+<div class="card">
+  <div style="font-size:16px;font-weight:700">Add a routine job</div>
+  <div class="tiny" style="margin:7px 0 15px">It goes out on its own, on this
+    schedule, to whoever you choose. With no provider connected it is written
+    and waits for one tap in <b>Messages &rarr; Waiting</b>.</div>
+  <form method="post" action="/c/{c.slug}/routine">
+    <div class="two">
+      <div class="field"><input name="name" placeholder="Name it &mdash; e.g. CEO 8am brief"
+        required></div>
+      <div class="field"><select name="staff_id" aria-label="Who gets it">
+        {who_opts}</select></div></div>
+    <div class="two">
+      <div class="field"><input name="at" type="time" value="08:00" aria-label="Time">
+        <div class="tiny" style="margin-top:5px">What time it goes out</div></div>
+      <div class="field"><div class="tiny" style="margin-bottom:6px">Which days</div>
+        {days}</div></div>
+    <div class="tiny" style="margin:14px 0 8px">What goes in it</div>
+    <div style="display:flex;flex-direction:column;gap:7px;margin-bottom:16px">
+      {checks}</div>
+    <button class="btn primary" type="submit">Add routine job</button>
+  </form></div>"""
+
 #: Every tab, bound to what draws it. Declared last so it can name
 #: functions defined anywhere above without ordering them by hand.
 _TABS = {
@@ -2291,6 +2567,8 @@ _TABS = {
     "people.performance": _people_performance,
     "people.branches": _people_branches,
     "messages.brief": _msg_brief,
+    "messages.approvals": _msg_approvals,
+    "messages.notices": _msg_notices,
     "messages.outbox": _msg_outbox,
     "data.sources": _data_sources,
     "data.readback": _data_readback,
@@ -2299,5 +2577,6 @@ _TABS = {
     "setup.business": _setup_business,
     "setup.billing": _setup_billing,
     "setup.levels": _setup_levels,
+    "setup.routines": _setup_routines,
     "setup.access": _setup_access,
 }

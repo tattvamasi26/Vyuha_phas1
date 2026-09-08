@@ -130,8 +130,16 @@ def _send_twilio(settings, to: str, text: str) -> SendResult:
     return _link_result(to, text, f"Twilio rejected it ({code}): {msg}", action)
 
 
-def send(settings, to: str, text: str) -> SendResult:
-    """Send ``text`` to ``to``. Never raises — failures come back as SendResult."""
+def send(settings, to: str, text: str, *, _token: str = "") -> SendResult:
+    """Send ``text`` to ``to``. Never raises — failures come back as SendResult.
+
+    **Not callable directly.** Every outbound action goes through
+    ``gate.submit()``, which classifies it first; this refuses a caller without
+    the gate's key so that forgetting fails at the boundary rather than putting
+    an unclassified message in front of somebody.
+    """
+    from . import gate
+    gate.require(_token, "whatsapp.send")
     if not channels.normalise_phone(to):
         return SendResult(ok=False, provider="none", detail="No WhatsApp number on file.",
                           needs_action="Add a WhatsApp number for this client.")
@@ -155,6 +163,6 @@ TEST_MESSAGE = (
 )
 
 
-def send_test(settings, to: str) -> SendResult:
+def send_test(settings, to: str, *, _token: str = "") -> SendResult:
     """Fire a connection test at onboarding, so a wrong number is caught on day one."""
-    return send(settings, to, TEST_MESSAGE)
+    return send(settings, to, TEST_MESSAGE, _token=_token)

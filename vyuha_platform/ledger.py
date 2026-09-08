@@ -59,6 +59,18 @@ KINDS = {
     "people.changed":    ("Branches or staff changed", "dim"),
     "invoice.raised":    ("Invoice raised", "ok"),
     "invoice.cancelled": ("Invoice cancelled", "warn"),
+    # -- the gate and the orchestrator (L3 / ORCH)
+    "outbound.queued":   ("Queued to send", "info"),
+    "outbound.held":     ("Held for approval", "warn"),
+    "outbound.drafted":  ("Draft written", "info"),
+    "outbound.cancelled": ("Not sent — cancelled", "dim"),
+    "approval.granted":  ("Approved and released", "ok"),
+    "routine.fired":     ("Routine job ran", "ok"),
+    "routine.failed":    ("Routine job failed", "crit"),
+    "routine.changed":   ("Routine job changed", "dim"),
+    "agent.ran":         ("Agent ran", "dim"),
+    "notify.ran":        ("Notifications sent", "info"),
+    "agent.failed":      ("Agent failed", "crit"),
 }
 
 

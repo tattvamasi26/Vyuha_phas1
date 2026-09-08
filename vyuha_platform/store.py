@@ -220,9 +220,50 @@ def update_client(client: Client) -> None:
     _save_all([client if c.slug == client.slug else c for c in _load_all()])
 
 
+#: Every folder that keys a file by client slug. Named here rather than
+#: imported, because `store` sits underneath all of them and importing `books`
+#: or `gate` from it would close an import cycle. The cost is that a new
+#: per-slug store has to be added to this tuple; the check in
+#: `tests/test_platform.py` is what catches forgetting.
+PER_SLUG = ("books", "money", "people", "invoices", "followups",
+            "outbox", "notices", "routines")
+
+
+def purge(slug: str) -> None:
+    """Delete everything on disk keyed by this slug.
+
+    **Slugs are freed when a client is deleted and are globally unique**, so the
+    next business onboarded under the same name gets the same slug — and used to
+    inherit the deleted one's book, staff, invoices and outbox along with it.
+    Removing the registry row while leaving eight files behind was not a tidiness
+    problem but a correctness one: somebody else's sales would appear in a
+    workspace opened for the first time.
+
+    Deliberately path-driven and forgiving. A store that does not exist yet is
+    not an error, and a delete that fails halfway must still remove as much as
+    it can rather than leaving an arbitrary subset.
+    """
+    import shutil
+
+    shutil.rmtree(UPLOADS / slug, ignore_errors=True)
+    shutil.rmtree(DASHBOARDS / slug, ignore_errors=True)
+    for folder in PER_SLUG:
+        try:
+            (DATA / folder / f"{slug}.json").unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
 def delete_client(slug: str, owner_id: str) -> None:
+    """Remove the client, and everything that was only ever about that client.
+
+    The activity ledger is the deliberate exception: it is append-only and holds
+    every account's history in one file, so "this business was deleted on the
+    14th" stays answerable afterwards.
+    """
     _save_all([c for c in _load_all()
                if not (c.slug == slug and c.owner_id == owner_id)])
+    purge(slug)
 
 
 def add_run(slug: str, owner_id: str, run: Run) -> None:

@@ -107,6 +107,8 @@ MODULES: tuple[Module, ...] = (
         "messages", "Messages",
         "What goes out to customers, and what already has.",
         (Tab("brief", "Send a brief", "Today's alerts, as WhatsApp or email"),
+         Tab("approvals", "Waiting", "Drafts to send, and anything held for approval"),
+         Tab("notices", "Who gets told", "Who Vyuha warns when something needs attention"),
          Tab("outbox", "Sent", "Everything that has left, and to whom")),
     ),
     Module(
@@ -127,6 +129,7 @@ SETUP = Module(
      Tab("business", "Business", "Contact, alerts and when to warn you"),
      Tab("billing", "Billing", "What prints at the top of your invoices"),
      Tab("levels", "Stock levels", "When Vyuha should warn you about an item"),
+     Tab("routines", "Routine jobs", "Scheduled briefs — who gets what, and when"),
      Tab("access", "Access", "The private link and PIN for the owner")),
 )
 
@@ -143,8 +146,10 @@ MOVED = {
     "stock": ("operations", "alerts"),
     "bills": ("operations", "invoices"),
     "money": ("financials", "position"),
-    "setup": ("people", "team"),
 }
+# Note there is no "setup" entry: `setup` is a real key in BY_KEY, so `resolve`
+# finds the module and never consults this table. An entry here would be dead
+# and — worse — would read as though /setup went somewhere it does not.
 
 
 def resolve(module: str, tab: str = "") -> tuple[Module, Tab]:

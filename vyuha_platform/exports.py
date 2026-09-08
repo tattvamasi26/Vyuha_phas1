@@ -260,8 +260,16 @@ def draft_email(insights: Insights, client: str, contact: str = "") -> tuple[str
 
 
 def send_email(settings, to: str, subject: str, body: str,
-               attachments: list[Path] | None = None) -> tuple[bool, str]:
-    """Send via SMTP. Returns (ok, detail) — never raises."""
+               attachments: list[Path] | None = None, *, _token: str = "") -> tuple[bool, str]:
+    """Send via SMTP. Returns (ok, detail) — never raises.
+
+    **Not callable directly.** Email is always a draft until a person sends
+    it, and ``gate.submit()`` is what enforces that. This refuses a caller
+    without the gate's key so the rule cannot be bypassed by importing this
+    module and calling it.
+    """
+    from . import gate
+    gate.require(_token, "exports.send_email")
     if not settings.email_live:
         return False, "No SMTP server configured — use the draft to send it yourself."
     if not to.strip():

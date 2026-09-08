@@ -772,8 +772,25 @@ def test_a_receipt_reports_honestly_when_it_could_not_be_sent():
     sale = books.load(slug).sales[-1]
     # No provider is connected in tests, so it must NOT claim to have sent one.
     assert sale.receipt_sent == "", "a receipt was marked sent with no provider"
+
+    # It is not lost either. Before the gate this logged `receipt.failed` and
+    # the bill was gone; now an unsendable receipt is written down and parked
+    # where the operator can tap it out from their own WhatsApp, which is what
+    # actually happens in the shop. "Could not send" and "has not been sent
+    # yet" are different claims and the second one is the true one.
+    from vyuha_platform import gate
     kinds = [e.kind for e in ledger.read(ACCOUNT.id, limit=30, client=slug)]
-    assert "receipt.failed" in kinds, kinds
+    assert "outbound.drafted" in kinds, kinds
+    assert "receipt.sent" not in kinds, kinds
+
+    waiting = [i for i in gate.waiting(slug) if i.kind == "receipt"]
+    assert len(waiting) == 1, [i.kind for i in gate.waiting(slug)]
+    assert waiting[0].status == gate.DRAFTED
+    # The bill itself, addressed to the buyer's own number. A receipt names the
+    # goods rather than the buyer — it is handed *to* them — so the item and the
+    # phone are what say this is the right one.
+    assert "Pepper Plant" in waiting[0].body, waiting[0].body
+    assert waiting[0].to.endswith("9876511111"), waiting[0].to
 
 
 def test_the_receipt_text_is_a_bill_the_buyer_can_keep():
@@ -891,10 +908,9 @@ def test_a_master_editing_a_workspace_does_not_steal_it():
 def _cleanup() -> None:
     _as("operator")
     _login()
+    # `store.delete_client` purges every per-slug store itself now, so a suite
+    # cannot leave a book or an outbox behind for the next run to inherit.
     for slug in set(_SLUGS):
-        shutil.rmtree(store.UPLOADS / slug, ignore_errors=True)
-        shutil.rmtree(store.DASHBOARDS / slug, ignore_errors=True)
-        (books.BOOKS / f"{slug}.json").unlink(missing_ok=True)
         store.delete_client(slug, ACCOUNT.id)
 
 
