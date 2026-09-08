@@ -42,6 +42,11 @@ class DetectedTable:
     unmapped: list[str] = field(default_factory=list)
     header_confidence: float = 0.0
     kind_confidence: float = 0.0
+    #: Per field, how strong the evidence for its column was. `map_columns`
+    #: scored every pair to make the assignment and then threw the scores away,
+    #: so a figure read off a labelled column and one guessed from its values
+    #: reached the report looking identical. See `trust.py`.
+    field_confidence: dict[str, float] = field(default_factory=dict)
 
     @property
     def fields(self) -> set[str]:
@@ -71,6 +76,7 @@ def detect(sheet: RawSheet) -> DetectedTable:
         unmapped=unmapped,
         header_confidence=round(header_confidence, 2),
         kind_confidence=round(kind_confidence, 2),
+        field_confidence=score_mapping(frame, mapping),
     )
 
 
@@ -241,6 +247,28 @@ def map_columns(frame: pd.DataFrame) -> tuple[dict[str, str], list[str]]:
 
     unmapped = [str(c) for c in frame.columns if str(c) not in claimed]
     return mapping, unmapped
+
+
+
+def score_mapping(frame, mapping: dict[str, str]) -> dict[str, float]:
+    """How strong the evidence was for each field's column.
+
+    Recomputed from the headings rather than threaded out of `map_columns`,
+    which keeps every existing caller working. Recomputation also gets the most
+    important case right for free: a column `_infer_from_values` rescued has a
+    heading that scores nothing against the field it was assigned, so it lands
+    at 0.0 — exactly the "no usable heading, read the values instead" verdict
+    `trust.py` wants to report.
+    """
+    scores: dict[str, float] = {}
+    for field_name, column in mapping.items():
+        token = schema.normalise(column)
+        best = 0.0
+        for scored_field, score in _score_token(token) if token else []:
+            if scored_field == field_name:
+                best = max(best, score)
+        scores[field_name] = round(best, 2)
+    return scores
 
 
 def _score_token(token: str) -> list[tuple[str, float]]:

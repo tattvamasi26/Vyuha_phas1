@@ -52,6 +52,14 @@ class CleanTable:
     rows_out: int = 0
     unmapped: list[str] = field(default_factory=list)
     header_row: int = 0
+    #: Carried through from detection so the report can say how sure it is.
+    #: These were computed and then dropped here, which is why every figure
+    #: used to print at the same weight whatever it rested on.
+    field_confidence: dict[str, float] = field(default_factory=dict)
+    header_confidence: float = 0.0
+    kind_confidence: float = 0.0
+    #: Fields whose values were computed rather than read from the file.
+    derived: set = field(default_factory=set)
 
     @property
     def rows_dropped(self) -> int:
@@ -69,7 +77,8 @@ def clean(table: DetectedTable) -> CleanTable:
     frame = _select_and_rename(table)
     frame = _drop_total_rows(frame, issues)
     frame = _coerce_types(frame, issues)
-    frame = _derive_missing(frame, issues)
+    derived: set[str] = set()
+    frame = _derive_missing(frame, issues, derived)
     frame = _drop_empty_rows(frame, table.kind, issues)
     frame = _normalise_text(frame)
     frame = _drop_duplicates(frame, table.kind, issues)
@@ -84,6 +93,10 @@ def clean(table: DetectedTable) -> CleanTable:
         rows_out=len(frame.index),
         unmapped=list(table.unmapped),
         header_row=table.header_row,
+        field_confidence=dict(table.field_confidence),
+        header_confidence=table.header_confidence,
+        kind_confidence=table.kind_confidence,
+        derived=derived,
     )
 
 
@@ -137,13 +150,16 @@ def _coerce_types(frame: pd.DataFrame, issues: list[str]) -> pd.DataFrame:
     return frame
 
 
-def _derive_missing(frame: pd.DataFrame, issues: list[str]) -> pd.DataFrame:
+def _derive_missing(frame: pd.DataFrame, issues: list[str],
+                    derived: set[str] | None = None) -> pd.DataFrame:
     """Fill in the one column everybody forgets to export."""
     has = frame.columns.__contains__
+    derived = derived if derived is not None else set()
 
     if not has(schema.AMOUNT) and has(schema.QTY) and has(schema.RATE):
         frame[schema.AMOUNT] = frame[schema.QTY] * frame[schema.RATE]
         issues.append("Derived 'Amount' as Qty × Rate.")
+        derived.add(schema.AMOUNT)
     elif has(schema.AMOUNT) and has(schema.QTY) and has(schema.RATE):
         gaps = frame[schema.AMOUNT].isna() & frame[schema.QTY].notna() & frame[schema.RATE].notna()
         if gaps.any():
@@ -156,6 +172,7 @@ def _derive_missing(frame: pd.DataFrame, issues: list[str]) -> pd.DataFrame:
         with pd.option_context("mode.chained_assignment", None):
             qty = frame[schema.QTY].replace(0, pd.NA)
             frame[schema.RATE] = frame[schema.AMOUNT] / qty
+        derived.add(schema.RATE)
 
     return frame
 

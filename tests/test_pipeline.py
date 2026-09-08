@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from vyuha import clean, detect, ingest, pipeline, report, sample, schema
+from vyuha import clean, detect, ingest, pipeline, report, sample, schema, trust
 from vyuha.analyze import CRITICAL
 
 AS_OF = datetime(2026, 8, 11)
@@ -186,6 +186,97 @@ def test_report_is_self_contained(tmp_path: Path):
         assert forbidden not in html, f"report should not contain {forbidden!r}"
     assert html.startswith("<!DOCTYPE html>")
 
+
+
+# --- how sure the engine is, and whether it says so -----------------------
+
+
+def _messy_sales(path: Path) -> Path:
+    """A sheet a real client sends: no Amount column, one heading missing."""
+    pd.DataFrame(
+        {
+            "Bill Dt": ["01-04-2026", "02-04-2026", "03-04-2026", "05-04-2026"],
+            "Party Name": ["Ramesh Traders", "M/s Ramesh Traders",
+                           "Kumar & Co", "Kumar and Co"],
+            "Unnamed: 2": ["Cement 50kg", "Cement 50kg",
+                           "TMT Bar 12mm", "TMT Bar 12mm"],
+            "Qty (Nos)": [10, 5, 8, 3],
+            "Rate": [380, 380, 720, 720],
+        }
+    ).to_excel(path, sheet_name="Sales", index=False)
+    return path
+
+
+def test_mapping_confidence_survives_detection_and_cleaning():
+    """These were computed and thrown away, which is why every figure used to
+    print at the same weight whatever it rested on."""
+    frame = pd.DataFrame(
+        {"Invoice Date": ["01-04-2026"], "Qty (Nos)": [5], "Rate": [100]}
+    )
+    mapping, _unmapped = detect.map_columns(frame)
+    scores = detect.score_mapping(frame, mapping)
+
+    assert scores[schema.DATE] == 10.0, "an exact alias is certain"
+    assert 5.0 <= scores[schema.QTY] < 10.0, "a fragment match is not"
+
+
+def test_a_derived_column_is_reported_as_calculated(tmp_path: Path):
+    workbook = _messy_sales(tmp_path / "messy.xlsx")
+    table = pipeline.run(workbook, as_of=AS_OF).insights.tables[0]
+
+    assert schema.AMOUNT in table.derived, "Amount was manufactured from qty x rate"
+    basis = trust.basis([table], "Revenue", schema.AMOUNT)
+    assert basis.worst == trust.DERIVED
+    assert "calculated" in basis.note
+
+
+def test_a_headerless_column_is_reported_as_guessed(tmp_path: Path):
+    workbook = _messy_sales(tmp_path / "messy.xlsx")
+    table = pipeline.run(workbook, as_of=AS_OF).insights.tables[0]
+
+    # "Unnamed: 2" says nothing; the column was identified by its values.
+    assert trust.verdict(table.field_confidence.get(schema.ITEM, 0.0)) == trust.GUESSED
+    assert any("no usable heading" in c for c in trust.concerns([table]))
+
+
+def test_a_recognisable_heading_does_not_raise_an_alarm(tmp_path: Path):
+    """A caption that appears on every report is one nobody reads.
+
+    "Qty (Nos)" is a heading a human reads without hesitating, so it stays
+    visible in the read-back and never triggers the caution panel.
+    """
+    workbook = sample.build(tmp_path / "demo.xlsx", as_of=AS_OF)
+    insights = pipeline.run(workbook, as_of=AS_OF).insights
+    sales = next(t for t in insights.tables if t.kind == schema.SALES)
+
+    assert trust.verdict(sales.field_confidence[schema.QTY]) == trust.MATCHED
+    assert not [c for c in trust.concerns([sales]) if "matched" in c]
+
+
+def test_the_report_marks_a_guessed_figure_and_not_a_clean_one(tmp_path: Path):
+    """The whole point: a number Vyuha worked out must not look identical to
+    one read off a labelled column."""
+    messy = pipeline.run(_messy_sales(tmp_path / "messy.xlsx"), as_of=AS_OF)
+    html = report.render(messy.insights, client="Messy Traders")
+    assert "How to read these numbers" in html
+    assert "calculated" in html
+    assert "Amount was not in the file" in html
+
+    clean_run = pipeline.run(sample.build(tmp_path / "demo.xlsx", as_of=AS_OF),
+                             as_of=AS_OF)
+    clean_html = report.render(clean_run.insights, client="Clean Traders")
+    assert 'class="chip' not in clean_html, "nothing here was guessed"
+
+
+def test_the_report_leads_with_a_verdict_before_any_number(tmp_path: Path):
+    """Somebody who reads nothing else should still know whether it needed
+    them."""
+    workbook = sample.build(tmp_path / "demo.xlsx", as_of=AS_OF)
+    html = report.render(pipeline.run(workbook, as_of=AS_OF).insights)
+
+    verdict_at = html.index('class="verdict"')
+    assert verdict_at < html.index('class="figures"'), "the verdict comes first"
+    assert "need a decision" in html or "needs a decision" in html
 
 def test_unreadable_input_fails_cleanly(tmp_path: Path):
     missing = tmp_path / "nope.xlsx"

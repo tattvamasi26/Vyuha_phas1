@@ -13,7 +13,7 @@ import webbrowser
 from datetime import datetime
 from pathlib import Path
 
-from . import pipeline, sample, schema
+from . import pipeline, sample, schema, trust
 from .analyze import CRITICAL, WARNING
 from .ingest import IngestError
 
@@ -128,9 +128,20 @@ def _demo(args) -> int:
 def _print_understanding(result: pipeline.RunResult, verbose: bool = False) -> None:
     say(f"\nRead {result.insights.source}")
     for table in result.tables:
-        fields = ", ".join(
-            schema.LABELS.get(c, c) for c in table.frame.columns if c in schema.LABELS
-        )
+        # `check` exists to catch a misreading before anyone sees the numbers,
+        # so it has to say which columns Vyuha was actually sure about. A
+        # column marked (guessed) had no usable heading; (calculated) was not
+        # in the file at all. Those two are worth opening the file over.
+        marks = {trust.GUESSED: "guessed", trust.DERIVED: "calculated",
+                 trust.MATCHED: "matched"}
+        named = []
+        for c in table.frame.columns:
+            if c not in schema.LABELS:
+                continue
+            mark = marks.get(trust.verdict(table.field_confidence.get(c, 0.0),
+                                           derived=c in table.derived))
+            named.append(f"{schema.LABELS[c]} ({mark})" if mark else schema.LABELS[c])
+        fields = ", ".join(named)
         say(
             f"  [{schema.TABLE_LABELS.get(table.kind, table.kind):<12}] "
             f"{table.sheet:<20} header on row {table.header_row}, "
