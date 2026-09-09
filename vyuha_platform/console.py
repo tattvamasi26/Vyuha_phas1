@@ -332,6 +332,22 @@ details.levels[open] summary::before{content:"▾ "}
 .txrow .amt{font-family:var(--num);text-align:right;white-space:nowrap;
   font-variant-numeric:tabular-nums}
 .txrow .amt.in{color:var(--ok)} .txrow .amt.out{color:var(--crit)}
+
+/* Checkboxes whose label is a sentence rather than a field caption.
+   Two rules in `ui.CSS` fight this and both have to be answered. Every bare
+   `label` is styled as a caption — uppercase, .19em tracking, monospace —
+   which is right above a text box ("BUSINESS NAME") and unreadable on "What
+   needs a decision — the ranked list from the Desk". And `input{width:100%}`,
+   written for text fields, makes a *checkbox* fill the line and shove its own
+   label off the right-hand edge, so the box needs a size of its own here. */
+.chk-list{display:flex;flex-direction:column;gap:10px;margin-bottom:16px}
+.chk-list label{display:flex;align-items:flex-start;gap:10px;
+  font-family:var(--ui);font-size:13px;font-weight:600;letter-spacing:normal;
+  text-transform:none;color:var(--ink-2);cursor:pointer;line-height:1.45}
+.chk-list label input[type=checkbox]{flex:none;width:16px;height:16px;
+  margin:2px 0 0;padding:0}
+.chk-list label>span{flex:1 1 auto;min-width:0}
+.chk-list .tiny{font-weight:500;letter-spacing:normal;text-transform:none}
 """
 
 JS = """
@@ -2501,9 +2517,9 @@ def _setup_routines(c, account, st) -> str:
                           f'{"" if p.phone else " (no number)"}</option>'
                           for p in staff))
     checks = "".join(
-        f'<label class="chk"><input type="checkbox" name="sections" value="{E(k)}"'
+        f'<label><input type="checkbox" name="sections" value="{E(k)}"'
         f'{" checked" if k in ("decisions", "money") else ""}> '
-        f'{E(label)} <span class="tiny">&mdash; {E(desc)}</span></label>'
+        f'<span>{E(label)} <span class="tiny">&mdash; {E(desc)}</span></span></label>'
         for k, (label, desc) in routines.SECTIONS.items())
     days = "".join(
         f'<label class="chk" style="margin-right:10px"><input type="checkbox" '
@@ -2541,8 +2557,7 @@ def _setup_routines(c, account, st) -> str:
       <div class="field"><div class="tiny" style="margin-bottom:6px">Which days</div>
         {days}</div></div>
     <div class="tiny" style="margin:14px 0 8px">What goes in it</div>
-    <div style="display:flex;flex-direction:column;gap:7px;margin-bottom:16px">
-      {checks}</div>
+    <div class="chk-list">{checks}</div>
     <button class="btn primary" type="submit">Add routine job</button>
   </form></div>"""
 

@@ -218,15 +218,21 @@ def build(quiet: bool = False) -> tuple[str, str]:
     main_id, second_id = org.branches[0].id, org.branches[1].id
     # Targets only on the people who carry one. A delivery hand at 0% of a
     # target he was never given is noise on the screen, not a finding.
-    for name, role, branch, target, commission in [
-        ("Vishwanath Patil", "Owner", main_id, 0, 0),
-        ("Girish Kulkarni", "Manager", second_id, 250000, 1.0),
-        ("Sunita Desai", "Accountant", main_id, 0, 0),
-        ("Mahesh Naik", "Salesperson", main_id, 320000, 2.0),
-        ("Iranna Hosur", "Salesperson", second_id, 220000, 2.0),
-        ("Ravi Gouda", "Delivery", second_id, 0, 0),
+    # Everybody carries a number. The Notification Agent finds a person by their
+    # role and skips anyone it cannot reach, so a staff list with no phones
+    # sends every warning to the owner and makes role routing look like it does
+    # not work — in the one place it most needs to be legible. These are the
+    # reserved-for-fiction 9999xxxxxx range, so a rehearsal cannot ring a real
+    # phone even if a provider is connected.
+    for name, role, branch, phone, target, commission in [
+        ("Vishwanath Patil", "Owner", main_id, "9999000001", 0, 0),
+        ("Girish Kulkarni", "Manager", second_id, "9999000002", 250000, 1.0),
+        ("Sunita Desai", "Accountant", main_id, "9999000003", 0, 0),
+        ("Mahesh Naik", "Salesperson", main_id, "9999000004", 320000, 2.0),
+        ("Iranna Hosur", "Salesperson", second_id, "9999000005", 220000, 2.0),
+        ("Ravi Gouda", "Delivery", second_id, "9999000006", 0, 0),
     ]:
-        people.add_staff(slug, name, role, branch, target=target,
+        people.add_staff(slug, name, role, branch, phone=phone, target=target,
                          commission=commission)
     org = people.load(slug)
     sellers = {p.name: p.id for p in org.staff}
