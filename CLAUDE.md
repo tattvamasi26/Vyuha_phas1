@@ -6,41 +6,54 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 "Vyuha" is an early-stage founder project: an AI/automation service for distributors and manufacturers who run their operations on Excel (dashboards, WhatsApp stock alerts, auto-generated reports, quotation generation, supply-chain intelligence like reorder points and dead-stock detection).
 
-This repo now holds three separate things:
+This repo holds four things:
 
-1. **`vyuha/` — the product.** A Python package (v0.1.0, shipped 2026-08-11) that turns an unmodified distributor Excel file into a self-contained HTML dashboard. This is the Phase 1 Foundation deliverable from the Platform Build roadmap. See "Architecture of the `vyuha` engine" below and [README.md](README.md).
-2. **`vyuha_package/vyuha_dashboard.html`** — the "Vyuha Founder OS" dashboard: a self-contained HTML/CSS/JS planning app (no build step, no server, no dependencies) with six workspace sections (AI Learn, Platform Build, Business, Finance, Supply Chain, General) the founder uses to track the venture. Plus `vyuha_package/INSTRUCTIONS.md`, its usage notes. This is a *planning tool*, not the product.
-3. **The Vyuha-1 Prime operating contract** (`vyuha-1-prime-bootstrap.md` plus the `requirements/` and `.claude/` scaffolding it generates) — see "Vyuha-1 Prime operating contract" below.
+1. **`vyuha/` — the engine.** A Python package (v0.1.0, shipped 2026-08-11) that turns an unmodified distributor Excel file into a self-contained HTML dashboard. This is the Phase 1 Foundation deliverable from the Platform Build roadmap. See "Architecture of the `vyuha` engine" below and [README.md](README.md).
+2. **`vyuha_platform/` — the product built around it.** A FastAPI web app (added 2026-08-22): accounts and per-client workspaces, typed-in books for businesses that keep no spreadsheet, financial statements, GST invoices, and the Phase 2 alert machinery — WhatsApp/email out through a single gate, scheduled routines, role-routed notifications. See "Architecture of `vyuha_platform/`" below.
+3. **`vyuha_package/vyuha_dashboard.html`** — the "Vyuha Founder OS" dashboard: a self-contained HTML/CSS/JS planning app (no build step, no server, no dependencies) with six workspace sections (AI Learn, Platform Build, Business, Finance, Supply Chain, General) the founder uses to track the venture. Plus `vyuha_package/INSTRUCTIONS.md`, its usage notes. This is a *planning tool*, not the product.
+4. **The Vyuha-1 Prime operating contract** (`vyuha-1-prime-bootstrap.md` plus the `requirements/` and `.claude/` scaffolding it generates) — see "Vyuha-1 Prime operating contract" below.
 
-Phases 2 and 3 (WhatsApp/email alerts, quotation generation, per-client hosted dashboards) are not built yet.
+Two supporting folders. **`demo/`** holds the demo-sprint plan ([demo/README.md](demo/README.md): the scripted beats, and the split of work into two "lanes" — Vishak's and Roshan's — which is what "the other lane" means in comments here) plus `make_samples.py` and the committed sample corpus under `demo/samples/`. **`brief/`** is a pack of markdown files to paste into a Claude chat when writing brochures or decks; its `02-the-numbers.md` figures come from the seeded demo, and `seed` does **not** rewrite that file, so a change to the seed means updating it by hand.
+
+Not built yet: quotation generation (there is no `quotes.py`; `followup.from_quotes()` is already waiting for it) and a hosted deployment. [brief/06-what-is-not-built.md](brief/06-what-is-not-built.md) is the list to check before claiming a feature exists.
 
 ## Commands
 
-The engine is Python; the planning dashboard is a static file.
+The engine and the platform are Python; the planning dashboard is a static file. There is no lint tooling.
 
 ```bash
 python -m venv .venv
-.venv/Scripts/python -m pip install -e .        # macOS/Linux: .venv/bin/python
+.venv/Scripts/python -m pip install -e .        # the engine; macOS/Linux: .venv/bin/python
+.venv/Scripts/python -m pip install fastapi uvicorn python-multipart httpx reportlab python-pptx pypdf anthropic   # the platform — not in pyproject.toml
 
 .venv/Scripts/python -m vyuha demo --open       # messy sample workbook + its dashboard
 .venv/Scripts/python -m vyuha run FILE.xlsx --client "Name" --open
 .venv/Scripts/python -m vyuha check FILE.xlsx   # what was understood, no report written
-.venv/Scripts/python -m tests.test_pipeline     # 19 engine tests, no pytest required
-.venv/Scripts/python -m tests.test_platform     # 57 platform tests, same runner
-.venv/Scripts/python -m tests.test_console      # 71 console tests, runs VYUHA_LLM=offline
+
+.venv/Scripts/python -m vyuha_platform --open   # the web platform on :8000 (also --host, --port, --reload)
+.venv/Scripts/python -m vyuha_platform seed     # wipe and rebuild both demo businesses, then exit
+.venv/Scripts/python demo/make_samples.py       # the nine messy sample files
+.venv/Scripts/python demo/make_samples.py --bulk 100   # 103 files over 14 months (gitignored)
+
+.venv/Scripts/python -m tests.test_pipeline     # 19 engine tests
+.venv/Scripts/python -m tests.test_platform     # 57 platform tests
+.venv/Scripts/python -m tests.test_console      # 71 console tests
 .venv/Scripts/python -m tests.test_intake       # 23 intake tests, over the demo corpus
 .venv/Scripts/python -m tests.test_invoice      # 19 invoice tests: tax, numbering, document
 .venv/Scripts/python -m tests.test_library      # 22 tests over many files at once
-.venv/Scripts/python -m tests.test_agents       # 47 agent-lane tests: gate, notify, routines
-.venv/Scripts/python demo/make_samples.py       # the nine messy sample files
-.venv/Scripts/python demo/make_samples.py --bulk 100   # 103 files over 14 months
-.venv/Scripts/python -m vyuha_platform seed     # both demo businesses
-
-.venv/Scripts/python -m vyuha_platform --open   # the web platform on :8000
-.venv/Scripts/python -m vyuha_platform seed     # rebuild the demo workspace, then exit
+.venv/Scripts/python -m tests.test_agents       # 49 agent-lane tests: gate, notify, routines
 ```
 
-`pip install -e .` also puts a `vyuha` console script on PATH. Dependencies are just `pandas` and `openpyxl`; there is no lint tooling. `out/` is gitignored — it holds generated workbooks and dashboards.
+**Tests.** Each suite is its own runner — pytest is not installed — which calls every `test_*` function in the module and prints `N passed, M failed`. There is no name filter, so to run **one test**, import the module and call it. The suites that sign up a throwaway account at import (platform, console, invoice, library, agents) need `_cleanup()` afterwards, or the account stays in `accounts.json`:
+
+```bash
+.venv/Scripts/python -c "from tests import test_pipeline as t; t.test_classify_prefers_receivables_over_sales()"
+.venv/Scripts/python -c "from tests import test_agents as t; t.test_the_right_person_is_told_rather_than_simply_the_owner(); t._cleanup()"
+```
+
+A `test_pipeline` function that takes `tmp_path` wants a `pathlib.Path`. The platform suites other than `test_platform` set `VYUHA_LLM=offline` before importing, so they never call Claude. **The platform suites run against the real `vyuha_data/`** — `store.DATA` is fixed to the repo's folder with no override — so they share files with a dev server running at the same moment (the collision `atomic.py` exists for); they clean up after themselves. `test_intake` generates `demo/samples/` itself if the corpus is missing.
+
+`pip install -e .` also puts a `vyuha` console script on PATH. `out/` (generated workbooks and dashboards) and `vyuha_data/` (every account, client, book and credential) are gitignored.
 
 **Run `vyuha check` first on any new client file.** It prints which sheet was read as what, which row the header landed on, which columns were understood and which were ignored — the fastest way to catch a misreading before anyone sees the numbers. Each column carries **how** it was identified: `(matched)` for a close heading, `(guessed)` for a column with no usable heading that was read from its values, `(calculated)` for one the file did not contain at all. The last two are the ones worth opening the file over.
 
@@ -66,8 +79,11 @@ Five stages, one per module, wired by `pipeline.run()` → `RunResult`. Each sta
 
 A FastAPI shell **around** the engine, added 2026-08-22. It imports `pipeline.run()` and
 `report.render()` and never reimplements them, so anything true of the CLI is true here.
-Deps: `fastapi`, `uvicorn`, `python-multipart` (+ `httpx` for tests) — installed in `.venv`
-but **not yet declared in `pyproject.toml`**.
+Deps: `fastapi`, `uvicorn`, `python-multipart`, `httpx` (imported at module top by
+`whatsapp.py`, so a runtime dependency and not only a test one), plus `reportlab`,
+`python-pptx`, `pypdf` and `anthropic`, which are imported lazily inside the feature that
+needs them. All are installed in `.venv`; **none are declared in `pyproject.toml`**, so
+`pip install -e .` alone yields an engine that runs and a platform that does not.
 
 - **`auth.py`** — accounts and sessions, added 2026-08-23 when signup opened up.
   Accounts live in `vyuha_data/accounts.json`; a password is stored only as a stdlib
@@ -96,10 +112,15 @@ but **not yet declared in `pyproject.toml`**.
 - **`channels.py`** — the Phase 2 alert renderers: pure `Insights -> str` functions
   (`as_whatsapp`, `as_email`) sitting beside `report.render()` rather than in a new pipeline.
   `as_whatsapp` respects a 1024-char cap by shedding entity lines first, then whole alerts
-  lowest-severity-first, always keeping the dropped count honest. **Delivery is a `wa.me` deep
-  link, not an API call** — it opens WhatsApp with the brief pre-typed and the founder taps send,
-  so there is no Meta Business account, no BSP and no template pre-approval. Swapping in the
-  Cloud API later means adding a sender here; the renderers do not change.
+  lowest-severity-first, always keeping the dropped count honest. Rendering only — delivery
+  lives in `whatsapp.py`, and `channels.whatsapp_link()` builds the `wa.me` fallback it uses.
+- **`whatsapp.py`** — three providers behind one `send()`: `twilio` (the public sandbox; works
+  as soon as the recipient sends the join code — use it for testing), `meta` (the Cloud API for
+  production — free-form text is only allowed inside the 24-hour window after the customer last
+  wrote, so outside it `settings.meta_template` must name an approved template or Meta rejects
+  it with error 131047), and `link` (a `wa.me` deep link the operator taps — no credentials,
+  always available, the default). Every attempt returns a `SendResult`, success or not, so the
+  caller can log it. `POST /settings/test-whatsapp` probes the configured provider.
 - **`ui.py`** — hand-rolled HTML strings (same choice as `report.py`). Dark styling.
   Unlike the client dashboard this **may** use a webfont CDN, since it is served over
   localhost; the embedded dashboard is still strictly self-contained and a test
@@ -108,8 +129,9 @@ but **not yet declared in `pyproject.toml`**.
   **none at all**. Onboarding left the bar because it is a service Vyuha performs
   rather than a screen a client drives; Activity left because "where did this
   number come from" is a question about one business and now lives inside one.
-  `client_page` — an 85KB tabbed page with sixty-six buttons — was deleted outright
-  when `console.py` took over every job it did.
+  The 85KB tabbed client page with sixty-six buttons that used to live here was
+  deleted outright when `console.py` took over every job it did; `app.client_page`
+  (`GET /c/{slug}`) survives only as the front door onto the Desk.
 - **`sources.py`** — everything that is not a spreadsheet is *converted to a CSV first* and then
   handed to the unchanged pipeline: `.txt`/`.tsv` by delimiter sniffing, `.pdf` via its own text
   layer, and images plus scanned PDFs via **Claude vision** (`claude-opus-5`, base64 image /
@@ -117,6 +139,21 @@ but **not yet declared in `pyproject.toml`**.
   and confidence, surfaced in the UI — a number transcribed from a photograph must never look
   identical to one typed into Excel. Vision needs `anthropic_key`; without it those uploads are
   rejected with the action required, never silently.
+- **`intake.py`** — the input with no table at all: an **exported WhatsApp thread**, which
+  for many distributors *is* the order book. `sources.py` hands it any text that
+  `looks_like_chat()`. Read by Claude through `llm.ask` with a strict schema (Kannada-English
+  code-switching, "beku", numbers as words), or by patterns matched against the client's own
+  item names when there is no key or no network. Everything extracted is a **draft, never a
+  fact**: `ChatExtract` carries a per-line confidence and the message it came from, and nothing
+  here writes to the books.
+- **`library.py`** — many files at once (a multi-select upload, or `POST /c/{slug}/folder`
+  scanning a directory), reconciled into one picture by `library.batch()`. Three merge rules,
+  and getting any of them wrong is worse than not merging: **sales accumulate**; **stock is a
+  snapshot and the newest file wins** (stacking two stock statements would double the shelf);
+  **receivables are a snapshot keyed by invoice** where there is one. Duplicates are removed
+  *before* summing (invoice number, else the row's content), because overlapping "last 90
+  days" exports are the norm. Every file gets a `FileResult`, read or not, saying exactly what
+  happened to it.
 - **`books.py`** — for a business with no spreadsheet at all (the nursery/manure case). Keeps a
   small `Item`/`Sale` ledger per client in `vyuha_data/books/<slug>.json`, decrements stock on
   each sale. A `Sale` carries the **buyer's own WhatsApp number**, captured at the moment of sale
@@ -141,16 +178,6 @@ but **not yet declared in `pyproject.toml`**.
   write-only in the UI (masked on render, blank means "keep"). One WhatsApp sender, one SMTP
   account, one Claude key for the machine; anything that varies per logged-in account lives on
   `auth.Account` instead. `install` / `org_name` / `tenant_slug` moved there on 2026-08-23.
-- **`console.py`** — **six features on one page** (`/c/<slug>/console`), added
-  2026-08-30: stock, ask, follow-ups, money, deck, people. One request renders
-  all six; switching panels is a class toggle, not a round trip, which is why
-  the nav can carry live counts ("3 overdue") — the whole reason somebody opens
-  a panel they were not already thinking about. Mutating forms POST and redirect
-  with `?panel=` so the page reopens where it was left; reads that produce
-  something transient (an answer, a deck outline) render the page directly
-  instead, because a redirect would throw the result away. Console-only CSS
-  lives in `console.EXTRA`, not `ui.CSS`, so this file owns its own look and the
-  other lane can edit `ui.py` without ever meeting a conflict here.
 - **`llm.py`** — the single entry point for every Claude call outside
   `sources.py`. Buys three things: a **disk cache** (pre-warm it and a live demo
   never waits on the API), an **offline mode** (`VYUHA_LLM=offline` refuses to
@@ -189,7 +216,9 @@ but **not yet declared in `pyproject.toml`**.
   stays valid. Rows written before branches existed report under **Unassigned**
   rather than being attributed to whichever branch happens to be first —
   guessing there would corrupt the one number the feature exists to produce.
-  `Staff` is a directory, not a login: real identity stays in `auth.py`.
+  `Staff` is a directory, not a login: real identity stays in `auth.py`. Also holds
+  targets and commission, a daily register (an unmarked day is a forgotten register,
+  not unpaid leave), and stock transfers that move location without touching revenue.
 - **`decks.py`** — a deck from a sentence. Separates *what to say* (an `Outline`
   Claude writes from a brief plus the same facts the agent reads) from *how it
   looks* (`to_pptx` / `to_pdf`, which know nothing about where the outline came
@@ -204,6 +233,11 @@ but **not yet declared in `pyproject.toml`**.
   different ages, 1 customer gone quiet), and a fixed `SEED` plus dates relative
   to today make it **deterministic** — the same command on two machines gives
   the same numbers, and re-running it after a messy rehearsal puts it back.
+  **All six staff carry a phone number** (the reserved-for-fiction `9999xxxxxx`
+  range, so a rehearsal cannot ring a real one): `notify.py` finds a person by
+  role and skips anyone it cannot reach, so a staff list with the right roles and
+  no numbers sent every warning to the owner and made role routing look broken in
+  the one place it most needs to be legible.
   Idempotent: it wipes the account's workspaces first. Never demo off live data.
 - **`modules.py`** — **the seven modules, as data.** The founder's own structure,
   drawn on paper, and a better map than what the code had grown into: the previous
@@ -231,9 +265,9 @@ but **not yet declared in `pyproject.toml`**.
   reaches the product rather than an apology. `visible()` hides Data from a
   business that types its entries, because a screen that only ever says "nothing
   here" teaches somebody to stop looking at the nav.
-- **`console.py`** — draws all of it. `render()` is a **single dispatch**: it loads
-  the state every screen needs once, then looks the tab up in `_TABS`
-  (`"financials.position"` → `_fin_position`). Letting each route decide what to
+- **`console.py`** — draws all of it, behind a **single dispatch**: `app._render()`
+  loads the state every screen needs once (`_console_state`), then `console.render()`
+  looks the tab up in `_TABS` (`"financials.position"` → `_fin_position`). Letting each route decide what to
   load is how two screens end up disagreeing about the same number. `_TABS` is
   declared at the **foot of the file** so it can name handlers defined anywhere
   above without ordering them by hand.
@@ -250,6 +284,12 @@ but **not yet declared in `pyproject.toml`**.
   Each tab renders on its own request. The build before last put six panels in one
   141KB document and toggled them with JavaScript — instant to switch and slow at
   everything else, which is the wrong trade once a screen has content.
+  Mutating forms POST and redirect through `app._console_back(slug, panel)`, whose
+  `_AFTER` table maps the action to the module/tab it belongs to (a sale returns to
+  Operations); reads that produce something transient (an answer, a deck outline)
+  render directly, because a redirect would throw the result away. Console-only CSS
+  lives in `console.EXTRA`, not `ui.CSS`, so the two lanes can restyle without
+  conflicting.
 - **`gate.py`** — **the one way out of the system.** Every message and document
   leaves through `submit()`; `whatsapp.send` and `exports.send_email` refuse a
   caller that does not hold the key this module owns, so forgetting the gate
@@ -358,28 +398,22 @@ but **not yet declared in `pyproject.toml`**.
   comparison gets two columns. Bullets are the fallback, not the default, which is
   what made the first version text on a rectangle. There is no Deck screen — you
   ask the agent for one.
-- **`people.py`** — branches, staff, targets and commission, a daily register where
-  an unmarked day is a forgotten register rather than unpaid leave, and stock
-  transfers that move location without touching revenue.
 - **`atomic.py`** — every JSON write goes through it. `write_text` truncates then
   writes, so a browser tab open beside a test run corrupted the client registry and
   blanked every private screen. Temp-then-`os.replace` under a lock, retried through
   the transient Windows locks OneDrive's sync client takes.
-- **`app.py`** — routes: `/` (landing when signed out, portfolio when signed in),
-  `GET|POST /signup`, `GET|POST /login`, `POST /logout`, `POST /install`, `/onboard`, `/setup`,
-  `/settings`, `/activity`, `/c/{slug}`, and `/c/{slug}/{module}` +
-  `/c/{slug}/{module}/{tab}` (declared **last**, since FastAPI matches in
-  definition order and a path parameter that broad would otherwise swallow
-  `/dashboard`, `/cover`, `/deck/view` and every export; the module route just
-  calls the tab route with the tab blank, so there is one code path),
-  `POST /c/{slug}/upload`, `POST /c/{slug}/book/item|sale`,
-  `/c/{slug}/export/{pdf|pptx|html}`, `POST /c/{slug}/email|whatsapp|delete`,
-  and the console block (`# ---- vishak`) at the foot of the file:
-  `/c/{slug}/console`, `POST /c/{slug}/ask|followup|expense|deck|branch|staff`,
-  `POST /c/{slug}/stock/{receive|count|reorder}`, `GET /c/{slug}/deck/{pptx|pdf}`,
-  and the gate/schedule block: `POST /c/{slug}/outbox/{id}/{send|cancel|sent}`,
-  `POST /c/{slug}/routine` (+ `/{id}/{toggle|delete}` and `/run`).
-  Every console handler starts with `_console_client()`, which resolves and
+- **`app.py`** — every route, in one file (`grep -n "^@app\." vyuha_platform/app.py` lists
+  them). Roughly in order: account and landing routes (`/`, `/signup`, `/login`, `/logout`,
+  `/master`, the `/w/{token}` link-and-PIN gate, `/c/{slug}/share`, `/install`, `/onboard`,
+  `/setup`), then books, ingestion (`/upload`, `/folder`), exports and settings, then the
+  `# ---- vishak` block — stock, ask, follow-ups, expenses, deck, branches/staff, invoices —
+  then the gate/schedule block (`/outbox/{id}/{send|cancel|sent}`, `/routine…`), and finally
+  `/c/{slug}/{module}` + `/c/{slug}/{module}/{tab}`, which **must stay last**: FastAPI
+  matches in definition order and a path parameter that broad would swallow `/dashboard`,
+  `/cover`, `/deck/view` and every export. The module route calls the tab route with the tab
+  blank, so there is one code path, and `modules.resolve()` sends an unknown module
+  (including the retired `/c/{slug}/console`) to the Desk.
+  Every workspace handler starts with `_console_client()`, which resolves and
   authorises in one step. `outbox/{id}/send` goes through
   `orchestrator.approve()`, never `gate.release()` — a route holds no key.
   `outbox/{id}/sent` is separate and deliberately so: with no provider
@@ -400,6 +434,11 @@ but **not yet declared in `pyproject.toml`**.
   both. **These are platform assets only** — the generated client dashboard never references
   them, and a test asserts `/static/` appears nowhere in it, because a dashboard forwarded on
   WhatsApp has no server to ask.
+- **`catalog.py`** — per-trade **starter catalogues** (what a nursery, dairy or hardware shop
+  actually sells, with units and plausible prices), so a new business ticks what it carries
+  instead of typing forty rows into a blank table, plus the generated SVG item glyphs
+  (`glyph_for()`) — drawings rather than photos, for the same offline, never-404 reasons as the
+  trade fallbacks.
 
 ## Accounts, and the flow through the product
 
@@ -490,15 +529,16 @@ editable preference, because flipping it would change who can see what:
   awareness that any other exists. Their setup screen is about *their own operation* (business
   name, trade, how they keep records) - never about clients.
 
-Enforcement is in `app.py`: `_deny_tenant()` closes the operator-only routes, and `client_page`
-refuses any slug other than the tenant's own. `_tenant_client()` is deliberately strict - an
+Enforcement is in `app.py`: `_deny_tenant()` closes the operator-only routes, and
+`_console_client()` — which every workspace route calls first — refuses a tenant any slug other
+than its own. `_tenant_client()` is deliberately strict - an
 account with no `tenant_slug` shows setup rather than adopting whatever client happens to exist.
 Tests cover the boundary in both directions: a tenant cannot reach another workspace by URL, and
 one account cannot see or reach another account's client.
 
 
 **Onboarding is deliberately two fields** — business name, and optionally a WhatsApp number.
-Contact, email, industry and thresholds live on the client's own Details tab and may never be
+Contact, email, industry and thresholds live on the client's Setup › Business tab and may never be
 filled in. The one other choice is `data_mode`: `upload` (they send files) or `books` (they keep
 none, so you get entry forms instead of a drop zone).
 
@@ -533,7 +573,7 @@ Everything lives in one file: inline `<style>`, inline HTML sections, inline `<s
 
 `vyuha-1-prime-bootstrap.md` is a paste-once operating prompt that turns the agent into "Vyuha-1 Prime", a plan-first orchestrator that delegates rather than writing code itself. Its first-run bootstrap was executed on 2026-08-04 and produced:
 
-- **`requirements/` — the declared source of truth.** `00-charter.md` (filled in 2026-08-11: what Vyuha is, why, success criteria, out of scope), `01-features/` (one `NN-slug.md` per feature; `01-excel-to-dashboard.md` covers the engine, and `README.md` holds the naming conventions), `02-decisions.md` (ADR-lite, append-only; 001 = why the bootstrap landed here rather than in the parent folder, 002 = Python/pandas, 003 = rule-based detection over an LLM, 004 = show the client what we read), `03-token-log.md` (500k budget split 60/30/10 into 300k development / 150k iteration / 50k research), `99-changelog.md`.
+- **`requirements/` — the declared source of truth.** `00-charter.md` (filled in 2026-08-11: what Vyuha is, why, success criteria, out of scope), `01-features/` (one `NN-slug.md` per feature; `01-excel-to-dashboard.md` covers the engine, and `README.md` holds the naming conventions), `02-decisions.md` (ADR-lite, append-only; 001–010 so far — bootstrap location, Python/pandas, rule-based detection over an LLM, show the client what we read, open signup, link+PIN access, trade photographs, PIN lockout and cookie security, the seven modules, per-number trust marks; read it before reversing a design choice), `03-token-log.md` (500k budget split 60/30/10 into 300k development / 150k iteration / 50k research), `99-changelog.md`.
 - **`.claude/agents/`** — `planner`, `developer`, `tester`, `reviewer`. These drive the contract's 8-step loop (read → rough plan → final plan → pick one → develop → test → review → ship), where steps 2 and 3 are the only points the agent waits on the owner. Note they only resolve for sessions started **inside `Vyuha_phas1/`**; a session started from the parent `Project V` folder will not see them.
 - **`.claude/skills/`** — `plan-drafting`, `requirements-update`, `test-protocol`, `token-budget-check`.
 - **`.claude/hooks/`** — four Python scripts plus `hooks.json`. **These are currently inert**: Claude Code reads hook config from `.claude/settings.json`, not `.claude/hooks/hooks.json`; the event names in that file (`before_tool_use`, `after_tool_use`, `after_file_change`) are not real Claude Code events; and `pre-deploy.py` reads a `HOOK_TOOL_INPUT` environment variable, whereas real hooks receive their payload as JSON on stdin. Treat them as documentation of intent until they are rewired.

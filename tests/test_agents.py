@@ -8,7 +8,11 @@ orchestrator can release what the gate is holding**. Both are enforced in code
 rather than by convention, so both are testable, and a test is the only thing
 that keeps them true once somebody adds the next send path in a hurry.
 
-Every test passes an explicit clock. Nothing here sleeps.
+Every test that can pass an explicit clock does, and nothing here sleeps. The
+one exception is the end-to-end HTTP test: it drives `/routine/run`, which reads
+`datetime.now()` because in production that route *is* the schedule. It therefore
+uses a time of day that has always already passed, rather than asserting on the
+hour the suite happens to be run at.
 """
 
 from __future__ import annotations
@@ -421,8 +425,15 @@ def test_the_whole_loop_works_through_http():
     c = _shop("Loop Traders")
     _sell(c, 2, party="Someone")
 
+    # 00:00, every day, deliberately. This is the one test that cannot pass its
+    # own clock — it goes through the HTTP route, and `/routine/run` reads
+    # `datetime.now()` because in production it is the schedule. At "08:00" it
+    # therefore failed every morning between midnight and eight, which is a
+    # test reporting the hour rather than the code. What it is actually for is
+    # the loop through the routes; that the hour is respected is covered by
+    # `test_it_fires_after_its_time_and_only_once_a_day`, which does pass a clock.
     client.post(f"/c/{c.slug}/routine", data={
-        "name": "CEO 8am brief", "staff_id": "", "at": "08:00",
+        "name": "Whenever brief", "staff_id": "", "at": "00:00",
         "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
         "sections": ["decisions", "money"]})
     assert routines.load(c.slug), "the form did not save a routine"
