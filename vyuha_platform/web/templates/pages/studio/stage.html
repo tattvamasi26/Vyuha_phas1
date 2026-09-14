@@ -1,0 +1,86 @@
+{% extends "layouts/studio.html" %}
+{% from "components/ui.html" import badge, phase_badge %}
+{% block content %}
+<div class="flex flex-col gap-6" data-testid="studio-stage-{{ stage.key }}">
+  <header class="flex flex-wrap items-center gap-4">
+    <div class="min-w-0 flex-1">
+      <a href="/studio" class="inline-flex items-center gap-1.5 text-sm font-semibold text-ink-3 hover:text-ink">{{ icon("arrow-left", "size-4") }}Businesses</a>
+      <h1 class="mt-2 truncate text-2xl font-bold sm:text-3xl">{{ client.name }}</h1>
+      <p class="text-sm text-ink-3">{{ trade.label }}{% if client.contact %} · {{ client.contact }}{% endif %}{% if client.phone %} · +{{ client.phone }}{% endif %}</p>
+    </div>
+    <div class="flex items-center gap-3">
+      <div class="hidden w-40 sm:block">
+        <p class="mb-1 text-right text-xs font-semibold text-ink-2">{{ done }} of {{ total }} stages</p>
+        <div class="progress"><span style="width: {{ (done / total * 100)|round|int }}%"></span></div>
+      </div>
+      <a href="/app/{{ client.slug }}" class="btn btn-secondary">{{ icon("house", "size-4") }}Open site</a>
+    </div>
+  </header>
+
+  {# stepper: a rail on a laptop, a strip of chips on a phone #}
+  <nav class="tabs -mx-4 px-4 lg:hidden" aria-label="Stages">
+    {% for s in stages %}
+    {% set st = states[s.key] %}
+    <a href="/studio/{{ client.slug }}/{{ s.key }}" class="tab" {% if s.key == stage.key %}aria-current="page"{% endif %}>
+      {% if st in ["done", "skipped"] %}{{ icon("circle-check", "size-4 text-ok mr-1.5") }}{% else %}<span class="mr-1.5 text-xs text-ink-3">{{ loop.index }}</span>{% endif %}{{ s.label }}
+    </a>
+    {% endfor %}
+  </nav>
+
+  <div class="grid items-start gap-6 lg:grid-cols-[250px_minmax(0,1fr)]">
+    <nav class="card sticky top-24 hidden p-2 lg:block" aria-label="Stages">
+      <ol class="flex flex-col gap-0.5">
+        {% for s in stages %}
+        {% set st = states[s.key] %}
+        <li>
+          <a href="/studio/{{ client.slug }}/{{ s.key }}"
+             class="step {{ 'is-done' if st in ['done', 'skipped'] else '' }} {{ 'is-later' if st == 'later' else '' }}"
+             {% if s.key == stage.key %}aria-current="step"{% endif %}>
+            <span class="step-mark">{% if st in ["done", "skipped"] %}{{ icon("check", "size-3.5") }}{% else %}{{ loop.index }}{% endif %}</span>
+            <span class="min-w-0 flex-1">
+              <span class="block truncate text-sm font-semibold">{{ s.label }}</span>
+              <span class="block truncate text-[0.6875rem] text-ink-3">{{ "Phase " ~ s.phase if st == "later" else ("Done" if st in ["done", "skipped"] else "To do") }}</span>
+            </span>
+          </a>
+        </li>
+        {% endfor %}
+      </ol>
+    </nav>
+
+    <section class="flex min-w-0 flex-col gap-6" aria-labelledby="stage-h">
+      <div class="flex flex-wrap items-start gap-3">
+        <div class="min-w-0 flex-1">
+          <p class="eyebrow">Stage {{ (stages|map(attribute="key")|list).index(stage.key) + 1 }} of {{ total }}</p>
+          <h2 id="stage-h" class="mt-1 text-xl font-bold sm:text-2xl">{{ stage.label }}</h2>
+          <p class="text-ink-2">{{ stage.blurb }}</p>
+        </div>
+        {% if states[stage.key] in ["done", "skipped"] %}{{ badge("Done", "ok", "circle-check") }}{% endif %}
+        {{ phase_badge(stage.phase, live_phase) }}
+      </div>
+
+      {% if stage.phase > live_phase %}
+        {% include "pages/studio/stages/later.html" %}
+      {% else %}
+        {% include "pages/studio/stages/" ~ stage.key ~ ".html" %}
+      {% endif %}
+
+      {# two halves whose labels wrap: "Items, branches & staff" beside "Business profile"
+         does not fit one line of a 360px screen as a pair of buttons #}
+      <nav class="grid grid-cols-2 gap-4 border-t border-line pt-5" aria-label="Previous and next stage">
+        {% if prev %}
+        <a href="/studio/{{ client.slug }}/{{ prev.key }}" class="group flex min-w-0 flex-col items-start gap-0.5 py-1.5">
+          <span class="inline-flex items-center gap-1 text-xs font-semibold text-ink-3">{{ icon("arrow-left", "size-3.5") }}Previous</span>
+          <span class="font-semibold text-ink group-hover:text-brand">{{ prev.label }}</span>
+        </a>
+        {% else %}<span></span>{% endif %}
+        {% if next %}
+        <a href="/studio/{{ client.slug }}/{{ next.key }}" class="group flex min-w-0 flex-col items-end gap-0.5 py-1.5 text-right">
+          <span class="inline-flex items-center gap-1 text-xs font-semibold text-ink-3">Next{{ icon("arrow-right", "size-3.5") }}</span>
+          <span class="font-semibold text-ink group-hover:text-brand">{{ next.label }}</span>
+        </a>
+        {% endif %}
+      </nav>
+    </section>
+  </div>
+</div>
+{% endblock %}

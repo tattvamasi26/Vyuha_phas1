@@ -1,0 +1,50 @@
+{% from "components/ui.html" import brandmark %}
+<div x-show="$store.ui.drawer" x-cloak class="backdrop fixed inset-0 z-[65] lg:hidden" @click="$store.ui.drawer=false"></div>
+<aside class="sidebar" :class="$store.ui.drawer && 'is-open'" aria-label="Studio">
+  <a href="/studio" class="mb-1 flex items-center gap-2.5 px-2 py-1">
+    {{ brandmark() }}
+    <span class="font-display text-lg font-extrabold tracking-tight">Vyuha</span>
+  </a>
+  <p class="eyebrow mb-3 px-2">Onboarding Studio</p>
+
+  <nav class="flex flex-col gap-0.5" aria-label="Studio">
+    <a href="/studio" class="nav-item" {% if section == 'studio' %}aria-current="page"{% endif %}>{{ icon("layers") }}<span>Businesses</span></a>
+    <a href="/studio/new" class="nav-item" {% if section == 'new' %}aria-current="page"{% endif %}>{{ icon("plus") }}<span>Onboard a business</span></a>
+    <a href="/styleguide" class="nav-item" {% if section == 'styleguide' %}aria-current="page"{% endif %}>{{ icon("sliders-horizontal") }}<span>Style guide</span></a>
+  </nav>
+
+  {% if client %}
+  <div class="my-3 border-t border-line"></div>
+  <p class="eyebrow mb-1.5 px-2">This business</p>
+  <nav class="flex flex-col gap-0.5">
+    <a href="/app/{{ client.slug }}" class="nav-item">{{ icon("house") }}<span class="truncate">Open {{ client.name }}</span></a>
+    <a href="/c/{{ client.slug }}" class="nav-item">{{ icon("external-link") }}<span>Classic view</span></a>
+  </nav>
+  {% endif %}
+
+  <div class="my-3 border-t border-line"></div>
+  <p class="eyebrow mb-1.5 px-2">Classic tools</p>
+  <nav class="flex flex-col gap-0.5">
+    <a href="/" class="nav-item">{{ icon("building-2") }}<span>Classic portfolio</span></a>
+    <a href="/activity" class="nav-item">{{ icon("history") }}<span>Activity</span></a>
+    <a href="/settings" class="nav-item">{{ icon("settings") }}<span>Settings</span></a>
+    {% if is_master %}<a href="/master" class="nav-item">{{ icon("lock") }}<span>Staff console</span></a>{% endif %}
+  </nav>
+
+  <div class="mt-auto flex flex-col gap-0.5 pt-4">
+    <button type="button" class="nav-item w-full" @click="$store.theme.toggle()">
+      <span x-show="!$store.theme.dark">{{ icon("moon") }}</span><span x-show="$store.theme.dark" x-cloak>{{ icon("sun") }}</span>
+      <span x-text="$store.theme.dark ? 'Light mode' : 'Dark mode'">Dark mode</span>
+    </button>
+    <div class="mt-2 flex items-center gap-3 rounded-xl px-2 py-2">
+      <span class="avatar !bg-sunken !text-ink-2">{{ user_initials }}</span>
+      <span class="min-w-0 flex-1">
+        <span class="block truncate text-sm font-semibold">{{ user_name }}</span>
+        <span class="block truncate text-xs text-ink-3">{{ "Vyuha staff" if is_master else "Operator" }}</span>
+      </span>
+      <form method="post" action="/logout">
+        <button class="btn btn-ghost btn-icon btn-sm" aria-label="Log out" title="Log out">{{ icon("log-out", "size-4") }}</button>
+      </form>
+    </div>
+  </div>
+</aside>

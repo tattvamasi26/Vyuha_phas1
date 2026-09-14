@@ -8,6 +8,21 @@ dependencies = [
     "openpyxl>=3.1",
 ]
 
+[project.optional-dependencies]
+# The web platform (vyuha_platform). The engine above needs none of these.
+platform = [
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "python-multipart>=0.0.9",
+    "jinja2>=3.1",
+    "httpx>=0.27",
+    "reportlab>=4.0",
+    "python-pptx>=1.0",
+    "pypdf>=4.0",
+    "anthropic>=0.40",
+]
+dev = ["pytest>=8"]
+
 [project.scripts]
 vyuha = "vyuha.cli:main"
 

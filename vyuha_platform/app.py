@@ -65,6 +65,13 @@ def _thresholds(client: store.Client):
 app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"),
           name="static")
 
+# The new site (Jinja2 + HTMX + Alpine) mounts beside the classic screens while the
+# rewire lands section by section. Its paths — /app, /studio, /styleguide — overlap
+# nothing below, so where in this file it is included does not matter.
+from .web import mount as _mount_web  # noqa: E402
+
+_mount_web(app)
+
 #: Reachable without a session. Everything else is closed by the middleware
 #: below, so a new route is private by default — the safe direction to forget in.
 PUBLIC = {"/", "/login", "/signup", "/logout"}
@@ -711,6 +718,28 @@ def _reload_insights(client: store.Client, run: store.Run, settings):
         return None
 
 
+#: Files the platform itself writes into a business's upload folder. They are
+#: derived from the book or from another upload, so reading them back in as
+#: sources would count the same rows twice.
+_GENERATED = {"books.xlsx"}
+
+#: Where conversions (a photo read into rows, a text export sniffed into CSV)
+#: are written — beside the originals, not among them.
+CONVERTED = "_converted"
+
+
+def _source_files(folder: Path) -> list[Path]:
+    """Every file this business has sent, oldest first."""
+    files = [p for p in folder.iterdir()
+             if p.is_file() and p.name not in _GENERATED]
+    # Before conversions moved into _converted/, the CSV made from photo.jpg sat
+    # beside it as photo.csv. Skip those, or the photo's rows would count twice.
+    stems = {p.stem.lower() for p in files if p.suffix.lower() != ".csv"}
+    files = [p for p in files
+             if not (p.suffix.lower() == ".csv" and p.stem.lower() in stems)]
+    return sorted(files, key=lambda p: p.stat().st_mtime)
+
+
 def _ingest(client: store.Client, paths: list[Path], label: str) -> tuple[store.Run, str]:
     """Read a pile of files as one dataset and write one run.
 
@@ -722,7 +751,7 @@ def _ingest(client: store.Client, paths: list[Path], label: str) -> tuple[store.
     """
     settings = config.load()
     catalogue = books.load(client.slug).items
-    workdir = store.upload_dir(client.slug)
+    workdir = store.upload_dir(client.slug) / CONVERTED
 
     with _thresholds(client):
         result = library.batch(
@@ -827,9 +856,13 @@ async def upload(slug: str, request: Request, account: auth.Account = Depends(_a
 
     ledger.log("source.received", f"{len(saved)} file(s) received", client=client,
                channel="upload", files=[p.name for p in saved][:20])
-    _run, note = _ingest(client, saved,
-                         label=(saved[0].name if len(saved) == 1
-                                else f"{len(saved)} files"))
+    # A business that sends files is rebuilt from its files, so the batch has to
+    # be every file it has ever sent. Reading only this request's files replaced
+    # the book with them, and the second upload quietly erased the first.
+    batch = saved if client.data_mode == "books" else _source_files(folder)
+    _run, note = _ingest(client, batch,
+                         label=(batch[0].name if len(batch) == 1
+                                else f"{len(batch)} files"))
     return _console_back(slug, "data", note)
 
 
@@ -854,7 +887,11 @@ def read_folder(slug: str, path: str = Form(""), recursive: str = Form("1"),
 
     ledger.log("source.received", f"Folder read: {len(found)} file(s) from {path}",
                client=client, channel="folder")
-    _run, note = _ingest(client, found, label=f"{len(found)} files from {Path(path).name}")
+    # Same rule as an upload: a file-driven book is rebuilt from everything it
+    # was ever sent, so the folder is read alongside the earlier uploads.
+    batch = found if client.data_mode == "books" else _source_files(
+        store.upload_dir(slug)) + found
+    _run, note = _ingest(client, batch, label=f"{len(found)} files from {Path(path).name}")
     return _console_back(slug, "data", " ".join(notes + [note]))
 
 

@@ -1,0 +1,79 @@
+{% extends "layouts/studio.html" %}
+{% from "components/ui.html" import badge %}
+{% block content %}
+<div class="flex flex-col gap-6" data-testid="studio">
+  <header class="flex flex-wrap items-end justify-between gap-4">
+    <div>
+      <p class="eyebrow">Onboarding Studio</p>
+      <h1 class="mt-1 text-2xl font-bold sm:text-3xl">Businesses</h1>
+      <p class="mt-1 text-ink-2">
+        {% if rows %}{{ setting_up }} being set up · {{ rows|length }} in total{% else %}Nobody onboarded yet.{% endif %}
+      </p>
+    </div>
+    <a href="/studio/new" class="btn btn-primary btn-lg">{{ icon("plus", "size-5") }}Onboard a business</a>
+  </header>
+
+  <section class="card hidden p-4 lg:block" aria-label="The eight stages">
+    <ol class="grid grid-cols-8 gap-2 text-center">
+      {% for s in stages %}
+      <li class="flex flex-col items-center gap-1.5">
+        <span class="step-mark">{{ loop.index }}</span>
+        <span class="text-xs font-semibold leading-tight">{{ s.label }}</span>
+        {% if s.phase > 1 %}<span class="text-[0.625rem] text-ink-3">Phase {{ s.phase }}</span>{% endif %}
+      </li>
+      {% endfor %}
+    </ol>
+  </section>
+
+  {% if rows %}
+  <div class="grid gap-4 md:grid-cols-2">
+    {% for r in rows %}
+    {% set c = r.client %}
+    <article class="card card-lift flex flex-col gap-4 p-5" data-testid="studio-row">
+      <div class="flex items-start gap-3">
+        <span class="avatar !size-11 !rounded-xl">{{ c.initials }}</span>
+        <div class="min-w-0 flex-1">
+          <h2 class="truncate text-lg font-bold">{{ c.name }}</h2>
+          <p class="truncate text-sm text-ink-3">{{ r.trade }}{% if c.contact %} · {{ c.contact }}{% endif %}</p>
+        </div>
+        {% if r.ready %}{{ badge("Ready for Phase 2", "ok", "circle-check") }}{% else %}{{ badge("Setting up", "warn") }}{% endif %}
+      </div>
+
+      <div>
+        <div class="mb-1.5 flex items-center justify-between text-xs">
+          <span class="font-semibold text-ink-2">{{ r.done }} of {{ r.total }} stages</span>
+          <span class="text-ink-3">Now: {{ r.current.label }}</span>
+        </div>
+        <div class="progress"><span style="width: {{ (r.done / r.total * 100)|round|int }}%"></span></div>
+        <ol class="mt-2 flex gap-1" aria-label="Stage status">
+          {% for s in stages %}
+          {% set st = r.states[s.key] %}
+          <li class="h-1.5 flex-1 rounded-full" title="{{ s.label }}: {{ st }}"
+              style="background: {{ 'var(--ok)' if st in ['done', 'skipped'] else ('var(--warn)' if st == 'todo' else 'var(--line)') }}"></li>
+          {% endfor %}
+        </ol>
+      </div>
+
+      <dl class="grid grid-cols-3 gap-2 text-center">
+        <div class="rounded-xl bg-surface-2 py-2"><dt class="text-[0.6875rem] text-ink-3">Items</dt><dd class="figure text-lg">{{ r.item_count }}</dd></div>
+        <div class="rounded-xl bg-surface-2 py-2"><dt class="text-[0.6875rem] text-ink-3">Sales</dt><dd class="figure text-lg">{{ r.sale_count }}</dd></div>
+        <div class="rounded-xl bg-surface-2 py-2"><dt class="text-[0.6875rem] text-ink-3">Updated</dt><dd class="text-sm font-semibold">{{ r.updated|ago }}</dd></div>
+      </dl>
+
+      <div class="mt-auto flex flex-wrap gap-2">
+        <a href="/studio/{{ c.slug }}/{{ r.current.key }}" class="btn btn-primary flex-1">{{ "Review setup" if r.ready else "Continue" }}{{ icon("arrow-right", "size-4") }}</a>
+        <a href="/app/{{ c.slug }}" class="btn btn-secondary">{{ icon("house", "size-4") }}Open site</a>
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <section class="card flex flex-col items-center gap-3 px-6 py-16 text-center">
+    <span class="ring-tone tone-brand !size-14 !rounded-2xl">{{ icon("rocket", "size-7") }}</span>
+    <h2 class="text-xl font-bold">Onboard your first business</h2>
+    <p class="max-w-md text-ink-2">Start with three things — the name, the owner and a WhatsApp number. The data map comes next.</p>
+    <a href="/studio/new" class="btn btn-primary btn-lg mt-2">{{ icon("plus", "size-5") }}Onboard a business</a>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

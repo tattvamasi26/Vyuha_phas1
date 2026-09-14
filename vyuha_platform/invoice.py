@@ -234,6 +234,16 @@ def from_sales(client, book, sale_ids: list[str], party_state: str = "",
     if not sales:
         raise ValueError("No such sale on this book.")
 
+    # One invoice, one buyer. The party used to come from the first ticked sale
+    # alone, so ticking three customers' sales billed all three to whichever
+    # came first — a tax document addressed to the wrong person.
+    buyers = sorted({(s.party or "Cash sale").strip() for s in sales},
+                    key=str.lower)
+    if len({b.lower() for b in buyers}) > 1:
+        shown = ", ".join(buyers[:3]) + (" and others" if len(buyers) > 3 else "")
+        raise ValueError(f"One invoice is for one customer — these sales belong to "
+                         f"{shown}. Tick one customer's sales at a time.")
+
     by_sku = {i.sku: i for i in book.items}
     lines = []
     for s in sales:

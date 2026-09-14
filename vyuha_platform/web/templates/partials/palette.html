@@ -1,0 +1,39 @@
+<div x-data="palette({{ palette|tojson|forceescape }})"
+     @keydown.window.ctrl.k.prevent="toggle()" @keydown.window.meta.k.prevent="toggle()"
+     @open-palette.window="show()">
+  <div x-show="open" x-cloak class="overlay" @keydown.escape.window="close()">
+    <div class="backdrop" @click="close()" x-transition.opacity></div>
+    <div class="dialog" role="dialog" aria-modal="true" aria-label="Search and jump" x-trap.noscroll="open" x-transition>
+      <div class="flex items-center gap-3 border-b border-line px-4">
+        {{ icon("search", "size-5 text-ink-3") }}
+        <input x-ref="q" x-model="q" type="text" autocomplete="off" spellcheck="false"
+               class="h-14 min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-ink-3"
+               placeholder="Search pages, businesses and actions…" aria-label="Search"
+               @input="active = 0" @keydown.arrow-down.prevent="move(1)"
+               @keydown.arrow-up.prevent="move(-1)" @keydown.enter.prevent="go()">
+        <span class="kbd">Esc</span>
+      </div>
+      <div x-ref="list" class="flex-1 overflow-y-auto p-2" role="listbox">
+        <template x-for="(it, i) in results" :key="it.href + it.label">
+          <a :href="it.href" class="menu-item !min-h-[3rem]" :class="i === active && 'is-active'"
+             @mouseenter="active = i" role="option" :aria-selected="i === active">
+            <span class="ring-tone tone-dim !size-8 !rounded-lg">
+              <svg class="icon size-4" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use :href="'/static/app/icons.svg#i-' + (it.icon || 'arrow-right')"></use></svg>
+            </span>
+            <span class="min-w-0 flex-1">
+              <span class="block truncate font-medium" x-text="it.label"></span>
+              <span class="block truncate text-xs text-ink-3" x-text="it.hint"></span>
+            </span>
+            <span class="badge tone-dim hidden sm:inline-flex" x-text="it.group"></span>
+          </a>
+        </template>
+        <p x-show="!results.length" class="px-3 py-8 text-center text-sm text-ink-3">Nothing matches that.</p>
+      </div>
+      <div class="hidden items-center gap-4 border-t border-line px-4 py-2.5 text-xs text-ink-3 sm:flex">
+        <span><span class="kbd">↑</span> <span class="kbd">↓</span> to move</span>
+        <span><span class="kbd">Enter</span> to open</span>
+        <span class="ml-auto"><span class="kbd">Ctrl</span> <span class="kbd">K</span> anywhere</span>
+      </div>
+    </div>
+  </div>
+</div>

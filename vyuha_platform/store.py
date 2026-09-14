@@ -226,7 +226,7 @@ def update_client(client: Client) -> None:
 #: per-slug store has to be added to this tuple; the check in
 #: `tests/test_platform.py` is what catches forgetting.
 PER_SLUG = ("books", "money", "people", "invoices", "followups",
-            "outbox", "notices", "routines")
+            "outbox", "notices", "routines", "onboarding")
 
 
 def purge(slug: str) -> None:

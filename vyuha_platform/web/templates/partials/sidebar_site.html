@@ -1,0 +1,75 @@
+{% from "components/ui.html" import brandmark %}
+{% set root = "/app/" ~ client.slug %}
+<div x-show="$store.ui.drawer" x-cloak class="backdrop fixed inset-0 z-[65] lg:hidden" @click="$store.ui.drawer=false"></div>
+<aside class="sidebar" :class="$store.ui.drawer && 'is-open'" aria-label="Main">
+  <a href="{{ root }}" class="mb-3 flex items-center gap-2.5 px-2 py-1">
+    {{ brandmark() }}
+    <span class="font-display text-lg font-extrabold tracking-tight">Vyuha</span>
+  </a>
+
+  {# the business, and — for an operator — every other one #}
+  <div class="relative mb-2" x-data="{ open: false }" @click.outside="open = false" @keydown.escape="open = false">
+    <button type="button" class="flex w-full items-center gap-3 rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-left hover:border-line-strong"
+            @click="open = !open" {% if not businesses or businesses|length < 2 %}disabled{% endif %} :aria-expanded="open" aria-haspopup="menu">
+      <span class="avatar" style="background: color-mix(in oklab, {{ trade.accent }} 22%, var(--surface)); color: var(--ink)">{{ client.initials }}</span>
+      <span class="min-w-0 flex-1">
+        <span class="block truncate text-sm font-semibold">{{ client.name }}</span>
+        <span class="block truncate text-xs text-ink-3">{{ trade.label }}</span>
+      </span>
+      {% if businesses and businesses|length > 1 %}{{ icon("chevron-down", "size-4 text-ink-3") }}{% endif %}
+    </button>
+    {% if businesses and businesses|length > 1 %}
+    <div x-show="open" x-cloak x-transition.origin.top class="menu left-0 right-0 top-full mt-1 max-h-80 overflow-y-auto" role="menu">
+      {% for b in businesses %}
+      <a href="/app/{{ b.slug }}" class="menu-item" role="menuitem" {% if b.slug == client.slug %}aria-current="true"{% endif %}>
+        <span class="avatar !size-7 !rounded-lg !text-[0.6875rem]">{{ b.initials }}</span>
+        <span class="min-w-0 flex-1 truncate">{{ b.name }}</span>
+        {% if b.slug == client.slug %}{{ icon("check", "size-4 text-brand") }}{% endif %}
+      </a>
+      {% endfor %}
+      <div class="my-1 border-t border-line"></div>
+      <a href="/studio" class="menu-item" role="menuitem">{{ icon("rocket", "size-4 text-ink-3") }} Onboarding Studio</a>
+    </div>
+    {% endif %}
+  </div>
+
+  <nav class="flex flex-col gap-0.5" aria-label="Sections">
+    {% for s in nav_main %}
+    <a href="{{ root if s.key == 'home' else root ~ '/' ~ s.key }}" class="nav-item" {% if section == s.key %}aria-current="page"{% endif %}>
+      {{ icon(s.icon) }}<span>{{ s.label }}</span>
+    </a>
+    {% endfor %}
+  </nav>
+
+  <div class="my-3 border-t border-line"></div>
+
+  <nav class="flex flex-col gap-0.5" aria-label="Tools">
+    {% for s in nav_utility %}
+    <a href="{{ root }}/{{ s.key }}" class="nav-item" {% if section == s.key %}aria-current="page"{% endif %}>
+      {{ icon(s.icon) }}<span>{{ s.label }}</span>
+      {% if s.key == "inbox" and waiting %}<span class="nav-count">{{ waiting }}</span>{% endif %}
+    </a>
+    {% endfor %}
+  </nav>
+
+  <div class="mt-auto flex flex-col gap-0.5 pt-4">
+    {% if is_operator %}
+    <a href="/studio" class="nav-item">{{ icon("rocket") }}<span>Onboarding Studio</span></a>
+    {% endif %}
+    <a href="/c/{{ client.slug }}" class="nav-item">{{ icon("external-link") }}<span>Classic view</span></a>
+    <button type="button" class="nav-item w-full" @click="$store.theme.toggle()">
+      <span x-show="!$store.theme.dark">{{ icon("moon") }}</span><span x-show="$store.theme.dark" x-cloak>{{ icon("sun") }}</span>
+      <span x-text="$store.theme.dark ? 'Light mode' : 'Dark mode'">Dark mode</span>
+    </button>
+    <div class="mt-2 flex items-center gap-3 rounded-xl px-2 py-2">
+      <span class="avatar !bg-sunken !text-ink-2">{{ user_initials }}</span>
+      <span class="min-w-0 flex-1">
+        <span class="block truncate text-sm font-semibold">{{ user_name }}</span>
+        <span class="block truncate text-xs text-ink-3">{{ "Vyuha staff" if is_master else ("Owner" if is_guest else ("Operator" if is_operator else "Owner")) }}</span>
+      </span>
+      <form method="post" action="/logout">
+        <button class="btn btn-ghost btn-icon btn-sm" aria-label="Log out" title="Log out">{{ icon("log-out", "size-4") }}</button>
+      </form>
+    </div>
+  </div>
+</aside>

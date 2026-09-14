@@ -14,9 +14,16 @@ def main() -> None:
     ap.add_argument("--port", type=int, default=8000)
     ap.add_argument("--open", action="store_true", help="open a browser once it is up")
     ap.add_argument("--reload", action="store_true", help="auto-reload on code change")
-    ap.add_argument("command", nargs="?", default="serve", choices=["serve", "seed"],
-                    help="'seed' rebuilds the demo workspace, then exits")
+    ap.add_argument("--watch", action="store_true",
+                    help="with 'css': rebuild whenever a template changes")
+    ap.add_argument("command", nargs="?", default="serve", choices=["serve", "seed", "css"],
+                    help="'seed' rebuilds the demo workspace; 'css' builds the site's "
+                         "stylesheet; both then exit")
     args = ap.parse_args()
+
+    if args.command == "css":
+        from .web.build import build_css
+        raise SystemExit(build_css(watch=args.watch))
 
     if args.command == "seed":
         from .demo_seed import main as seed

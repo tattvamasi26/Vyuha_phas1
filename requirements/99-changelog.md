@@ -20,3 +20,20 @@
   overdue receivables, days-of-cover).
 - reviewer notes: not yet validated against a real client file — that is the next gate
   before this can be used in a prospect demo.
+
+## 2026-09-14
+- shipped: UX rewire Phase 1, "First look" (feature 02), on branch `feature/ux-rewire`, running
+  beside the classic screens: a Jinja2 + HTMX + Alpine + Tailwind site at `/app/<slug>` (sidebar,
+  phone bottom bar, Ctrl+K palette, assistant slide-over, dark mode, and Home on today's data),
+  the Onboarding Studio at `/studio` (stages 1–3 working, 4–8 described) and `/styleguide`.
+  ADRs 011–012.
+- fixed: ISO dates no longer swap day and month (`vyuha/clean.py`, `books.to_workbook`); an
+  invoice refuses sales from different customers; a second upload no longer wipes the first; a
+  re-sent file no longer doubles a typed-in book's sales.
+- tests: 282 passing across 8 suites — new `tests/test_web.py` (22); pipeline 19, platform 57,
+  invoice 19, library 22, intake 23, agents 49 and console 71 all green.
+- verified: Home, Studio, data map, assistant panel, phone "More" sheet and dark mode captured
+  with Playwright against the running app on `127.0.0.1:8000` at 360, 768 and 1440 px, and all
+  16 new pages checked for sideways scroll at each width (the check caught the Studio's
+  Previous/Next footer overflowing a phone; fixed).
+- reviewer notes: waiting on the owner's Phase 1 review; nothing committed yet.

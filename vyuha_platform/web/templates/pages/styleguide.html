@@ -1,0 +1,80 @@
+{% extends "layouts/studio.html" %}
+{% from "components/ui.html" import badge, empty, delta, brandmark %}
+{% block content %}
+<div class="flex flex-col gap-8" data-testid="styleguide">
+  <header>
+    <p class="eyebrow">Design system</p>
+    <h1 class="mt-1 text-3xl font-bold">Style guide</h1>
+    <p class="mt-1 text-ink-2">Every component, in both themes. If it looks wrong here, it looks wrong everywhere.</p>
+  </header>
+
+  <section class="card p-6">
+    <h2 class="mb-4 text-lg font-bold">Colour</h2>
+    <div class="grid grid-cols-3 gap-3 sm:grid-cols-6">
+      {% for s in swatches %}
+      <div><div class="h-14 rounded-xl border border-line" style="background: var(--{{ s }})"></div><p class="mono mt-1.5 text-xs text-ink-3">--{{ s }}</p></div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="card flex flex-col gap-4 p-6">
+    <h2 class="text-lg font-bold">Type</h2>
+    <p class="figure text-5xl">₹54,05,800</p>
+    <h1 class="text-3xl font-bold">Good morning, Vishwanath</h1>
+    <h2 class="text-xl font-bold">Section heading</h2>
+    <p class="max-w-2xl text-ink-2">Body text in Schibsted Grotesk. Headings and figures in Archivo. Amounts in tables in JetBrains Mono so columns of rupees line up: <span class="mono">₹12,34,567</span>.</p>
+    <p class="eyebrow">Eyebrow label</p>
+  </section>
+
+  <section class="card flex flex-col gap-4 p-6">
+    <h2 class="text-lg font-bold">Buttons</h2>
+    <div class="flex flex-wrap items-center gap-3">
+      <button class="btn btn-primary">{{ icon("plus", "size-4") }}Primary</button>
+      <button class="btn btn-secondary">Secondary</button>
+      <button class="btn btn-soft">Soft</button>
+      <button class="btn btn-ghost">Ghost</button>
+      <button class="btn btn-danger">Danger</button>
+      <button class="btn btn-primary btn-sm">Small</button>
+      <button class="btn btn-primary btn-lg">Large{{ icon("arrow-right", "size-4") }}</button>
+      <button class="btn btn-secondary btn-icon" aria-label="Icon">{{ icon("bell") }}</button>
+      <button class="btn btn-primary" disabled>Disabled</button>
+    </div>
+  </section>
+
+  <section class="card flex flex-col gap-4 p-6">
+    <h2 class="text-lg font-bold">Badges and tones</h2>
+    <div class="flex flex-wrap items-center gap-2">
+      {{ badge("Paid", "ok", "check") }} {{ badge("Due soon", "warn") }} {{ badge("Overdue", "bad") }} {{ badge("New", "info") }} {{ badge("Phase 3", "brand", "clock") }} {{ badge("Draft") }}
+      {{ delta(12) }} {{ delta(-8) }}
+      <span class="kbd">Ctrl</span><span class="kbd">K</span>
+    </div>
+  </section>
+
+  <section class="card grid gap-5 p-6 md:grid-cols-2">
+    <h2 class="text-lg font-bold md:col-span-2">Form controls</h2>
+    <div class="field"><label class="label" for="sg1">Text input</label><input class="input" id="sg1" placeholder="Placeholder"><span class="hint">A hint under the field.</span></div>
+    <div class="field"><label class="label" for="sg2">Select</label><select class="select" id="sg2"><option>Karnataka</option><option>Maharashtra</option></select></div>
+    <div class="field md:col-span-2"><span class="label">Choice chips</span>
+      <div class="flex flex-wrap gap-2">{% for t in ["Tally", "Excel / Sheets", "Paper register", "Not kept"] %}<label class="choice"><input type="radio" name="sg-choice" {% if loop.first %}checked{% endif %}>{{ t }}</label>{% endfor %}</div></div>
+    <label class="flex items-center gap-3"><input type="checkbox" class="check" checked> A checkbox</label>
+    <div class="field"><label class="label" for="sg3">Textarea</label><textarea class="textarea" id="sg3"></textarea></div>
+  </section>
+
+  <section class="grid gap-4 md:grid-cols-3">
+    <div class="card p-5"><p class="text-sm font-semibold text-ink-2">Sparkline</p><p class="figure mt-2 text-3xl">₹4.2 L</p>{{ spark }}</div>
+    <div class="card p-5"><p class="text-sm font-semibold text-ink-2">Bars</p><p class="figure mt-2 text-3xl">₹7.1 L</p>{{ bars }}</div>
+    <div class="card p-5"><p class="text-sm font-semibold text-ink-2">Progress</p><p class="figure mt-2 text-3xl">3 / 8</p><div class="progress mt-4"><span style="width: 38%"></span></div></div>
+  </section>
+
+  <section class="card overflow-hidden">
+    <h2 class="border-b border-line px-5 py-4 text-lg font-bold">Ranked findings</h2>
+    <div class="divide">
+      {% for tone, t in [("bad", "Gypsum 5kg has run out, 3 more are low"), ("warn", "₹34,190 is sitting in 3 items that never sold"), ("info", "2 credit sales have no invoice")] %}
+      <div class="finding tone-{{ tone }}"><span class="ring-tone tone-{{ tone }} !size-9">{{ icon("circle-alert", "size-[1.1rem]") }}</span><span class="min-w-0 flex-1"><span class="block font-semibold">{{ t }}</span><span class="block text-sm text-ink-3">The detail, with the number that matters</span></span><span class="btn btn-secondary btn-sm">Act{{ icon("arrow-right", "size-3.5") }}</span></div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="card">{{ empty("Nothing needs you right now", "Empty states say what will appear here, and when.") }}</section>
+</div>
+{% endblock %}

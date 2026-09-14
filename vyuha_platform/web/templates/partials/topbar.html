@@ -1,0 +1,56 @@
+{% from "components/ui.html" import brandmark %}
+<header class="topbar">
+  <div class="mx-auto flex h-14 w-full max-w-[1240px] items-center gap-2 px-3 sm:px-6 lg:h-16 lg:px-10">
+    {% if area == "studio" or not client %}
+    <button type="button" class="btn btn-ghost btn-icon lg:hidden" @click="$store.ui.drawer = true" aria-label="Open menu">{{ icon("menu") }}</button>
+    {% endif %}
+
+    <div class="min-w-0 flex-1 lg:flex-none lg:pr-4">
+      {% if area == "site" and client %}
+      <a href="/app/{{ client.slug }}" class="flex min-w-0 items-center gap-2 lg:hidden">
+        {{ brandmark("brandmark !size-7") }}
+        <span class="truncate font-semibold">{{ client.name }}</span>
+      </a>
+      <div class="hidden min-w-0 lg:block">
+        <p class="truncate text-xs text-ink-3">{{ client.name }}</p>
+        <p class="truncate font-display text-[1.05rem] font-bold">{{ title }}</p>
+      </div>
+      {% else %}
+      <p class="truncate font-display text-[1.05rem] font-bold">{{ title }}</p>
+      {% endif %}
+    </div>
+
+    <button type="button" class="searchbox hidden md:flex" @click="$dispatch('open-palette')" aria-label="Search or jump to">
+      {{ icon("search", "size-4") }}<span class="truncate">Search or jump to…</span>
+      <span class="ml-auto flex gap-1"><span class="kbd">Ctrl</span><span class="kbd">K</span></span>
+    </button>
+
+    <div class="ml-auto flex items-center gap-1 sm:gap-2">
+      <button type="button" class="btn btn-ghost btn-icon md:hidden" @click="$dispatch('open-palette')" aria-label="Search">{{ icon("search") }}</button>
+
+      {% if area == "site" and client %}
+      <div class="relative hidden lg:block" x-data="{ open: false }" @click.outside="open = false" @keydown.escape="open = false">
+        <button type="button" class="btn btn-secondary" @click="open = !open" :aria-expanded="open" aria-haspopup="menu">{{ icon("plus", "size-4") }}New</button>
+        <div x-show="open" x-cloak x-transition.origin.top.right class="menu right-0 top-full mt-2" role="menu">
+          <a class="menu-item" role="menuitem" href="/c/{{ client.slug }}/operations/record">{{ icon("receipt", "size-4 text-ink-3") }}Sale</a>
+          <a class="menu-item" role="menuitem" href="/c/{{ client.slug }}/operations/invoices">{{ icon("file-text", "size-4 text-ink-3") }}Invoice</a>
+          <a class="menu-item" role="menuitem" href="/c/{{ client.slug }}/operations/record">{{ icon("wallet", "size-4 text-ink-3") }}Expense or purchase</a>
+          <a class="menu-item" role="menuitem" href="/c/{{ client.slug }}/operations/alerts">{{ icon("package-plus", "size-4 text-ink-3") }}Stock received</a>
+          <div class="my-1 border-t border-line"></div>
+          <p class="px-3 pb-1 pt-0.5 text-[0.6875rem] text-ink-3">Opens the classic screen until Phase 3</p>
+        </div>
+      </div>
+      <a class="btn btn-ghost btn-icon relative" href="/app/{{ client.slug }}/inbox/waiting" aria-label="Inbox{% if waiting %}, {{ waiting }} waiting{% endif %}">
+        {{ icon("bell") }}{% if waiting %}<span class="count-dot">{{ waiting if waiting < 100 else "99+" }}</span>{% endif %}
+      </a>
+      <button type="button" class="btn btn-primary !px-3 sm:!px-4" @click="$store.ui.assistant = true" data-testid="open-assistant">
+        {{ icon("sparkles", "size-4") }}<span class="hidden sm:inline">Ask</span>
+      </button>
+      {% else %}
+      <button type="button" class="btn btn-ghost btn-icon hidden lg:inline-flex" @click="$store.theme.toggle()" aria-label="Toggle dark mode">
+        <span x-show="!$store.theme.dark">{{ icon("moon") }}</span><span x-show="$store.theme.dark" x-cloak>{{ icon("sun") }}</span>
+      </button>
+      {% endif %}
+    </div>
+  </div>
+</header>

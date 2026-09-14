@@ -125,6 +125,46 @@ def _drop_total_rows(frame: pd.DataFrame, issues: list[str]) -> pd.DataFrame:
     return frame.loc[~is_total]
 
 
+#: A value that starts with a four-digit year — ISO, and unambiguous.
+_ISO_START = r"^\s*\d{4}-\d{1,2}-\d{1,2}"
+
+
+def _to_dates(values: pd.Series) -> pd.Series:
+    """Read a column of dates the way the person who typed them meant them.
+
+    Indian files write 12/08/2026 for 12 August, so anything ambiguous is read
+    day-first. An ISO date is not ambiguous, and reading "2026-08-12" day-first
+    turns it into 8 December — which is what happened to every date with a day
+    of 12 or less coming back from a typed-in book, a clean CSV or a parsed
+    WhatsApp order, putting sales into months that had not happened yet. So ISO
+    values are parsed as ISO, and only the rest take the day-first pass.
+    """
+    text = values.astype("string")
+    iso = text.str.match(_ISO_START, na=False)
+    out = _naive_ns(pd.to_datetime(values.where(~iso), errors="coerce", dayfirst=True,
+                                   format="mixed"))
+    if iso.any():
+        out[iso] = _naive_ns(pd.to_datetime(text[iso].str.strip(), errors="coerce",
+                                            format="ISO8601"))
+    return out
+
+
+def _naive_ns(dates: pd.Series) -> pd.Series:
+    """One dtype for both passes, so they can be combined.
+
+    pandas infers a resolution per call — a column of whole dates comes back as
+    seconds, one of Excel timestamps as microseconds — and refuses to write one
+    into the other. Nanoseconds and no time zone is what the rest of the engine
+    has always worked in.
+    """
+    try:
+        if dates.dt.tz is not None:
+            dates = dates.dt.tz_convert(None)
+    except AttributeError:                      # not datetime-like: coerce first
+        dates = pd.to_datetime(dates, errors="coerce", utc=True).dt.tz_convert(None)
+    return dates.astype("datetime64[ns]")
+
+
 def _coerce_types(frame: pd.DataFrame, issues: list[str]) -> pd.DataFrame:
     for column in frame.columns:
         if column in schema.NUMERIC_FIELDS:
@@ -136,9 +176,7 @@ def _coerce_types(frame: pd.DataFrame, issues: list[str]) -> pd.DataFrame:
                 )
             frame[column] = pd.to_numeric(converted, errors="coerce")
         elif column in schema.DATE_FIELDS:
-            converted = pd.to_datetime(
-                frame[column], errors="coerce", dayfirst=True, format="mixed"
-            )
+            converted = _to_dates(frame[column])
             unparsed = int(converted.isna().sum() - frame[column].isna().sum())
             if unparsed > 0:
                 issues.append(

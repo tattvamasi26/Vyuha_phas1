@@ -60,6 +60,20 @@ def _fmt(v: float) -> str:
     return f"₹{v:,.0f}"
 
 
+def _n(count: int, noun: str) -> str:
+    """"1 item", "3 items" — a sentence, not "3 item(s)"."""
+    return f"{count} {noun}{'' if count == 1 else 's'}"
+
+
+def _day(iso: str) -> str:
+    """"2026-09-12" as "12 Sep" — how a date reads in a sentence."""
+    try:
+        d = date.fromisoformat(str(iso)[:10])
+    except ValueError:
+        return str(iso)
+    return f"{d.day} {d:%b}"
+
+
 #: How the engine's alert codes read as something to do. The engine already
 #: ranks and phrases these for the client dashboard; Today needs a verb and a
 #: place to go, which the alert does not carry.
@@ -139,7 +153,8 @@ def findings(client, book, ledger, org, invoices=None) -> list[Finding]:
                      + (f", {len(gone) - 1 + len(low)} more are low"
                         if len(gone) + len(low) > 1 else ""))
         else:
-            title = f"{len(low)} item(s) are about to run out"
+            title = (f"{low[0].name} is about to run out" if len(low) == 1 else
+                     f"{len(low)} items are about to run out")
         out.append(Finding(
             key="stock", severity="critical" if gone else "warning",
             title=title,
@@ -172,7 +187,7 @@ def findings(client, book, ledger, org, invoices=None) -> list[Finding]:
         biggest = max(never, key=lambda i: i.value)
         out.append(Finding(
             key="dead", severity="warning",
-            title=f"{_fmt(locked)} is sitting in {len(never)} item(s) that never sold",
+            title=f"{_fmt(locked)} is sitting in {_n(len(never), 'item')} that never sold",
             detail=f"Most of it is {biggest.name} — {_fmt(biggest.value)}",
             action="See them", href=f"/c/{slug}/operations/alerts?show=dead", weight=locked,
             tags=["stock"]))
@@ -187,15 +202,33 @@ def findings(client, book, ledger, org, invoices=None) -> list[Finding]:
             weight=f.amount * 0.25,      # past spend is a weaker claim than money owed
             tags=["customers"]))
 
-    # ---- bills you owe, landing this week
+    # ---- bills you owe: any already late, and those landing this week.
+    # due_this_week() has no lower bound, so a bill that fell due last month is in
+    # "outgoing" as well — calling them all "due this week" told him a late bill was early.
     week = money_mod.due_this_week(book, ledger)
     if week["outgoing"]:
         due = week["outgoing_total"]
-        soonest = week["outgoing"][0]
+        bills, late = week["outgoing"], week["overdue_out"]
+        first = bills[0]                 # sorted by due date: the oldest late one, if any
+        who = first.party or first.category
+        noun = _n(len(bills), "supplier bill")
+        if len(late) == len(bills):
+            title = f"{noun} {'is' if len(bills) == 1 else 'are'} overdue — {_fmt(due)}"
+        elif late:
+            title = f"{noun} to pay — {_fmt(due)}, {len(late)} already late"
+        else:
+            title = f"{noun} due this week — {_fmt(due)}"
+        if late:
+            try:
+                days = (date.today() - date.fromisoformat(first.due_date[:10])).days
+                detail = f"Oldest: {who}, {_n(days, 'day')} late (was due {_day(first.due_date)})"
+            except ValueError:
+                detail = f"Oldest: {who}, was due {first.due_date}"
+        else:
+            detail = f"Next: {who}, due {_day(first.due_date)}"
         out.append(Finding(
-            key="payables", severity="warning" if week["overdue_out"] else "info",
-            title=f"{len(week['outgoing'])} supplier bill(s) due this week — {_fmt(due)}",
-            detail=f"Soonest: {soonest.party or soonest.category} on {soonest.due_date}",
+            key="payables", severity="warning" if late else "info",
+            title=title, detail=detail,
             action="See them", href=f"/c/{slug}/financials/position", weight=due,
             tags=["money"]))
 
@@ -206,7 +239,8 @@ def findings(client, book, ledger, org, invoices=None) -> list[Finding]:
         value = sum(s.amount for s in unbilled)
         out.append(Finding(
             key="unbilled", severity="info",
-            title=f"{len(unbilled)} credit sale(s) have no invoice — {_fmt(value)}",
+            title=(f"{_n(len(unbilled), 'credit sale')} "
+                   f"{'has' if len(unbilled) == 1 else 'have'} no invoice — {_fmt(value)}"),
             detail="A customer who has no bill has a reason not to pay",
             action="Raise bills", href=f"/c/{slug}/operations/invoices", weight=value * 0.5,
             tags=["billing"]))
@@ -237,7 +271,8 @@ def findings(client, book, ledger, org, invoices=None) -> list[Finding]:
     if register and unmarked:
         out.append(Finding(
             key="register", severity="info",
-            title=f"{len(unmarked)} of {len(register)} not marked in today",
+            title=("Today's register isn't marked yet" if len(unmarked) == len(register) else
+                   f"{len(unmarked)} of {len(register)} staff not marked in today"),
             detail="Takes ten seconds and the month adds up on its own",
             action="Mark the register", href=f"/c/{slug}/desk/register",
             weight=500, tags=["people"]))

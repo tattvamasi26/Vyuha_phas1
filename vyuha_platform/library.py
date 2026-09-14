@@ -370,6 +370,12 @@ def _iso(value) -> str:
     return text[:10] if text and text[0].isdigit() else ""
 
 
+def _sale_key(when, party, sku, qty, amount) -> tuple:
+    """What makes two sale lines the same sale, for de-duplicating a merge."""
+    return (when or "", (party or "").strip().lower(), sku or "",
+            round(float(qty or 0), 3), round(float(amount or 0), 2))
+
+
 def _frames(tables, kind):
     return [t.frame for t in tables if t.kind == kind and not t.frame.empty]
 
@@ -456,6 +462,13 @@ def materialise(tables, slug: str, *, replace: bool) -> dict:
                    for k, names in tally.items()}
 
     seen_bills = {s.id for s in book.sales}
+    # Merging into a typed-in book: a file sent twice must not count its sales
+    # twice. A line matching one already in the book on date, customer, item,
+    # quantity and amount is the same sale, whatever bill number it came with —
+    # the old rule minted a fresh F- number for every repeat and doubled them.
+    known = (set() if replace else
+             {_sale_key(s.date, s.party, s.sku, s.qty, s.amount) for s in book.sales})
+    counts["duplicates"] = 0
     for frame in _frames(tables, schema.SALES):
         for _i, row in frame.iterrows():
             qty = _num(row.get(schema.QTY), 0.0)
@@ -471,6 +484,15 @@ def materialise(tables, slug: str, *, replace: bool) -> dict:
             name = _clean_str(row.get(schema.ITEM))
             sku = _clean_str(row.get(schema.SKU))
             item = item_for(sku, name or sku)
+            when = _iso(row.get(schema.DATE))
+            party = (display.get(_clean_str(row.get("party_key")))
+                     or _clean_str(row.get(schema.PARTY)) or "Cash sale")
+            if not replace:
+                key = _sale_key(when, party, item.sku, qty or 1.0, amount)
+                if key in known:
+                    counts["duplicates"] += 1
+                    continue
+                known.add(key)
 
             bill = _clean_str(row.get(schema.INVOICE_NO))
             if not bill or bill in seen_bills:
@@ -480,9 +502,8 @@ def materialise(tables, slug: str, *, replace: bool) -> dict:
 
             book.sales.append(bk.Sale(
                 id=bill,
-                date=_iso(row.get(schema.DATE)),
-                party=(display.get(_clean_str(row.get("party_key")))
-                       or _clean_str(row.get(schema.PARTY)) or "Cash sale"),
+                date=when,
+                party=party,
                 sku=item.sku, item=item.name,
                 qty=qty or 1.0, rate=rate, amount=amount,
                 # A sales register records what was billed, not what was

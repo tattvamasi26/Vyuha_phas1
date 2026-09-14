@@ -526,11 +526,12 @@ def test_the_purge_list_names_every_per_slug_store():
     delete and lands on whoever reuses the slug.
     """
     from vyuha_platform import (books as b, followup, gate as g, invoice,
-                                money as m, notify as n, people as pp, routines as r)
+                                money as m, notify as n, onboarding as ob,
+                                people as pp, routines as r)
     declared = set(store.PER_SLUG)
     actual = {folder.name for folder in
               (b.BOOKS, m.MONEY, pp.PEOPLE, invoice.INVOICES, followup.FOLLOWUPS,
-               g.OUTBOX, n.NOTICES, r.ROUTINES)}
+               g.OUTBOX, n.NOTICES, r.ROUTINES, ob.ONBOARDING)}
     assert actual <= declared, f"not purged on delete: {sorted(actual - declared)}"
 
 

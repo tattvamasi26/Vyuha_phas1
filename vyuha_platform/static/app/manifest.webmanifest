@@ -1,0 +1,13 @@
+{
+  "name": "Vyuha",
+  "short_name": "Vyuha",
+  "description": "Your business — what needs you today, and how it is doing.",
+  "start_url": "/app",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f6f5f1",
+  "theme_color": "#5a44e0",
+  "icons": [
+    { "src": "/static/app/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

@@ -1,0 +1,9 @@
+<div x-data class="pointer-events-none fixed inset-x-0 bottom-24 z-[90] flex flex-col items-center gap-2 px-3 lg:bottom-6" aria-live="polite" aria-atomic="false">
+  <template x-for="t in $store.toasts.items" :key="t.id">
+    <div class="toast pointer-events-auto" :data-kind="t.kind" x-transition.opacity.duration.200ms role="status">
+      <span class="dot"></span>
+      <span x-text="t.text" class="min-w-0 flex-1"></span>
+      <button type="button" class="btn btn-ghost btn-icon btn-sm -mr-1 !text-current opacity-70 hover:opacity-100 hover:!bg-transparent" @click="$store.toasts.dismiss(t.id)" aria-label="Dismiss">{{ icon("x", "size-4") }}</button>
+    </div>
+  </template>
+</div>

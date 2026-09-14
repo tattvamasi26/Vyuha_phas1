@@ -1,0 +1,138 @@
+<div class="flex flex-col gap-6" data-testid="masters">
+
+  {# ---------------------------------------------------------------- items #}
+  <section class="card overflow-hidden" aria-labelledby="items-h">
+    <header class="flex flex-wrap items-center gap-3 border-b border-line px-5 py-4">
+      <span class="ring-tone tone-brand">{{ icon("package") }}</span>
+      <div class="min-w-0 flex-1">
+        <h3 id="items-h" class="font-bold">Items</h3>
+        <p class="text-sm text-ink-3">{{ items|length }} on the list. Opening stock is counted in stage 4.</p>
+      </div>
+    </header>
+    {% if items %}
+    <div class="scroll-x max-h-80">
+      <table class="table">
+        <thead><tr><th>Item</th><th>Category</th><th>Unit</th><th class="r">Sells at</th><th class="r">Costs</th><th class="r">Reorder at</th></tr></thead>
+        <tbody>
+          {% for i in items[:60] %}
+          <tr><td class="font-medium">{{ i.name }}</td><td class="text-ink-2">{{ i.category }}</td><td class="text-ink-2">{{ i.unit }}</td>
+              <td class="r mono">{{ i.rate|money }}</td><td class="r mono">{{ i.cost|money if i.cost else "—" }}</td><td class="r mono">{{ i.reorder_level|qty }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if items|length > 60 %}<p class="border-t border-line px-5 py-2.5 text-xs text-ink-3">Showing 60 of {{ items|length }}.</p>{% endif %}
+    {% else %}
+    <p class="px-5 py-6 text-sm text-ink-3">No items yet — tick some from the starter list below, or type their own.</p>
+    {% endif %}
+  </section>
+
+  {# ------------------------------------------------------ starter catalogue #}
+  <form method="post" action="/studio/{{ client.slug }}/masters/catalogue" class="card overflow-hidden" aria-labelledby="starter-h" data-testid="starter-form">
+    <header class="border-b border-line px-5 py-4">
+      <h3 id="starter-h" class="font-bold">Starter list for {{ trade.label|lower }}</h3>
+      <p class="text-sm text-ink-3">Tick what they sell, correct the price, add. Every value can change later.</p>
+    </header>
+    <div class="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
+      {% for row in suggestions %}
+      {% set s = row.s %}
+      <label class="flex gap-3 rounded-xl border border-line p-3 {{ 'opacity-60' if row.have else 'cursor-pointer hover:border-line-strong' }}" x-data="{ on: false }" :class="on && '!border-brand bg-brand-soft/40'">
+        <input type="checkbox" class="check mt-0.5" name="pick" value="{{ row.i }}" x-model="on" {% if row.have %}disabled{% endif %}>
+        <span class="min-w-0 flex-1">
+          <span class="flex items-center justify-between gap-2">
+            <span class="truncate font-semibold">{{ s.name }}</span>
+            {% if row.have %}<span class="badge tone-ok">Added</span>{% endif %}
+          </span>
+          <span class="block text-xs text-ink-3">{{ s.category }}</span>
+          <span class="mt-2 grid grid-cols-3 gap-1.5" x-show="on" x-cloak>
+            <input class="input input-sm !h-8 !px-2" name="unit_{{ row.i }}" value="{{ s.unit }}" aria-label="Unit for {{ s.name }}">
+            <input class="input input-sm !h-8 !px-2" name="rate_{{ row.i }}" value="{{ s.rate|int }}" inputmode="decimal" aria-label="Selling price for {{ s.name }}">
+            <input class="input input-sm !h-8 !px-2" name="cost_{{ row.i }}" value="{{ s.cost|int }}" inputmode="decimal" aria-label="Cost for {{ s.name }}">
+          </span>
+          <span class="mt-1 block text-xs text-ink-2" x-show="!on">₹{{ s.rate|int }} a {{ s.unit }}</span>
+        </span>
+      </label>
+      {% endfor %}
+    </div>
+    <div class="flex justify-end border-t border-line px-5 py-3">
+      <button class="btn btn-primary">{{ icon("plus", "size-4") }}Add ticked items</button>
+    </div>
+  </form>
+
+  {# ------------------------------------------------------------ quick grid #}
+  <form method="post" action="/studio/{{ client.slug }}/masters/items" class="card overflow-hidden" aria-labelledby="own-h"
+        x-data="rows({ name: '', category: '', unit: 'piece', rate: '', cost: '', reorder: '' }, 3)" data-testid="items-grid">
+    <header class="border-b border-line px-5 py-4">
+      <h3 id="own-h" class="font-bold">Add their own items</h3>
+      <p class="text-sm text-ink-3">Type as many as you like. Blank rows are ignored.</p>
+    </header>
+    <div class="scroll-x">
+      <table class="table min-w-[680px]">
+        <thead><tr><th class="w-[30%]">Item name</th><th>Category</th><th>Unit</th><th class="r">Sells at ₹</th><th class="r">Costs ₹</th><th class="r">Reorder at</th><th></th></tr></thead>
+        <tbody>
+          <template x-for="(r, i) in rows" :key="i">
+            <tr>
+              <td><input class="input input-sm" name="name" x-model="r.name" placeholder="e.g. Urea 50kg" :aria-label="'Item name, row ' + (i + 1)"></td>
+              <td><input class="input input-sm" name="category" x-model="r.category" placeholder="Fertiliser" aria-label="Category"></td>
+              <td><input class="input input-sm !w-24" name="unit" x-model="r.unit" aria-label="Unit"></td>
+              <td><input class="input input-sm text-right" name="rate" x-model="r.rate" inputmode="decimal" aria-label="Selling price"></td>
+              <td><input class="input input-sm text-right" name="cost" x-model="r.cost" inputmode="decimal" aria-label="Cost"></td>
+              <td><input class="input input-sm !w-24 text-right" name="reorder" x-model="r.reorder" inputmode="decimal" aria-label="Reorder level"></td>
+              <td><button type="button" class="btn btn-ghost btn-icon btn-sm" @click="remove(i)" aria-label="Remove row">{{ icon("x", "size-4") }}</button></td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+    <div class="flex flex-wrap justify-between gap-2 border-t border-line px-5 py-3">
+      <button type="button" class="btn btn-ghost" @click="add()">{{ icon("plus", "size-4") }}Another row</button>
+      <button class="btn btn-primary">Save items</button>
+    </div>
+  </form>
+
+  {# ---------------------------------------------------- branches and staff #}
+  <div class="grid gap-6 xl:grid-cols-2">
+    <section class="card overflow-hidden" aria-labelledby="branches-h">
+      <header class="flex items-center gap-3 border-b border-line px-5 py-4">
+        <span class="ring-tone tone-dim">{{ icon("store") }}</span>
+        <div><h3 id="branches-h" class="font-bold">Branches</h3><p class="text-sm text-ink-3">Only if there is more than one place of business.</p></div>
+      </header>
+      {% if branches %}
+      <ul class="divide">
+        {% for b in branches %}<li class="px-5 py-3"><p class="font-semibold">{{ b.name }}</p><p class="text-xs text-ink-3">{{ b.place or "—" }}{% if b.manager %} · {{ b.manager }}{% endif %}</p></li>{% endfor %}
+      </ul>
+      {% endif %}
+      <form method="post" action="/studio/{{ client.slug }}/masters/branch" class="grid gap-3 border-t border-line p-5 sm:grid-cols-3">
+        <input class="input input-sm" name="name" placeholder="Branch name" required aria-label="Branch name">
+        <input class="input input-sm" name="place" placeholder="Where" aria-label="Where">
+        <div class="flex gap-2"><input class="input input-sm" name="manager" placeholder="Manager" aria-label="Manager"><button class="btn btn-secondary btn-sm !h-9">Add</button></div>
+      </form>
+    </section>
+
+    <section class="card overflow-hidden" aria-labelledby="staff-h">
+      <header class="flex items-center gap-3 border-b border-line px-5 py-4">
+        <span class="ring-tone tone-dim">{{ icon("users") }}</span>
+        <div><h3 id="staff-h" class="font-bold">Staff</h3><p class="text-sm text-ink-3">Their role decides which alerts reach them.</p></div>
+      </header>
+      {% if staff %}
+      <ul class="divide">
+        {% for p in staff %}<li class="flex items-center justify-between gap-3 px-5 py-3"><span><span class="font-semibold">{{ p.name }}</span><span class="block text-xs text-ink-3">{{ p.role }}{% if p.branch %} · {{ branch_name.get(p.branch, "") }}{% endif %}</span></span>{% if p.phone %}<span class="mono text-xs text-ink-3">+{{ p.phone }}</span>{% endif %}</li>{% endfor %}
+      </ul>
+      {% endif %}
+      <form method="post" action="/studio/{{ client.slug }}/masters/staff" class="grid gap-3 border-t border-line p-5 sm:grid-cols-2">
+        <input class="input input-sm" name="name" placeholder="Name" required aria-label="Staff name">
+        <select class="select input-sm" name="role" aria-label="Role">{% for r in roles %}<option {% if r == "Salesperson" %}selected{% endif %}>{{ r }}</option>{% endfor %}</select>
+        {% if branches %}<select class="select input-sm" name="branch" aria-label="Branch"><option value="">No branch</option>{% for b in branches %}<option value="{{ b.id }}">{{ b.name }}</option>{% endfor %}</select>{% endif %}
+        <div class="flex gap-2 {{ '' if branches else 'sm:col-span-2' }}"><input class="input input-sm" name="phone" placeholder="WhatsApp" inputmode="tel" aria-label="WhatsApp number"><button class="btn btn-secondary btn-sm !h-9">Add</button></div>
+      </form>
+    </section>
+  </div>
+
+  <section class="card flex gap-3 p-5" style="background: var(--surface-2)">
+    <span class="ring-tone tone-brand">{{ icon("users") }}</span>
+    <div>
+      <p class="font-semibold">Customers and suppliers</p>
+      <p class="text-sm text-ink-2">Proper customer and supplier lists — phone, GSTIN, credit terms, opening balances — arrive with the new data core in Phase 2. Until then, customers are picked up from sales as they are recorded.</p>
+    </div>
+  </section>
+</div>

@@ -1,0 +1,85 @@
+<form method="post" action="/studio/{{ client.slug }}/datamap" class="flex flex-col gap-5" data-testid="datamap-form">
+  <div class="card flex gap-3 p-4 text-sm text-ink-2" style="background: var(--info-soft); border-color: color-mix(in oklab, var(--info) 22%, var(--line))">
+    {{ icon("info", "size-5 text-info mt-0.5") }}
+    <p>Ask the owner how each kind of record is kept today. The answers decide how the history comes in (stage 5) and how new records keep flowing (stage 7). “Not kept” is a perfectly good answer.</p>
+  </div>
+
+  <div class="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+    <div class="flex flex-col gap-3">
+      {% for key, label, hint in domains %}
+      {% set a = answers[key] %}
+      <fieldset class="card p-4 sm:p-5" x-data="{ src: '{{ a.source }}' }" data-testid="domain-{{ key }}">
+        <legend class="sr-only">{{ label }}</legend>
+        <div class="flex flex-wrap items-baseline justify-between gap-2">
+          <p class="font-semibold">{{ label }} <span class="font-normal text-ink-3">· {{ hint }}</span></p>
+          <span x-show="src" x-cloak class="badge tone-ok">{{ icon("check", "size-3") }}Answered</span>
+        </div>
+        <div class="mt-3 flex flex-wrap gap-2" role="radiogroup" aria-label="Where {{ label|lower }} are kept">
+          {% for value, text in sources %}
+          <label class="choice"><input type="radio" name="src_{{ key }}" value="{{ value }}" x-model="src" {% if a.source == value %}checked{% endif %}>{{ text }}</label>
+          {% endfor %}
+        </div>
+        <div x-show="src && src !== 'none'" x-cloak class="mt-4 grid gap-3 sm:grid-cols-3">
+          <div class="field" x-show="src === 'software'">
+            <label class="label" for="sw-{{ key }}">Which software</label>
+            <input class="input input-sm" id="sw-{{ key }}" name="software_{{ key }}" value="{{ a.software }}" placeholder="e.g. Busy, Marg, Vyapar">
+          </div>
+          <div class="field">
+            <label class="label" for="since-{{ key }}">Goes back to</label>
+            <input class="input input-sm" id="since-{{ key }}" type="month" name="since_{{ key }}" value="{{ a.since }}">
+          </div>
+          <div class="field">
+            <label class="label" for="keeper-{{ key }}">Kept by</label>
+            <input class="input input-sm" id="keeper-{{ key }}" name="keeper_{{ key }}" value="{{ a.keeper }}" placeholder="e.g. owner's son">
+          </div>
+          <div class="field">
+            <label class="label" for="cad-{{ key }}">How often</label>
+            <select class="select input-sm" id="cad-{{ key }}" name="cadence_{{ key }}">
+              <option value="">—</option>
+              {% for v, t in cadences %}<option value="{{ v }}" {% if a.cadence == v %}selected{% endif %}>{{ t }}</option>{% endfor %}
+            </select>
+          </div>
+        </div>
+        {% if a.notes %}<input type="hidden" name="notes_{{ key }}" value="{{ a.notes }}">{% endif %}
+      </fieldset>
+      {% endfor %}
+    </div>
+
+    <aside class="flex flex-col gap-4 xl:sticky xl:top-24">
+      <div class="card flex flex-col gap-4 p-5">
+        <p class="font-semibold">The cut-over</p>
+        <div class="field">
+          <label class="label" for="cutover">Cut-over date</label>
+          <input class="input" id="cutover" name="cutover" type="date" value="{{ cutover_value }}">
+          <span class="hint">Stock, dues and cash are counted on this day. Before it is history; after it is the running record.</span>
+        </div>
+        <div class="field">
+          <label class="label" for="history">History to bring in</label>
+          <select class="select" id="history" name="history_months">
+            {% for n, t in history_choices %}<option value="{{ n }}" {% if n == record.history_months %}selected{% endif %}>{{ t }}</option>{% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div class="card overflow-hidden" data-testid="import-plan">
+        <p class="border-b border-line px-5 py-3.5 font-semibold">What this means</p>
+        <ul class="divide">
+          {% for row in plan %}
+          <li class="px-5 py-3">
+            <p class="flex items-center justify-between gap-2 text-sm font-semibold">{{ row.label }}{% if row.source %}<span class="badge tone-brand">{{ row.source }}</span>{% else %}<span class="badge tone-dim">Not asked</span>{% endif %}</p>
+            {% if row.source %}
+            <p class="mt-1 text-xs text-ink-2"><span class="font-semibold text-ink">History:</span> {{ row.history }}{% if row.since %} (from {{ row.since }}){% endif %}</p>
+            <p class="mt-0.5 text-xs text-ink-2"><span class="font-semibold text-ink">From now on:</span> {{ row.ongoing }}</p>
+            {% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </aside>
+  </div>
+
+  <div class="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+    <button class="btn btn-secondary" name="advance" value="">Save</button>
+    <button class="btn btn-primary" name="advance" value="1">Save and continue{{ icon("arrow-right", "size-4") }}</button>
+  </div>
+</form>

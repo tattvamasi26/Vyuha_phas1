@@ -1,0 +1,40 @@
+{% extends "layouts/studio.html" %}
+{% block content %}
+<div class="mx-auto flex max-w-2xl flex-col gap-6" data-testid="studio-new">
+  <header>
+    <a href="/studio" class="inline-flex items-center gap-1.5 text-sm font-semibold text-ink-3 hover:text-ink">{{ icon("arrow-left", "size-4") }}Businesses</a>
+    <h1 class="mt-3 text-2xl font-bold sm:text-3xl">Onboard a business</h1>
+    <p class="mt-1 text-ink-2">Three things to start. Everything else is gathered stage by stage — nothing here is final.</p>
+  </header>
+
+  <form method="post" action="/studio/new" class="card flex flex-col gap-5 p-5 sm:p-7">
+    <div class="field">
+      <label class="label" for="name">Business name</label>
+      <input class="input" id="name" name="name" required autofocus autocomplete="organization" placeholder="e.g. Shree Engineering Traders">
+    </div>
+    <div class="grid gap-5 sm:grid-cols-2">
+      <div class="field">
+        <label class="label" for="contact">Owner's name</label>
+        <input class="input" id="contact" name="contact" autocomplete="name" placeholder="Who Vyuha greets on the Home screen">
+      </div>
+      <div class="field">
+        <label class="label" for="phone">Owner's WhatsApp</label>
+        <input class="input" id="phone" name="phone" inputmode="tel" autocomplete="tel" placeholder="98765 43210">
+        <span class="hint">Ten digits assume +91. Alerts and the private link go here.</span>
+      </div>
+    </div>
+    <div class="field">
+      <label class="label" for="trade">Kind of business</label>
+      <select class="select" id="trade" name="trade">
+        <option value="">Work it out from the name</option>
+        {% for key, t in trades %}<option value="{{ key }}">{{ t.label }}</option>{% endfor %}
+      </select>
+      <span class="hint">Picks the starter item list in stage 3. Easy to change later.</span>
+    </div>
+    <div class="flex flex-col-reverse gap-3 border-t border-line pt-5 sm:flex-row sm:justify-end">
+      <a href="/studio" class="btn btn-ghost">Cancel</a>
+      <button class="btn btn-primary btn-lg">Create and start the data map{{ icon("arrow-right", "size-4") }}</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

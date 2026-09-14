@@ -1,0 +1,27 @@
+{% if question %}
+<div class="flex justify-end">
+  <p class="max-w-[85%] rounded-2xl rounded-br-md bg-brand px-4 py-2.5 text-sm text-brand-ink">{{ question }}</p>
+</div>
+<div class="flex gap-3" data-testid="assistant-answer">
+  <span class="ring-tone tone-brand !size-8 !rounded-lg">{{ icon("sparkles", "size-4") }}</span>
+  <div class="min-w-0 flex-1">
+    {% if reply and reply.ok %}
+    <div class="prose-ans rounded-2xl rounded-tl-md border border-line bg-surface-2 px-4 py-3 text-sm">{{ reply.text }}</div>
+    <p class="mt-1.5 flex flex-wrap items-center gap-2 text-[0.6875rem] text-ink-3">
+      {{ reply.label }}{% if reply.used %} · looked at {{ reply.used|join(", ")|replace("_", " ") }}{% endif %}
+    </p>
+    {% if reply.deck %}
+    <div class="mt-2 flex flex-wrap gap-2">
+      <a class="btn btn-soft btn-sm" href="{{ reply.deck }}" target="_blank" rel="noopener">{{ icon("eye", "size-4") }}Open the deck</a>
+      <a class="btn btn-secondary btn-sm" href="/c/{{ client.slug }}/deck/pptx">{{ icon("file-text", "size-4") }}PowerPoint</a>
+      <a class="btn btn-secondary btn-sm" href="/c/{{ client.slug }}/deck/pdf">{{ icon("file-text", "size-4") }}PDF</a>
+    </div>
+    {% endif %}
+    {% else %}
+    <div class="rounded-2xl rounded-tl-md border px-4 py-3 text-sm" style="border-color: color-mix(in oklab, var(--bad) 30%, var(--line)); background: var(--bad-soft); color: var(--ink)">
+      {{ (reply.error if reply else "") or "That could not be answered." }}
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}

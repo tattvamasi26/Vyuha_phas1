@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>{% if title %}{{ title }} · {% endif %}{{ client.name if client else "Vyuha" }}</title>
+<meta name="theme-color" content="#f6f5f1">
+<meta name="htmx-config" content='{"includeIndicatorStyles": false}'>
+<link rel="icon" href="/static/app/icon.svg" type="image/svg+xml">
+<link rel="manifest" href="/static/app/manifest.webmanifest">
+<link rel="stylesheet" href="/static/app/app.css?v={{ asset_v() }}">
+<script>
+  (function () { try { if (localStorage.getItem("vy-theme") === "dark") document.documentElement.classList.add("dark"); } catch (e) {} })();
+</script>
+<script defer src="/static/app/vendor/htmx.min.js"></script>
+<script defer src="/static/app/vendor/alpine-focus.min.js"></script>
+<script defer src="/static/app/js/app.js?v={{ asset_v() }}"></script>
+<script defer src="/static/app/vendor/alpine.min.js"></script>
+</head>
+<body x-data data-flash="{{ flash or '' }}" data-flash-kind="{{ flash_kind or 'ok' }}" data-area="{{ area or '' }}">
+{% block body %}{% endblock %}
+{% include "partials/toasts.html" %}
+</body>
+</html>

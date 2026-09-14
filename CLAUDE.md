@@ -42,6 +42,10 @@ python -m venv .venv
 .venv/Scripts/python -m tests.test_invoice      # 19 invoice tests: tax, numbering, document
 .venv/Scripts/python -m tests.test_library      # 22 tests over many files at once
 .venv/Scripts/python -m tests.test_agents       # 49 agent-lane tests: gate, notify, routines
+.venv/Scripts/python -m tests.test_web          # 22 tests: new site, Studio, Phase 1 data fixes
+
+.venv/Scripts/python -m vyuha_platform css      # rebuild the new site's CSS (add --watch while editing templates)
+.venv/Scripts/python tools/fetch_assets.py      # pinned HTMX/Alpine/fonts/icons + the Tailwind CLI
 ```
 
 **Tests.** Each suite is its own runner — pytest is not installed — which calls every `test_*` function in the module and prints `N passed, M failed`. There is no name filter, so to run **one test**, import the module and call it. The suites that sign up a throwaway account at import (platform, console, invoice, library, agents) need `_cleanup()` afterwards, or the account stays in `accounts.json`:
@@ -439,6 +443,44 @@ needs them. All are installed in `.venv`; **none are declared in `pyproject.toml
   instead of typing forty rows into a blank table, plus the generated SVG item glyphs
   (`glyph_for()`) — drawings rather than photos, for the same offline, never-404 reasons as the
   trade fallbacks.
+
+## The new site (`vyuha_platform/web/`) — the UX rewire, Phase 1
+
+A full rewire of the product's UI is under way, one phase at a time. The approved plan (seven phases:
+data core v2 on SQLite per business, communication core, the site's sections, the assistant,
+continuous feeds, cutover) lives at `C:\Users\HP\.claude\plans\wise-wiggling-ripple.md`; the
+feature file is `requirements/01-features/02-ux-rewire.md`. Phase 1 — the shell, Home and the
+Onboarding Studio — is built and runs **beside** the classic screens, which stay until cutover.
+
+- **Stack:** Jinja2 templates + HTMX + Alpine.js + Tailwind v4, all served from `/static/app`
+  (no CDN at runtime). `web/assets/app.css` holds the design tokens (CSS variables, light by
+  default, `.dark` on `<html>`) and a few plain-CSS components; `python -m vyuha_platform css`
+  compiles it to `static/app/app.css`, which is committed so running the app needs no build.
+  GitHub is blocked from the founder's network, so `tools/fetch_assets.py` falls back to the npm
+  build of Tailwind under Node; `web/build.py` then writes `tools/tailwind/entry.css` with the
+  relative paths re-pointed, because that build resolves `@import "tailwindcss"` from the input
+  file's own folder.
+- **Routes:** `/app/<slug>` (Home), `/app/<slug>/<section>/<page>` (placeholders that say what is
+  coming and open the classic screen doing that job today), `POST /app/<slug>/assistant` (the
+  existing `agent.investigate` loop, answered into a slide-over), `/studio` + `/studio/<slug>/<stage>`
+  (operators and masters only), `/styleguide`. Mounted in `app.py` right after the static mount;
+  the paths overlap nothing classic.
+- **Data as data:** `web/nav.py` is the site map (sections, pages, blurbs, the classic screen for
+  each); `onboarding.py` holds the eight stages, the data-map interview (8 domains × where the
+  record lives) and a per-business JSON record (in `store.PER_SLUG`). Stage status is derived from
+  the business wherever possible, never only stored.
+- **Access:** `access.py` restates the classic isolation rules once — `workspace(account, slug)` is
+  the only way a new route resolves a business.
+- **Gotchas already hit:** `<body x-data>` is what makes Alpine directives work anywhere in the
+  page; `.grid > * { min-width: 0 }` stops one truncated line widening a phone layout; a context key
+  named `items` on a dict resolves to the dict method in Jinja, and a variable named like an
+  imported macro (`empty`) is shadowed by it.
+- **Phase 1 data fixes** (in the engine and platform, not only the new UI): ISO dates are parsed as
+  ISO before the day-first pass, and both passes are normalised to one dtype (`vyuha/clean.py`);
+  `books.to_workbook` writes real date cells; an invoice refuses sales from different customers
+  (`invoice.from_sales`); an upload-mode business re-reads every file it ever sent, with
+  conversions kept in `uploads/<slug>/_converted/` (`app._source_files`), and a books-mode merge
+  skips sale lines it already holds (`library.materialise`).
 
 ## Accounts, and the flow through the product
 

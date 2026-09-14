@@ -1,0 +1,56 @@
+{% set plans = {
+  "opening": {
+    "points": ["Pick the cut-over date from the data map — usually the 1st of a month",
+               "Count stock on the shelf: a printable count sheet, or count on the phone",
+               "List who owes the business and whom it owes, with dates",
+               "Enter cash in hand and each bank balance"],
+    "why": "Every statement ties out from day one, instead of pretending the business started when Vyuha did.",
+    "meanwhile": [("Set stock levels", "setup/levels"), ("Count stock", "operations/alerts")]},
+  "history": {
+    "points": ["Files: drop them in as they are — Vyuha reads them, shows what it understood, and you confirm before anything is saved",
+               "Paper: photograph register pages or bills; Vyuha reads them and you check each row beside its photo",
+               "Or type pages into a fast keyboard-first grid, with the page total as a check",
+               "Every batch can be undone"],
+    "why": "History is what makes the first month's comparisons, trends and dead-stock findings real.",
+    "meanwhile": [("Send files (classic)", "data/sources"), ("Type entries (classic)", "operations/record")]},
+  "signoff": {
+    "points": ["A months × records heatmap shows what is in and where the gaps are",
+               "Checks for duplicates, negative stock and payments with no bill",
+               "Monthly totals the owner confirms: “does ₹5.2 crore for last year sound right?”"],
+    "why": "Nobody trusts a dashboard they never agreed to. The owner's yes is the start of it.",
+    "meanwhile": [("What was read (classic)", "data/readback")]},
+  "feeds": {
+    "points": ["For each kind of record, how new data arrives: typed in, files on a schedule, WhatsApp forwarding or Tally sync",
+               "Who is responsible, and how often it should come",
+               "A reminder goes out when a file is late; every feed shows its health"],
+    "why": "Onboarding is a week; the business is years. This is what keeps the numbers from going stale.",
+    "meanwhile": [("Routine jobs (classic)", "setup/routines")]},
+  "golive": {
+    "points": ["Staff get their own access links, with what their role may see",
+               "Decide who is told about what — stock to the manager, money to the accountant",
+               "The morning brief is scheduled; the owner gets a welcome with his link and PIN",
+               "A go-live checklist confirms nothing was missed"],
+    "why": "The owner's first morning on Vyuha should already be useful.",
+    "meanwhile": [("Private link and PIN (classic)", "setup/access"), ("Who gets told (classic)", "messages/notices")]},
+} %}
+{% set p = plans.get(stage.key) %}
+<div class="card overflow-hidden" data-testid="stage-later">
+  <div class="grid gap-6 p-5 sm:p-7 md:grid-cols-[minmax(0,1fr)_260px]">
+    <div>
+      <p class="eyebrow">What happens here · arrives in Phase {{ stage.phase }}</p>
+      <ul class="mt-3 flex flex-col gap-2.5">
+        {% for point in p.points %}
+        <li class="flex gap-3 text-ink-2">{{ icon("circle-dot", "size-4 mt-1 text-brand") }}<span>{{ point }}</span></li>
+        {% endfor %}
+      </ul>
+      <p class="mt-4 rounded-xl bg-surface-2 p-3 text-sm text-ink-2"><span class="font-semibold text-ink">Why:</span> {{ p.why }}</p>
+    </div>
+    <div class="flex flex-col gap-2 rounded-2xl bg-surface-2 p-4">
+      <p class="text-sm font-semibold">Meanwhile</p>
+      <p class="text-xs text-ink-3">The classic screens already do part of this.</p>
+      {% for label, href in p.meanwhile %}
+      <a href="/c/{{ client.slug }}/{{ href }}" class="btn btn-secondary btn-sm justify-between">{{ label }}{{ icon("external-link", "size-3.5") }}</a>
+      {% endfor %}
+    </div>
+  </div>
+</div>

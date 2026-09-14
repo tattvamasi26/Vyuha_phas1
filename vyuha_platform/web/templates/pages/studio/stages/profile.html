@@ -1,0 +1,64 @@
+<form method="post" action="/studio/{{ client.slug }}/profile" class="card flex flex-col gap-5 p-5 sm:p-7" data-testid="profile-form">
+  <div class="grid gap-5 md:grid-cols-2">
+    <div class="field md:col-span-2">
+      <label class="label" for="name">Business name</label>
+      <input class="input" id="name" name="name" value="{{ client.name }}" required autocomplete="organization">
+    </div>
+    <div class="field">
+      <label class="label" for="contact">Owner's name</label>
+      <input class="input" id="contact" name="contact" value="{{ client.contact }}" autocomplete="name">
+    </div>
+    <div class="field">
+      <label class="label" for="phone">Owner's WhatsApp</label>
+      <input class="input" id="phone" name="phone" value="{{ client.phone }}" inputmode="tel" autocomplete="tel" placeholder="98765 43210">
+      <span class="hint">Alerts, the morning brief and the private link go here.</span>
+    </div>
+    <div class="field">
+      <label class="label" for="email">Email <span class="font-normal text-ink-3">— optional</span></label>
+      <input class="input" id="email" name="email" type="email" value="{{ client.email }}" autocomplete="email">
+    </div>
+    <div class="field">
+      <label class="label" for="trade">Kind of business</label>
+      <select class="select" id="trade" name="trade">
+        {% for key, t in trades %}<option value="{{ key }}" {% if key == client.trade %}selected{% endif %}>{{ t.label }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="field md:col-span-2">
+      <label class="label" for="industry">What they sell, in their words</label>
+      <input class="input" id="industry" name="industry" value="{{ client.industry }}" placeholder="e.g. Fertiliser, seeds and farm hardware">
+    </div>
+  </div>
+
+  <div class="border-t border-line pt-5">
+    <p class="mb-4 font-semibold">For tax invoices</p>
+    <div class="grid gap-5 md:grid-cols-2">
+      <div class="field">
+        <label class="label" for="gstin">GSTIN <span class="font-normal text-ink-3">— if registered</span></label>
+        <input class="input uppercase" id="gstin" name="gstin" value="{{ client.gstin }}" maxlength="15" placeholder="29ABCDE1234F1Z5" autocomplete="off">
+      </div>
+      <div class="field">
+        <label class="label" for="state">State</label>
+        <select class="select" id="state" name="state">
+          <option value="">Choose the state</option>
+          {% for code, name in states_list %}<option value="{{ code }}" {% if code == client.state %}selected{% endif %}>{{ name }}</option>{% endfor %}
+        </select>
+        <span class="hint">Decides CGST + SGST or IGST on every invoice.</span>
+      </div>
+      <div class="field md:col-span-2">
+        <label class="label" for="address">Business address</label>
+        <textarea class="textarea" id="address" name="address" rows="3" autocomplete="street-address">{{ client.address }}</textarea>
+      </div>
+      <div class="field">
+        <label class="label" for="fy">Financial year starts in</label>
+        <select class="select" id="fy" name="fy_start_month">
+          {% for n, m in months %}<option value="{{ n }}" {% if n == record.fy_start_month %}selected{% endif %}>{{ m }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <div class="flex flex-col-reverse gap-3 border-t border-line pt-5 sm:flex-row sm:justify-end">
+    <button class="btn btn-secondary" name="advance" value="">Save</button>
+    <button class="btn btn-primary" name="advance" value="1">Save and continue{{ icon("arrow-right", "size-4") }}</button>
+  </div>
+</form>

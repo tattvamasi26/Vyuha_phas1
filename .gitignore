@@ -7,3 +7,6 @@ dist/
 out/
 vyuha_data/
 demo/samples/bulk/
+tools/bin/
+tools/tailwind/node_modules/
+tools/tailwind/entry.css

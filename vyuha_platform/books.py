@@ -439,6 +439,15 @@ def mark_paid(slug: str, sale_id: str) -> tuple[Book, str]:
 
 # ----------------------------------------------------- hand it to the engine
 
+def _as_date(text: str):
+    """A real date cell rather than text, so nothing downstream has to guess
+    which of 2026-08-12's numbers is the month."""
+    try:
+        return datetime.fromisoformat(text).date() if text else text
+    except ValueError:
+        return text
+
+
 def to_workbook(book: Book, out: Path) -> Path:
     """Write the ledger as a workbook the engine reads with no special case.
 
@@ -456,7 +465,8 @@ def to_workbook(book: Book, out: Path) -> Path:
     sales.title = "Sales Register"
     sales.append(["Date", "Invoice No.", "Party Name", "SKU", "Item", "Qty", "Rate", "Amount"])
     for s in book.sales:
-        sales.append([s.date, s.id, s.party, s.sku, s.item, s.qty, s.rate, s.amount])
+        sales.append([_as_date(s.date), s.id, s.party, s.sku, s.item, s.qty, s.rate,
+                      s.amount])
 
     stock = wb.create_sheet("Stock Statement")
     stock.append(["SKU", "Item", "Category", "Closing Stock", "Reorder Level", "Rate"])
@@ -469,7 +479,8 @@ def to_workbook(book: Book, out: Path) -> Path:
         due = wb.create_sheet("Outstanding")
         due.append(["Date", "Invoice No.", "Party Name", "Due Date", "Outstanding"])
         for s in credit:
-            due.append([s.date, s.id, s.party, s.due_date or s.date, s.amount])
+            due.append([_as_date(s.date), s.id, s.party,
+                        _as_date(s.due_date or s.date), s.amount])
 
     for sheet in wb.worksheets:
         for col, cell in enumerate(sheet[1], start=1):
