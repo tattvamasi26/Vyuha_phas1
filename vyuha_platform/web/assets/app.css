@@ -427,6 +427,32 @@
   .table td { padding: 0.625rem 0.75rem; border-bottom: 1px solid var(--line); vertical-align: middle; }
   .table tr:last-child td { border-bottom: 0; }
   .table .r { text-align: right; }
+  .table td.num, .table th.num { font-variant-numeric: tabular-nums; }
+  @media (hover: hover) { .table tbody tr:hover td { background: var(--surface-2); } }
+  .table tbody tr[aria-selected="true"] td { background: var(--brand-soft); }
+  .rowlink { font-weight: 600; color: var(--ink); }
+  .rowlink:hover { color: var(--brand-strong); text-decoration: underline; text-underline-offset: 3px; }
+
+  /* labelled columns — the laptop pages' month-by-month charts */
+  .cols { display: block; width: 100%; height: auto; min-width: 36rem; overflow: visible; }
+  .cols rect { fill: var(--brand); opacity: 0.82; transition: opacity 0.15s; }
+  .cols g:hover rect { opacity: 1; }
+  .cols .cols-part rect { opacity: 0.32; }
+  .cols-base { stroke: var(--line-strong); stroke-width: 1; }
+  .cols-label { fill: var(--ink-3); font: 500 12px var(--font-sans); }
+  .cols-value { fill: var(--ink-2); font: 600 11.5px var(--font-mono); }
+
+  /* stock on the shelf against its reorder mark */
+  .level { position: relative; height: 0.4rem; min-width: 6rem; border-radius: 999px; background: var(--sunken); }
+  .level > i { display: block; height: 100%; border-radius: 999px; background: var(--ok); }
+  .level.is-low > i { background: var(--warn); }
+  .level.is-out > i { background: var(--bad); }
+  .level.is-dead > i { background: var(--info); }
+  .level > u {
+    position: absolute; top: -0.22rem; bottom: -0.22rem; width: 2px; margin-left: -1px;
+    border-radius: 2px; background: var(--ink-2);
+  }
+  summary::-webkit-details-marker { display: none; }
   .scroll-x { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
   /* findings: the Home's ranked list */

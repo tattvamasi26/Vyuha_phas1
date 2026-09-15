@@ -1,0 +1,63 @@
+{% extends "layouts/section.html" %}
+{% from "components/ui.html" import stat, card_head, empty, delta %}
+{% block actions %}
+<a href="/app/{{ client.slug }}/operations/record" class="btn btn-primary">{{ icon("plus", "size-4") }}Record a sale</a>
+{% endblock %}
+{% block page %}
+{% set app = "/app/" ~ client.slug %}
+{% if no_sales %}
+<section class="card">
+  {% call empty("No sales yet", "Record a sale, or send the file you already keep — this page fills in from there.", "receipt", "brand") %}
+  <a href="{{ app }}/operations/record" class="btn btn-primary">Record a sale</a>
+  {% endcall %}
+</section>
+{% else %}
+<section class="grid grid-cols-2 gap-4 xl:grid-cols-4" aria-label="Sales figures" data-testid="sales-stats">
+  {% for s in stats %}{{ stat(s.label, s.value, s.sub, s.icon, s.tone) }}{% endfor %}
+</section>
+
+<section class="card overflow-hidden" aria-labelledby="months-h" data-testid="sales-chart">
+  <header class="flex flex-wrap items-end justify-between gap-3 px-5 pt-4">
+    <div>
+      <h2 id="months-h" class="text-base font-bold">Month by month</h2>
+      <p class="text-xs text-ink-3">Revenue over the last 12 months · this month is lighter because it is not over yet</p>
+    </div>
+    <div class="flex items-center gap-2">
+      <span class="text-xs text-ink-3">This month so far</span>
+      <span class="figure text-xl">{{ this_month|money_short }}</span>
+      {{ delta(change) }}
+    </div>
+  </header>
+  <div class="scroll-x px-4 pb-3 pt-3">{{ chart }}</div>
+</section>
+
+<div class="grid gap-6 lg:grid-cols-2">
+  {% for title, rows, col, href, link in [("What sells", top_items, "Item", app ~ "/analytics/explore", "Explore"), ("Who buys", top_party, "Customer", app ~ "/sales/customers", "All customers")] %}
+  <section class="card overflow-hidden">
+    {{ card_head(title, "Top 8 by revenue, all time", href, link) }}
+    <div class="scroll-x">
+      <table class="table">
+        <thead><tr><th>{{ col }}</th><th class="r">Revenue</th><th class="r">Bills</th><th class="r">Margin</th></tr></thead>
+        <tbody>
+          {% for r in rows %}
+          <tr>
+            <td>
+              {% if col == "Customer" and r.group != "Cash sale" %}
+              <a class="rowlink block max-w-[18rem] truncate" href="{{ app }}/sales/customers?c={{ r.group|urlencode }}">{{ r.group }}</a>
+              {% else %}
+              <span class="block max-w-[18rem] truncate font-medium">{{ r.group }}</span>
+              {% endif %}
+            </td>
+            <td class="r num">{{ r.revenue|money }}</td>
+            <td class="r num text-ink-2">{{ r.bills }}</td>
+            <td class="r num text-ink-2">{{ r.margin|money if r.margin else "—" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

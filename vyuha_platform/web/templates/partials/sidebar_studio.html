@@ -18,14 +18,12 @@
   <p class="eyebrow mb-1.5 px-2">This business</p>
   <nav class="flex flex-col gap-0.5">
     <a href="/app/{{ client.slug }}" class="nav-item">{{ icon("house") }}<span class="truncate">Open {{ client.name }}</span></a>
-    <a href="/c/{{ client.slug }}" class="nav-item">{{ icon("external-link") }}<span>Classic view</span></a>
   </nav>
   {% endif %}
 
   <div class="my-3 border-t border-line"></div>
-  <p class="eyebrow mb-1.5 px-2">Classic tools</p>
+  <p class="eyebrow mb-1.5 px-2">Admin</p>
   <nav class="flex flex-col gap-0.5">
-    <a href="/" class="nav-item">{{ icon("building-2") }}<span>Classic portfolio</span></a>
     <a href="/activity" class="nav-item">{{ icon("history") }}<span>Activity</span></a>
     <a href="/settings" class="nav-item">{{ icon("settings") }}<span>Settings</span></a>
     {% if is_master %}<a href="/master" class="nav-item">{{ icon("lock") }}<span>Staff console</span></a>{% endif %}

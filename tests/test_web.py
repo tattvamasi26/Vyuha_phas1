@@ -15,6 +15,7 @@ import sys
 import tempfile
 from datetime import date, datetime
 from pathlib import Path
+from urllib.parse import quote
 
 os.environ["VYUHA_LLM"] = "offline"          # before the platform imports llm
 
@@ -254,6 +255,110 @@ def test_every_section_page_renders():
         assert f'data-testid="section-{sec.key}"' in resp.text, sec.key
         first = sec.pages[0].key
         assert str(resp.url).endswith(f"/{sec.key}/{first}"), resp.url
+
+
+def test_the_sales_pages_show_the_business_s_own_numbers():
+    slug = _onboard("Sales Walk Traders")
+    _stock(slug)
+    hooks = {"overview": ("sales-stats", "sales-chart"), "bills": ("bills", "bill-row"),
+             "customers": ("customers", "customer-row"),
+             "collections": ("chase-payments", "chase-quiet")}
+    for page, wanted in hooks.items():
+        resp = client.get(f"/app/{slug}/sales/{page}")
+        assert resp.status_code == 200, (page, resp.status_code)
+        for hook in wanted:
+            assert f'data-testid="{hook}"' in resp.text, (page, hook)
+    credit = client.get(f"/app/{slug}/sales/bills?show=credit").text
+    assert "Basavaraj Agri" in credit and "Ramu Stores" not in credit
+    detail = client.get(f"/app/{slug}/sales/customers?c=Basavaraj+Agri").text
+    assert 'data-testid="customer-detail"' in detail
+
+
+def test_a_form_posted_from_the_site_comes_back_to_the_site():
+    """Marking a bill paid runs the handler the classic screens use, and lands back on the
+    page it was posted from — filter and message intact."""
+    slug = _onboard("Round Trip Traders")
+    _stock(slug)
+    credit = next(s for s in books.load(slug).sales if not s.paid)
+    back = f"/app/{slug}/sales/bills?show=credit"
+    resp = client.post(f"/c/{slug}/book/sale/{credit.id}/paid?next={quote(back, safe='')}")
+    assert resp.url.path == f"/app/{slug}/sales/bills", resp.url
+    assert "show=credit" in str(resp.url) and "m=" in str(resp.url), resp.url
+    assert books.load(slug).sale(credit.id).paid
+
+
+def test_next_cannot_send_anyone_off_the_site():
+    slug = _onboard("Elsewhere Traders")
+    _stock(slug)
+    credit = next(s for s in books.load(slug).sales if not s.paid)
+    resp = client.post(f"/c/{slug}/book/sale/{credit.id}/paid?next=https://evil.example/app/")
+    assert "evil" not in str(resp.url), resp.url
+
+
+def test_the_site_never_links_to_a_classic_screen():
+    slug = _onboard("No Classic Traders")
+    _stock(slug)
+    urls = [f"/app/{slug}"] + [f"/app/{slug}/{s.key}/{p.key}"
+                               for s in nav.SECTIONS[1:] for p in s.pages]
+    for url in urls:
+        assert 'href="/c/' not in client.get(url).text, url
+
+
+def test_the_operations_pages_render_and_a_sale_comes_back_to_them():
+    slug = _onboard("Ops Walk Traders")
+    _stock(slug)
+    hooks = {"record": ("record-sale", "record-today", "record-item"),
+             "inventory": ("inventory", "stock-row", "reorder-levels"),
+             "purchases": ("expense-form", "expenses"),
+             "invoices": ("raise-invoice", "invoices-raised")}
+    for page, wanted in hooks.items():
+        resp = client.get(f"/app/{slug}/operations/{page}")
+        assert resp.status_code == 200, (page, resp.status_code)
+        for hook in wanted:
+            assert f'data-testid="{hook}"' in resp.text, (page, hook)
+    urea = next(i for i in books.load(slug).items if i.name == "Urea 50kg")
+    back = f"/app/{slug}/operations/record"
+    resp = client.post(f"/c/{slug}/book/sale?next={quote(back, safe='')}",
+                       data={"sku": urea.sku, "party": "Mallesh", "qty": "3", "rate": "320",
+                             "payment": "paid"})
+    assert resp.url.path == back, resp.url
+    assert any(s.party == "Mallesh" for s in books.load(slug).sales)
+    # Every item is still offered in the delivery and count forms, so count table rows.
+    low = client.get(f"/app/{slug}/operations/inventory?show=low").text
+    assert low.count('data-testid="stock-row"') == 1 and "DAP 50kg" in low, low.count("stock-row")
+
+
+def test_an_invoice_raised_on_the_site_opens_on_the_site():
+    slug = _onboard("Invoice Walk Traders")
+    _stock(slug)
+    sale = next(s for s in books.load(slug).sales if s.party == "Ramu Stores")
+    back = f"/app/{slug}/operations/invoices"
+    resp = client.post(f"/c/{slug}/invoice?next={quote(back, safe='')}",
+                       data={"sale_ids": [sale.id]})
+    assert resp.url.path == back, resp.url
+    inv = invoice.load_all(slug)[0]
+    assert f"/app/{slug}/doc/invoice/{inv.id}" in client.get(back).text
+    doc = client.get(f"/app/{slug}/doc/invoice/{inv.id}")
+    assert doc.status_code == 200 and inv.number in doc.text
+
+
+def test_an_expense_recorded_on_the_site_is_listed_there():
+    slug = _onboard("Expense Walk Traders")
+    back = f"/app/{slug}/operations/purchases"
+    resp = client.post(f"/c/{slug}/expense?next={quote(back, safe='')}",
+                       data={"category": "Rent", "party": "Landlord Ganesh", "amount": "15000",
+                             "unpaid": "1", "due_date": "2026-01-05"})
+    assert resp.url.path == back, resp.url
+    due = client.get(f"{back}?show=due").text
+    assert "Landlord Ganesh" in due and 'data-testid="expense-row"' in due
+
+
+def test_classic_addresses_map_to_their_pages_on_the_site():
+    assert nav.site_path("s", "/c/s/desk/chase") == "/app/s/sales/collections"
+    assert nav.site_path("s", "/c/s/operations/alerts?show=dead") == \
+        "/app/s/operations/inventory?show=dead"
+    assert nav.site_path("s", "/c/s/somewhere/else") == "/app/s"
+    assert nav.site_path("s", "/app/s/sales") == "/app/s/sales"
 
 
 def test_an_unknown_section_goes_home():

@@ -73,7 +73,8 @@ def _upload(slug: str, path: Path, mime: str = "application/octet-stream"):
 # ------------------------------------------------------------- platform pages
 
 def test_all_platform_pages_render():
-    for path in ("/", "/onboard", "/activity", "/settings"):
+    assert client.get("/").url.path == "/studio"        # the front door is the new site
+    for path in ("/onboard", "/activity", "/settings"):
         resp = client.get(path)
         assert resp.status_code == 200, f"{path} -> {resp.status_code}"
         assert "VYUHA" in resp.text
@@ -300,12 +301,12 @@ def test_first_run_asks_who_the_install_is_for():
 
 
 def test_operator_sees_the_portfolio_and_can_onboard():
+    """An operator's front door is the Studio: every business, and a way to add one."""
     _as("operator")
     home = client.get("/")
-    assert "PORTFOLIO" in home.text
-    assert "Onboard" in home.text
+    assert home.url.path == "/studio"
+    assert "/studio/new" in home.text
     assert client.get("/onboard").status_code == 200
-    assert "Operator" in home.text
 
 
 def test_tenant_never_sees_the_portfolio_or_onboarding():

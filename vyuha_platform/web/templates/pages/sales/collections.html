@@ -1,0 +1,53 @@
+{% extends "layouts/section.html" %}
+{% from "components/ui.html" import stat, card_head, empty %}
+{% block page %}
+<section class="grid grid-cols-2 gap-4 xl:grid-cols-4" aria-label="Collections figures">
+  {% for s in stats %}{{ stat(s.label, s.value, s.sub, s.icon, s.tone) }}{% endfor %}
+</section>
+
+{% for title, sub, rows, none_title, none_text, testid in [
+    ("Payments to chase", "Worst first · each message is already written", payments,
+     "Nobody is late", "Every credit sale is inside its due date.", "chase-payments"),
+    ("Regulars gone quiet", "They used to buy often and have stopped · a friendly word often brings them back", quiet,
+     "Nobody has gone quiet", "Every regular has bought recently.", "chase-quiet")] %}
+<section class="card overflow-hidden" data-testid="{{ testid }}">
+  {{ card_head(title ~ (" · " ~ rows|length if rows else ""), sub) }}
+  {% if rows %}
+  <ul class="divide">
+    {% for r in rows %}
+    {% set f = r.f %}
+    <li class="px-5 py-4" x-data="{ open: false }">
+      <div class="flex flex-wrap items-center gap-4">
+        <span class="avatar">{{ f.party[:1]|upper }}</span>
+        <div class="min-w-0 flex-1">
+          <p class="truncate font-semibold">{{ f.party }}</p>
+          <p class="text-sm text-ink-3">{{ f.reason }}</p>
+        </div>
+        {% if f.kind == "payment" %}<p class="figure text-lg {{ 'text-bad' if f.severity == 'critical' else '' }}">{{ f.amount|money }}</p>{% endif %}
+        <div class="flex flex-wrap items-center gap-1.5">
+          <button type="button" class="btn btn-ghost btn-sm" @click="open = !open" :aria-expanded="open">{{ icon("eye", "size-3.5") }}<span x-text="open ? 'Hide message' : 'See message'">See message</span></button>
+          {% if r.wa %}
+          <a class="btn btn-primary btn-sm" href="{{ r.wa }}" target="_blank" rel="noopener">{{ icon("message-circle", "size-3.5") }}WhatsApp</a>
+          {% else %}
+          <span class="badge tone-dim" title="No number was taken for this customer">{{ icon("phone", "size-3") }}No number</span>
+          {% endif %}
+          <form method="post" action="/c/{{ client.slug }}/followup?next={{ back|urlencode }}">
+            <input type="hidden" name="key" value="{{ f.key }}"><input type="hidden" name="status" value="done">
+            <button class="btn btn-secondary btn-sm">{{ icon("check", "size-3.5") }}Done</button>
+          </form>
+          <form method="post" action="/c/{{ client.slug }}/followup?next={{ back|urlencode }}">
+            <input type="hidden" name="key" value="{{ f.key }}"><input type="hidden" name="status" value="snoozed"><input type="hidden" name="days" value="7">
+            <button class="btn btn-ghost btn-sm" title="Hide this for a week">{{ icon("clock", "size-3.5") }}In a week</button>
+          </form>
+        </div>
+      </div>
+      <p x-show="open" x-cloak class="prose-ans mt-3 rounded-xl bg-surface-2 p-4 text-sm text-ink-2">{{ r.text }}</p>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  {{ empty(none_title, none_text) }}
+  {% endif %}
+</section>
+{% endfor %}
+{% endblock %}

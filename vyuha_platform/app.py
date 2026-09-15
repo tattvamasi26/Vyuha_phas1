@@ -186,10 +186,12 @@ def home(request: Request):
     account = request.state.account
     if account is None:
         return ui.landing()
+    # The new site is the front door (plan: UX rewire). An owner lands on their own
+    # business's Home; an operator or a member of staff on the Studio, which lists every
+    # business they can open. The flash rides along, so "Business added" still shows.
+    tail = f"?{request.url.query}" if request.url.query else ""
     if account.is_master:
-        return _redirect("/master")
-
-    msg, kind = _flash(request)
+        return _redirect(f"/studio{tail}")
 
     # Nothing chosen yet — the workspace fork happens before anything else.
     if not account.configured:
@@ -199,11 +201,9 @@ def home(request: Request):
         client = _tenant_client(account)
         if client is None:
             return ui.tenant_setup(account)
-        return _redirect(f"/c/{client.slug}")
+        return _redirect(f"/app/{client.slug}{tail}")
 
-    clients = store.load_clients(account.id)
-    return ui.home(clients, account, ledger.read(account.id, limit=8),
-                   ledger.counts(account.id), flash=msg, flash_kind=kind)
+    return _redirect(f"/studio{tail}")
 
 
 # -------------------------------------------------------------- master console

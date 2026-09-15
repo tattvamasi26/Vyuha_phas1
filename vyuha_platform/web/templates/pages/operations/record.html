@@ -1,0 +1,123 @@
+{% extends "layouts/section.html" %}
+{% from "components/ui.html" import card_head, empty %}
+{% block page %}
+{% set app = "/app/" ~ client.slug %}
+<div class="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
+  <section class="card overflow-hidden" data-testid="record-sale">
+    {{ card_head("Record a sale", "One line per item — the stock goes down as you save") }}
+    {% if has_items %}
+    <form method="post" action="/c/{{ client.slug }}/book/sale?next={{ back|urlencode }}" class="flex flex-col gap-5 p-5"
+          x-data='{ items: {{ item_data|tojson }}, phones: {{ phones|tojson }}, sku: "", qty: 1, rate: "", party: "", phone: "", credit: false,
+                   get item() { return this.items[this.sku] || null },
+                   get total() { return (parseFloat(this.qty) || 0) * (parseFloat(this.rate) || 0) } }'>
+      <div class="grid gap-4 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)]">
+        <div class="field">
+          <label class="label" for="sale-sku">Item</label>
+          <select id="sale-sku" name="sku" class="select" required x-model="sku" @change="rate = item ? item.rate : ''">
+            <option value="">Choose what was sold…</option>
+            {% for i in items %}<option value="{{ i.sku }}">{{ i.name }} — {{ i.stock|qty }} {{ i.unit }} left</option>{% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label class="label" for="sale-qty">How many</label>
+          <input id="sale-qty" name="qty" class="input" inputmode="decimal" x-model="qty" required>
+          <span class="hint" x-show="item" x-text="item ? item.unit : ''"></span>
+        </div>
+        <div class="field">
+          <label class="label" for="sale-rate">Price each (₹)</label>
+          <input id="sale-rate" name="rate" class="input" inputmode="decimal" x-model="rate" placeholder="List price">
+        </div>
+      </div>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div class="field">
+          <label class="label" for="sale-party">Customer</label>
+          <input id="sale-party" name="party" class="input" list="known-customers" x-model="party" @change="if (phones[party]) phone = phones[party]" placeholder="Leave blank for a cash sale" autocomplete="off">
+          <datalist id="known-customers">{% for n in customers %}<option value="{{ n }}">{% endfor %}</datalist>
+        </div>
+        <div class="field">
+          <label class="label" for="sale-phone">Their WhatsApp number</label>
+          <input id="sale-phone" name="party_phone" class="input" inputmode="tel" x-model="phone" placeholder="For the receipt — optional">
+        </div>
+      </div>
+      <div class="flex flex-wrap items-end gap-4">
+        <div class="field">
+          <span class="label">Payment</span>
+          <div class="flex gap-2" role="radiogroup" aria-label="Payment">
+            <label class="choice"><input type="radio" name="payment" value="paid" checked @change="credit = false">Paid now</label>
+            <label class="choice"><input type="radio" name="payment" value="credit" @change="credit = true">On credit</label>
+          </div>
+        </div>
+        <div class="field" x-show="credit" x-cloak>
+          <label class="label" for="sale-due">Due by</label>
+          <input id="sale-due" name="due_date" type="date" class="input">
+        </div>
+        <div class="field">
+          <label class="label" for="sale-when">Date</label>
+          <input id="sale-when" name="when" type="date" class="input" value="{{ today_iso }}">
+        </div>
+      </div>
+      <div class="flex flex-wrap items-center justify-between gap-4 border-t border-line pt-4">
+        <label class="flex items-center gap-2 text-sm text-ink-2"><input type="checkbox" class="check" name="send_receipt" value="1" checked>Send the receipt on WhatsApp when there is a number</label>
+        <div class="flex items-center gap-4">
+          <p class="text-sm text-ink-3">Total <span class="figure ml-1 text-2xl text-ink" x-text="'₹' + total.toLocaleString('en-IN', { maximumFractionDigits: 2 })">₹0</span></p>
+          <button class="btn btn-primary btn-lg">{{ icon("check", "size-4") }}Save the sale</button>
+        </div>
+      </div>
+    </form>
+    {% else %}
+    {{ empty("Nothing to sell yet", "Add the first item on the right — then sales can be recorded here.", "package-plus", "brand") }}
+    {% endif %}
+  </section>
+
+  <div class="flex flex-col gap-6">
+    <section class="card overflow-hidden" data-testid="record-today">
+      {{ card_head("Today so far", today_bills ~ " bill" ~ ("" if today_bills == 1 else "s") ~ " · " ~ (today_total|money), app ~ "/sales/bills", "All bills") }}
+      {% if today_sales %}
+      <ul class="divide">
+        {% for s in today_sales %}
+        <li class="flex items-center gap-3 px-5 py-3">
+          <div class="min-w-0 flex-1">
+            <p class="truncate text-sm font-semibold">{{ s.item }} <span class="font-normal text-ink-3">× {{ s.qty|qty }}</span></p>
+            <p class="truncate text-xs text-ink-3">{{ s.party or "Cash sale" }} · {{ "paid" if s.paid else "on credit" }}</p>
+          </div>
+          <span class="num text-sm font-semibold">{{ s.amount|money }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="px-5 py-6 text-sm text-ink-3">Nothing recorded today yet.</p>
+      {% endif %}
+    </section>
+
+    <section class="card overflow-hidden" data-testid="record-item" x-data="{ open: {{ 'false' if has_items else 'true' }} }">
+      <button type="button" class="flex w-full items-center justify-between gap-3 px-5 py-3.5 text-left" @click="open = !open" :aria-expanded="open">
+        <span><span class="block text-base font-bold">Add an item</span><span class="block text-xs text-ink-3">Something new on the shelf</span></span>
+        <span class="transition-transform" :class="open && 'rotate-180'">{{ icon("chevron-down", "size-4 text-ink-3") }}</span>
+      </button>
+      <form x-show="open" x-cloak method="post" action="/c/{{ client.slug }}/book/item?next={{ back|urlencode }}" class="flex flex-col gap-4 border-t border-line p-5">
+        <div class="field"><label class="label" for="it-name">Name</label><input id="it-name" name="name" class="input" required placeholder="e.g. Urea 50kg"></div>
+        <div class="grid grid-cols-2 gap-3">
+          <div class="field">
+            <label class="label" for="it-cat">Category</label>
+            <input id="it-cat" name="category" class="input" list="known-cats" placeholder="Other">
+            <datalist id="known-cats">{% for c in categories %}<option value="{{ c }}">{% endfor %}</datalist>
+          </div>
+          <div class="field">
+            <label class="label" for="it-unit">Unit</label>
+            <select id="it-unit" name="unit" class="select">{% for u in units %}<option>{{ u }}</option>{% endfor %}</select>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div class="field"><label class="label" for="it-rate">Sells at (₹)</label><input id="it-rate" name="rate" class="input" inputmode="decimal"></div>
+          <div class="field"><label class="label" for="it-cost">Costs you (₹)</label><input id="it-cost" name="cost" class="input" inputmode="decimal"></div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div class="field"><label class="label" for="it-stock">In stock now</label><input id="it-stock" name="stock_qty" class="input" inputmode="decimal"></div>
+          <div class="field"><label class="label" for="it-reorder">Warn me below</label><input id="it-reorder" name="reorder_level" class="input" inputmode="decimal"></div>
+        </div>
+        <button class="btn btn-secondary">{{ icon("plus", "size-4") }}Add the item</button>
+      </form>
+    </section>
+  </div>
+</div>
+{% endblock %}

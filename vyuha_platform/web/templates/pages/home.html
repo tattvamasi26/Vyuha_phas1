@@ -72,15 +72,14 @@
           <p class="figure mt-3 text-3xl">{{ today.sales|money }}</p>
           <p class="mt-1 text-sm text-ink-3">{{ today.bills }} bill{{ "" if today.bills == 1 else "s" }} so far</p>
           <div class="mt-4 grid grid-cols-2 gap-2">
-            <a href="/c/{{ client.slug }}/operations/record" class="btn btn-primary">{{ icon("receipt", "size-4") }}Sale</a>
-            <a href="/c/{{ client.slug }}/operations/invoices" class="btn btn-secondary">{{ icon("file-text", "size-4") }}Invoice</a>
+            <a href="/app/{{ client.slug }}/operations/record" class="btn btn-primary">{{ icon("receipt", "size-4") }}Sale</a>
+            <a href="/app/{{ client.slug }}/operations/invoices" class="btn btn-secondary">{{ icon("file-text", "size-4") }}Invoice</a>
           </div>
         </section>
 
         <section class="card order-4 overflow-hidden lg:order-none" aria-labelledby="activity-h">
-          <header class="flex items-center justify-between px-5 pb-2 pt-4">
+          <header class="px-5 pb-2 pt-4">
             <h2 id="activity-h" class="text-base font-bold">Recent activity</h2>
-            <a class="text-xs font-semibold text-brand hover:underline" href="/activity">All</a>
           </header>
           {% if activity %}
           <ul class="px-5 pb-4">
@@ -107,9 +106,14 @@
     <span class="ring-tone tone-brand !size-12 !rounded-2xl">{{ icon("rocket", "size-6") }}</span>
     <div class="min-w-0 flex-1">
       <p class="font-display text-lg font-bold">Nothing recorded yet</p>
+      {% if is_operator %}
       <p class="text-sm text-ink-2">Set the business up in the Onboarding Studio — the data map decides how its history comes in.</p>
+      {% else %}
+      <p class="text-sm text-ink-2">Add what you sell, then record your first sale — everything here fills in from that.</p>
+      {% endif %}
     </div>
-    {% if is_operator %}<a href="/studio/{{ client.slug }}" class="btn btn-primary">Continue onboarding{{ icon("arrow-right", "size-4") }}</a>{% endif %}
+    {% if is_operator %}<a href="/studio/{{ client.slug }}" class="btn btn-primary">Continue onboarding{{ icon("arrow-right", "size-4") }}</a>
+    {% else %}<a href="/app/{{ client.slug }}/operations/record" class="btn btn-primary">Record a sale{{ icon("arrow-right", "size-4") }}</a>{% endif %}
   </section>
   {% endif %}
 </div>

@@ -1,0 +1,97 @@
+{% extends "layouts/section.html" %}
+{% from "components/ui.html" import empty %}
+{% block page %}
+{% set app = "/app/" ~ client.slug %}
+{% set here = app ~ "/sales/customers" %}
+{% set qs = ("&q=" ~ q|urlencode if q else "") ~ ("&sort=" ~ sort if sort != "spend" else "") %}
+<div class="grid items-start gap-6 {{ 'xl:grid-cols-[minmax(0,1fr)_400px]' if detail else '' }}">
+  <section class="card overflow-hidden" data-testid="customers">
+    <div class="flex flex-wrap items-center gap-3 border-b border-line px-4 py-3">
+      <form method="get" action="{{ here }}" class="relative min-w-0 flex-1 basis-64" role="search">
+        <input type="hidden" name="sort" value="{{ sort }}">
+        <span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-3">{{ icon("search", "size-4") }}</span>
+        <input class="input input-sm !pl-9" type="search" name="q" value="{{ q }}" placeholder="Find a customer" aria-label="Find a customer">
+      </form>
+      <nav class="flex gap-1" aria-label="Order by">
+        {% for key, label in sorts.items() %}
+        <a class="tab" href="{{ here }}?sort={{ key }}{% if q %}&q={{ q|urlencode }}{% endif %}" {% if sort == key %}aria-current="page"{% endif %}>{{ label }}</a>
+        {% endfor %}
+      </nav>
+    </div>
+    {% if rows %}
+    <div class="scroll-x">
+      <table class="table">
+        <thead><tr><th>Customer</th><th class="r">Bills</th><th class="r">Spent</th><th class="r">Owes</th><th>Last bought</th></tr></thead>
+        <tbody>
+          {% for r in rows %}
+          <tr {% if detail and detail.party == r.name %}aria-selected="true"{% endif %} data-testid="customer-row">
+            <td>
+              {% if r.name != "Cash sale" %}
+              <a class="rowlink block max-w-[18rem] truncate" href="{{ here }}?c={{ r.name|urlencode }}{{ qs }}">{{ r.name }}</a>
+              {% else %}
+              <span class="font-medium text-ink-2">Cash sale</span>
+              {% endif %}
+              {% if r.phone %}<span class="block text-xs text-ink-3">+{{ r.phone }}</span>{% endif %}
+            </td>
+            <td class="r num text-ink-2">{{ r.bills }}</td>
+            <td class="r num font-semibold">{{ r.spend|money }}</td>
+            <td class="r num">{% if r.owes %}<span class="font-semibold text-bad">{{ r.owes|money }}</span>{% else %}<span class="text-ink-3">—</span>{% endif %}</td>
+            <td class="whitespace-nowrap text-ink-2">{{ r.last|ago if r.last else "—" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="border-t border-line px-4 py-3 text-xs text-ink-3">{{ rows|length }} of {{ count }} customer{{ "" if count == 1 else "s" }}</p>
+    {% else %}
+    {{ empty("No customers match", "Try another name.", "search", "dim") }}
+    {% endif %}
+  </section>
+
+  {% if detail %}
+  <aside class="card overflow-hidden xl:sticky xl:top-24" aria-label="{{ detail.party }}" data-testid="customer-detail">
+    <header class="flex items-start gap-3 border-b border-line p-5">
+      <span class="avatar !size-11 !text-sm">{{ detail.initials }}</span>
+      <div class="min-w-0 flex-1">
+        <h2 class="truncate text-lg font-bold">{{ detail.party }}</h2>
+        <p class="text-sm text-ink-3">{% if detail.phone %}+{{ detail.phone }}{% else %}No number taken yet{% endif %}</p>
+      </div>
+      <a href="{{ here }}{% if qs %}?{{ qs[1:] }}{% endif %}" class="btn btn-ghost btn-icon btn-sm" aria-label="Close">{{ icon("x", "size-4") }}</a>
+    </header>
+    <dl class="grid grid-cols-2 border-b border-line">
+      {% for label, value in [("Spent", detail.total_spend|money), ("Owes", detail.still_owes|money if detail.still_owes else "Nothing"), ("Bills", detail.bills), ("Last bought", (detail.days_since_last ~ " days ago") if detail.days_since_last is not none else "—")] %}
+      <div class="p-4 {{ 'border-r border-line' if loop.index is odd else '' }} {{ 'border-t border-line' if loop.index > 2 else '' }}">
+        <dt class="text-xs font-semibold text-ink-3">{{ label }}</dt>
+        <dd class="figure mt-1 text-xl {{ 'text-bad' if label == 'Owes' and detail.still_owes else '' }}">{{ value }}</dd>
+      </div>
+      {% endfor %}
+    </dl>
+    {% if detail.unpaid_bills %}
+    <div class="border-b border-line p-5">
+      <p class="mb-2 text-sm font-semibold">Unpaid bills</p>
+      <ul class="flex flex-col gap-1.5 text-sm">
+        {% for b in detail.unpaid_bills %}
+        <li class="flex items-center justify-between gap-3">
+          <span class="text-ink-2"><span class="mono text-xs text-ink-3">{{ b.bill }}</span> · {{ b.date|date("%d %b") }}{% if b.due %} · due {{ b.due|date("%d %b") }}{% endif %}</span>
+          <span class="num font-semibold">{{ b.amount|money }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      <a href="{{ app }}/sales/collections" class="btn btn-secondary btn-sm mt-3">{{ icon("hand-coins", "size-3.5") }}Chase in Collections</a>
+    </div>
+    {% endif %}
+    <div class="p-5">
+      <p class="mb-2 text-sm font-semibold">What they buy</p>
+      <ul class="flex flex-col gap-1.5 text-sm">
+        {% for b in detail.buys[:6] %}
+        <li class="flex items-center justify-between gap-3">
+          <span class="min-w-0 truncate text-ink-2">{{ b.item }} <span class="text-ink-3">· {{ b.qty|qty }}</span></span>
+          <span class="num">{{ b.revenue|money }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </aside>
+  {% endif %}
+</div>
+{% endblock %}

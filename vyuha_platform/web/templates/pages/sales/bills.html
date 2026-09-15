@@ -1,0 +1,68 @@
+{% extends "layouts/section.html" %}
+{% from "components/ui.html" import empty %}
+{% block actions %}
+<a href="/app/{{ client.slug }}/operations/record" class="btn btn-primary">{{ icon("plus", "size-4") }}Record a sale</a>
+{% endblock %}
+{% block page %}
+{% set here = "/app/" ~ client.slug ~ "/sales/bills" %}
+<section class="card overflow-hidden" data-testid="bills">
+  <div class="flex flex-wrap items-center gap-3 border-b border-line px-4 py-3">
+    <form method="get" action="{{ here }}" class="relative min-w-0 flex-1 basis-72" role="search">
+      <input type="hidden" name="show" value="{{ show }}">
+      <span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-3">{{ icon("search", "size-4") }}</span>
+      <input class="input input-sm !pl-9" type="search" name="q" value="{{ q }}" placeholder="Search by customer, item or bill number" aria-label="Search bills">
+    </form>
+    <nav class="flex gap-1" aria-label="Which bills">
+      {% for key, label in [("all", "All"), ("credit", "On credit"), ("paid", "Paid")] %}
+      <a class="tab" href="{{ here }}?show={{ key }}{% if q %}&q={{ q|urlencode }}{% endif %}" {% if show == key %}aria-current="page"{% endif %}>{{ label }}<span class="ml-1.5 text-xs text-ink-3">{{ counts[key] }}</span></a>
+      {% endfor %}
+    </nav>
+  </div>
+  {% if rows %}
+  <div class="scroll-x">
+    <table class="table">
+      <thead>
+        <tr><th>Date</th><th>Bill</th><th>Customer</th><th>Item</th><th class="r">Qty × rate</th><th class="r">Amount</th><th>Status</th><th class="r"><span class="sr-only">Actions</span></th></tr>
+      </thead>
+      <tbody>
+        {% for s in rows %}
+        {% set late = (not s.paid) and s.due_date and s.due_date < today_iso %}
+        <tr data-testid="bill-row">
+          <td class="whitespace-nowrap text-ink-2">{{ s.date|date("%d %b %Y") }}</td>
+          <td class="mono whitespace-nowrap text-xs text-ink-3">{{ s.id }}</td>
+          <td><span class="block max-w-[14rem] truncate font-medium">{{ s.party or "Cash sale" }}</span></td>
+          <td><span class="block max-w-[14rem] truncate text-ink-2">{{ s.item }}</span></td>
+          <td class="r num whitespace-nowrap text-ink-2">{{ s.qty|qty }} × {{ s.rate|money }}</td>
+          <td class="r num whitespace-nowrap font-semibold">{{ s.amount|money }}</td>
+          <td class="whitespace-nowrap">
+            {% if s.paid %}<span class="badge tone-ok">Paid</span>
+            {% elif late %}<span class="badge tone-bad">Late · was due {{ s.due_date|date("%d %b") }}</span>
+            {% else %}<span class="badge tone-warn">On credit{% if s.due_date %} · due {{ s.due_date|date("%d %b") }}{% endif %}</span>{% endif %}
+          </td>
+          <td class="r">
+            <div class="flex justify-end gap-1.5">
+              {% if not s.paid %}
+              <form method="post" action="/c/{{ client.slug }}/book/sale/{{ s.id }}/paid?next={{ back|urlencode }}">
+                <button class="btn btn-secondary btn-sm">{{ icon("check", "size-3.5") }}Mark paid</button>
+              </form>
+              {% endif %}
+              {% if s.party_phone and not s.receipt_sent %}
+              <form method="post" action="/c/{{ client.slug }}/book/sale/{{ s.id }}/receipt?next={{ back|urlencode }}">
+                <button class="btn btn-ghost btn-sm" title="Send the receipt on WhatsApp">{{ icon("send", "size-3.5") }}Receipt</button>
+              </form>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="border-t border-line px-4 py-3 text-xs text-ink-3">
+    {{ matched }} bill{{ "" if matched == 1 else "s" }} · {{ matched_total|money }}{% if matched > rows|length %} · showing the latest {{ rows|length }}{% endif %}
+  </p>
+  {% else %}
+  {{ empty("No bills match", "Try another name or number, or show all bills.", "search", "dim") }}
+  {% endif %}
+</section>
+{% endblock %}

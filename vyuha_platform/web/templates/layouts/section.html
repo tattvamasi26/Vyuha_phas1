@@ -1,0 +1,24 @@
+{% extends "layouts/site.html" %}
+{# Every section page: the section's name, its pages as tabs, then the page itself. #}
+{% block content %}
+{% set root = "/app/" ~ client.slug ~ "/" ~ sec.key %}
+<div class="flex flex-col gap-6" data-testid="section-{{ sec.key }}">
+  <header class="flex flex-col gap-4">
+    <div class="flex flex-wrap items-end justify-between gap-4">
+      <div class="min-w-0">
+        <h1 class="text-2xl font-bold sm:text-[1.75rem]">{{ sec.label }}</h1>
+        <p class="mt-1 text-ink-2">{{ pg.blurb if pg else sec.blurb }}</p>
+      </div>
+      <div class="flex flex-wrap items-center gap-2">{% block actions %}{% endblock %}</div>
+    </div>
+    {% if sec.pages|length > 1 %}
+    <nav class="tabs border-b border-line pb-3" aria-label="{{ sec.label }} pages">
+      {% for p in sec.pages %}
+      <a href="{{ root }}/{{ p.key }}" class="tab" {% if pg and pg.key == p.key %}aria-current="page"{% endif %}>{{ p.label }}</a>
+      {% endfor %}
+    </nav>
+    {% endif %}
+  </header>
+  {% block page %}{% endblock %}
+</div>
+{% endblock %}

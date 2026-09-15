@@ -7,7 +7,7 @@ load only on those pages.
 
 from __future__ import annotations
 
-from markupsafe import Markup
+from markupsafe import Markup, escape
 
 
 def sparkline(values, width: int = 160, height: int = 40, pad: float = 3.0) -> Markup:
@@ -44,3 +44,36 @@ def bars(values, width: int = 160, height: int = 40, gap: float = 2.0) -> Markup
                      f'height="{h:.1f}" rx="1.5"/>')
     return Markup(f'<svg class="bars" viewBox="0 0 {width} {height}" preserveAspectRatio="none" '
                   f'aria-hidden="true" focusable="false">{"".join(rects)}</svg>')
+
+
+def columns(values, labels, *, fmt=None, partial_last: bool = False, label: str = "",
+            width: int = 960, height: int = 240) -> Markup:
+    """Labelled columns for a laptop page — one per month, its value above it.
+
+    ``partial_last`` draws the last column lighter: the current month is not over, and
+    half a month drawn like a whole one reads as a collapse.
+    """
+    fmt = fmt or (lambda v: f"{v:,.0f}")
+    vals = [max(float(v or 0), 0.0) for v in values] or [0.0]
+    n = len(vals)
+    hi = max(vals) or 1.0
+    top, bottom = 26.0, 30.0
+    plot = height - top - bottom
+    slot = width / n
+    bw = min(slot * 0.6, 56.0)
+    base_y = height - bottom
+    out = [f'<line class="cols-base" x1="0" x2="{width}" y1="{base_y:.1f}" y2="{base_y:.1f}"/>']
+    for i, (v, lab) in enumerate(zip(vals, labels)):
+        h = max(plot * v / hi, 2.0)
+        x = i * slot + (slot - bw) / 2
+        cx = i * slot + slot / 2
+        cls = ' class="cols-part"' if partial_last and i == n - 1 else ""
+        value = (f'<text class="cols-value" x="{cx:.1f}" y="{base_y - h - 8:.1f}" '
+                 f'text-anchor="middle">{escape(fmt(v))}</text>' if v else "")
+        out.append(
+            f'<g{cls}><title>{escape(lab)}: {escape(fmt(v))}</title>'
+            f'<rect x="{x:.1f}" y="{base_y - h:.1f}" width="{bw:.1f}" height="{h:.1f}" rx="5"/>'
+            f'{value}<text class="cols-label" x="{cx:.1f}" y="{height - 9:.1f}" '
+            f'text-anchor="middle">{escape(lab)}</text></g>')
+    return Markup(f'<svg class="cols" viewBox="0 0 {width} {height}" role="img" '
+                  f'aria-label="{escape(label or "Chart")}" focusable="false">{"".join(out)}</svg>')

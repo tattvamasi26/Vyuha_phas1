@@ -66,13 +66,14 @@ def palette(account, client, businesses) -> list[dict]:
                               "href": f"{root}/{sec.key}/{pg.key}", "group": "Go to",
                               "icon": sec.icon})
         items += [
-            {"label": "Record a sale", "hint": "Opens the classic record screen",
-             "href": f"/c/{client.slug}/operations/record", "group": "Do", "icon": "receipt"},
-            {"label": "Raise an invoice", "hint": "Opens the classic invoices screen",
-             "href": f"/c/{client.slug}/operations/invoices", "group": "Do",
-             "icon": "file-text"},
-            {"label": "Open the classic view", "hint": "Everything that works today",
-             "href": f"/c/{client.slug}", "group": "Do", "icon": "external-link"},
+            {"label": "Record a sale", "hint": "Operations · Record",
+             "href": f"{root}/operations/record", "group": "Do", "icon": "receipt"},
+            {"label": "Record an expense or purchase", "hint": "Operations · Purchases",
+             "href": f"{root}/operations/purchases", "group": "Do", "icon": "wallet"},
+            {"label": "Raise an invoice", "hint": "Operations · Invoices",
+             "href": f"{root}/operations/invoices", "group": "Do", "icon": "file-text"},
+            {"label": "Chase payments", "hint": "Sales · Collections",
+             "href": f"{root}/sales/collections", "group": "Do", "icon": "hand-coins"},
         ]
     if access.is_operator(account):
         items += [

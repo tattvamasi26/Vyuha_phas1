@@ -29,6 +29,29 @@
 {% endif %}
 {%- endmacro %}
 
+{# A headline figure in a card: label, the number, one line under it. #}
+{% macro stat(label, value, sub="", icon_name="", tone="") -%}
+<div class="card flex min-w-0 flex-col gap-2.5 p-4 sm:p-5">
+  <div class="flex items-center gap-2.5">
+    {% if icon_name %}<span class="ring-tone {{ 'tone-' ~ tone if tone else 'tone-brand' }} !size-8 !rounded-lg">{{ icon(icon_name, "size-4") }}</span>{% endif %}
+    <span class="min-w-0 flex-1 truncate text-sm font-semibold text-ink-2">{{ label }}</span>
+  </div>
+  <p class="figure truncate text-[1.7rem] sm:text-3xl">{{ value }}</p>
+  {% if sub %}<p class="-mt-1 truncate text-xs text-ink-3">{{ sub }}</p>{% endif %}
+</div>
+{%- endmacro %}
+
+{# The strip across the top of a card: its title, one line of context, one link. #}
+{% macro card_head(title, sub="", href="", link="See all") -%}
+<header class="flex items-center justify-between gap-3 border-b border-line px-5 py-3.5">
+  <div class="min-w-0">
+    <h2 class="truncate text-base font-bold">{{ title }}</h2>
+    {% if sub %}<p class="truncate text-xs text-ink-3">{{ sub }}</p>{% endif %}
+  </div>
+  {% if href %}<a href="{{ href }}" class="inline-flex shrink-0 items-center gap-1 text-sm font-semibold text-brand hover:underline">{{ link }}{{ icon("arrow-right", "size-3.5") }}</a>{% endif %}
+</header>
+{%- endmacro %}
+
 {% macro phase_badge(phase, live=1) -%}
 {% if phase > live %}<span class="badge tone-brand">{{ icon("clock", "size-3") }}Phase {{ phase }}</span>{% endif %}
 {%- endmacro %}

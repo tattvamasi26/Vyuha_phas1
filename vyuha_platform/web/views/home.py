@@ -12,7 +12,7 @@ from collections import defaultdict
 from datetime import date, timedelta
 
 from ... import books, followup, invoice, ledger as activity, money, people, today
-from .. import charts
+from .. import charts, nav
 
 #: How a finding's severity reads on the page.
 TONE = {"critical": "bad", "warning": "warn", "info": "info"}
@@ -139,9 +139,10 @@ def build(client, account) -> dict:
         "greeting": today.greeting(client, account),
         "summary_line": today.summary_line(client, book, led),
         "freshness": _freshness(client, book),
+        # today.findings writes classic addresses; each is pointed at its page on the site.
         "findings": [{"key": f.key, "tone": TONE.get(f.severity, "info"),
                       "severity": f.severity, "title": f.title, "detail": f.detail,
-                      "action": f.action, "href": f.href} for f in found],
+                      "action": f.action, "href": nav.site_path(slug, f.href)} for f in found],
         "minutes": today.minutes(found),
         "kpis": kpis,
         "today": {"sales": by_day.get(t.isoformat(), 0.0),

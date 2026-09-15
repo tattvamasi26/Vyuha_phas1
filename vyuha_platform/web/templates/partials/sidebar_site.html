@@ -56,7 +56,6 @@
     {% if is_operator %}
     <a href="/studio" class="nav-item">{{ icon("rocket") }}<span>Onboarding Studio</span></a>
     {% endif %}
-    <a href="/c/{{ client.slug }}" class="nav-item">{{ icon("external-link") }}<span>Classic view</span></a>
     <button type="button" class="nav-item w-full" @click="$store.theme.toggle()">
       <span x-show="!$store.theme.dark">{{ icon("moon") }}</span><span x-show="$store.theme.dark" x-cloak>{{ icon("sun") }}</span>
       <span x-text="$store.theme.dark ? 'Light mode' : 'Dark mode'">Dark mode</span>

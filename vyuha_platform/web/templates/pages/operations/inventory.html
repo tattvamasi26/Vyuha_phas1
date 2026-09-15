@@ -1,0 +1,132 @@
+{% extends "layouts/section.html" %}
+{% from "components/ui.html" import stat, card_head, empty %}
+{% block actions %}
+<a href="/app/{{ client.slug }}/operations/record" class="btn btn-secondary">{{ icon("plus", "size-4") }}Add an item</a>
+{% endblock %}
+{% block page %}
+{% set here = "/app/" ~ client.slug ~ "/operations/inventory" %}
+{% if not all_items %}
+<section class="card" data-testid="inventory">
+  {% call empty("Nothing on the shelf yet", "Add what you sell and Vyuha starts watching the levels.", "package-plus", "brand") %}
+  <a class="btn btn-primary" href="/app/{{ client.slug }}/operations/record">Add an item</a>
+  {% endcall %}
+</section>
+{% else %}
+<section class="grid grid-cols-2 gap-4 xl:grid-cols-4" aria-label="Stock figures">
+  {% for s in stats %}{{ stat(s.label, s.value, s.sub, s.icon, s.tone) }}{% endfor %}
+</section>
+
+<section class="card overflow-hidden" data-testid="inventory">
+  <nav class="flex flex-wrap gap-1 border-b border-line px-4 py-3" aria-label="Which items">
+    {% for key, label in [("all", "Everything"), ("out", "Out"), ("low", "Below reorder"), ("dead", "Never sold"), ("ok", "Fine")] %}
+    <a class="tab" href="{{ here }}?show={{ key }}" {% if show == key %}aria-current="page"{% endif %}>{{ label }}<span class="ml-1.5 text-xs text-ink-3">{{ counts[key] }}</span></a>
+    {% endfor %}
+  </nav>
+  {% if rows %}
+  <div class="scroll-x">
+    <table class="table">
+      <thead>
+        <tr><th>Item</th><th class="r">In stock</th><th><span class="sr-only">Level against reorder</span></th><th class="r">Reorder at</th><th class="r">Cover</th><th class="r">Value</th><th>Status</th><th class="r">A delivery came in</th></tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr data-testid="stock-row">
+          <td>
+            <span class="block max-w-[16rem] truncate font-semibold">{{ r.name }}</span>
+            <span class="block text-xs text-ink-3">{{ r.category }} · {{ r.sku }}</span>
+          </td>
+          <td class="r num whitespace-nowrap font-semibold">{{ r.stock|qty }} <span class="text-xs font-normal text-ink-3">{{ r.unit }}</span></td>
+          <td class="min-w-28">
+            <div class="level is-{{ r.state }}" title="{{ 'Reorder at ' ~ r.reorder|qty if r.reorder else 'No reorder level set' }}">
+              <i style="width: {{ r.fill }}%"></i>{% if r.mark is not none %}<u style="left: {{ r.mark }}%"></u>{% endif %}
+            </div>
+          </td>
+          <td class="r num text-ink-2">{{ r.reorder|qty if r.reorder else "—" }}</td>
+          <td class="r num whitespace-nowrap text-ink-2">
+            {% if r.cover is not none %}{{ r.cover|round|int }} days{% elif r.state == "dead" %}never sold{% else %}—{% endif %}
+          </td>
+          <td class="r num">{{ r.value|money }}</td>
+          <td class="whitespace-nowrap">
+            {% if r.state == "out" %}<span class="badge tone-bad">Out of stock</span>
+            {% elif r.state == "low" %}<span class="badge tone-warn">Below reorder</span>
+            {% elif r.state == "dead" %}<span class="badge tone-info">Never sold</span>
+            {% else %}<span class="badge tone-ok">In stock</span>{% endif %}
+          </td>
+          <td class="r">
+            <form method="post" action="/c/{{ client.slug }}/stock/receive?next={{ back|urlencode }}" class="flex justify-end gap-1.5">
+              <input type="hidden" name="sku" value="{{ r.sku }}">
+              <input name="qty" class="input input-sm !w-20" inputmode="decimal" placeholder="qty" aria-label="Quantity received for {{ r.name }}">
+              <button class="btn btn-sm {{ 'btn-primary' if r.state in ['out', 'low'] else 'btn-secondary' }}">Add</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  {{ empty("Nothing here", "No item is in this state right now.") }}
+  {% endif %}
+</section>
+
+<div class="grid gap-6 lg:grid-cols-2">
+  <section class="card overflow-hidden">
+    {{ card_head("A delivery came in", "Adds to what is already there · a cost here becomes the new cost price") }}
+    <form method="post" action="/c/{{ client.slug }}/stock/receive?next={{ back|urlencode }}" class="grid gap-4 p-5 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
+      <div class="field">
+        <label class="label" for="rc-sku">Item</label>
+        <select id="rc-sku" name="sku" class="select" required><option value="">Which item…</option>{% for i in all_items %}<option value="{{ i.sku }}">{{ i.name }}</option>{% endfor %}</select>
+      </div>
+      <div class="field"><label class="label" for="rc-qty">How many</label><input id="rc-qty" name="qty" class="input" inputmode="decimal" required></div>
+      <div class="field"><label class="label" for="rc-cost">Cost each</label><input id="rc-cost" name="cost" class="input" inputmode="decimal" placeholder="optional"></div>
+      <button class="btn btn-primary !h-11">{{ icon("package-plus", "size-4") }}Add</button>
+    </form>
+  </section>
+  <section class="card overflow-hidden">
+    {{ card_head("Count the shelf", "What you count replaces what the book says") }}
+    <form method="post" action="/c/{{ client.slug }}/stock/count?next={{ back|urlencode }}" class="flex flex-col gap-4 p-5">
+      <div class="grid gap-4 sm:grid-cols-[minmax(0,1.6fr)_minmax(0,0.8fr){{ '_minmax(0,1.1fr)' if branches else '' }}]">
+        <div class="field">
+          <label class="label" for="ct-sku">Item</label>
+          <select id="ct-sku" name="sku" class="select" required><option value="">Which item…</option>{% for i in all_items %}<option value="{{ i.sku }}">{{ i.name }} — book says {{ i.stock|qty }}</option>{% endfor %}</select>
+        </div>
+        <div class="field"><label class="label" for="ct-n">Counted</label><input id="ct-n" name="counted" class="input" inputmode="decimal" required></div>
+        {% if branches %}
+        <div class="field">
+          <label class="label" for="ct-br">Kept at</label>
+          <select id="ct-br" name="branch" class="select"><option value="">Where it was</option>{% for b in branches %}<option value="{{ b.id }}">{{ b.name }}</option>{% endfor %}</select>
+        </div>
+        {% endif %}
+      </div>
+      <div class="flex justify-end"><button class="btn btn-secondary">{{ icon("clipboard-list", "size-4") }}Save count</button></div>
+    </form>
+  </section>
+</div>
+
+<details class="card overflow-hidden" data-testid="reorder-levels">
+  <summary class="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-3.5">
+    <span><span class="block text-base font-bold">Reorder levels</span><span class="block text-xs text-ink-3">When Vyuha should warn you about each item · 0 means never</span></span>
+    {{ icon("chevron-down", "size-4 text-ink-3") }}
+  </summary>
+  <form method="post" action="/c/{{ client.slug }}/stock/reorder?next={{ back|urlencode }}">
+    <div class="scroll-x border-t border-line">
+      <table class="table">
+        <thead><tr><th>Item</th><th class="r">In stock</th><th class="r">Warn below</th><th class="r">Sells at</th><th class="r">Costs</th></tr></thead>
+        <tbody>
+          {% for i in all_items %}
+          <tr>
+            <td class="font-medium">{{ i.name }}</td>
+            <td class="r num">{{ i.stock|qty }}</td>
+            <td class="r"><input name="lvl_{{ i.sku }}" value="{{ '%g'|format(i.reorder) }}" class="input input-sm !w-24 text-right" inputmode="decimal" aria-label="Reorder level for {{ i.name }}"></td>
+            <td class="r num text-ink-2">{{ i.rate|money }}</td>
+            <td class="r num text-ink-2">{{ i.cost|money if i.cost else "—" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="flex justify-end border-t border-line px-5 py-3"><button class="btn btn-primary">Save levels</button></div>
+  </form>
+</details>
+{% endif %}
+{% endblock %}

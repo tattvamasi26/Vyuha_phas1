@@ -32,12 +32,10 @@
       <div class="relative hidden lg:block" x-data="{ open: false }" @click.outside="open = false" @keydown.escape="open = false">
         <button type="button" class="btn btn-secondary" @click="open = !open" :aria-expanded="open" aria-haspopup="menu">{{ icon("plus", "size-4") }}New</button>
         <div x-show="open" x-cloak x-transition.origin.top.right class="menu right-0 top-full mt-2" role="menu">
-          <a class="menu-item" role="menuitem" href="/c/{{ client.slug }}/operations/record">{{ icon("receipt", "size-4 text-ink-3") }}Sale</a>
-          <a class="menu-item" role="menuitem" href="/c/{{ client.slug }}/operations/invoices">{{ icon("file-text", "size-4 text-ink-3") }}Invoice</a>
-          <a class="menu-item" role="menuitem" href="/c/{{ client.slug }}/operations/record">{{ icon("wallet", "size-4 text-ink-3") }}Expense or purchase</a>
-          <a class="menu-item" role="menuitem" href="/c/{{ client.slug }}/operations/alerts">{{ icon("package-plus", "size-4 text-ink-3") }}Stock received</a>
-          <div class="my-1 border-t border-line"></div>
-          <p class="px-3 pb-1 pt-0.5 text-[0.6875rem] text-ink-3">Opens the classic screen until Phase 3</p>
+          <a class="menu-item" role="menuitem" href="/app/{{ client.slug }}/operations/record">{{ icon("receipt", "size-4 text-ink-3") }}Sale</a>
+          <a class="menu-item" role="menuitem" href="/app/{{ client.slug }}/operations/invoices">{{ icon("file-text", "size-4 text-ink-3") }}Invoice</a>
+          <a class="menu-item" role="menuitem" href="/app/{{ client.slug }}/operations/purchases">{{ icon("wallet", "size-4 text-ink-3") }}Expense or purchase</a>
+          <a class="menu-item" role="menuitem" href="/app/{{ client.slug }}/operations/inventory">{{ icon("package-plus", "size-4 text-ink-3") }}Stock received</a>
         </div>
       </div>
       <a class="btn btn-ghost btn-icon relative" href="/app/{{ client.slug }}/inbox/waiting" aria-label="Inbox{% if waiting %}, {{ waiting }} waiting{% endif %}">

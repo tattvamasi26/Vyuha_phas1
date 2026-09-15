@@ -1,0 +1,96 @@
+{% extends "layouts/section.html" %}
+{% from "components/ui.html" import stat, card_head, empty %}
+{% block page %}
+{% set app = "/app/" ~ client.slug %}
+<section class="grid grid-cols-2 gap-4 xl:grid-cols-4" aria-label="Invoice figures">
+  {% for s in stats %}{{ stat(s.label, s.value, s.sub, s.icon, s.tone) }}{% endfor %}
+</section>
+
+{% if gaps %}
+<div class="card flex flex-wrap items-center gap-4 p-4" style="background: var(--warn-soft); border-color: color-mix(in oklab, var(--warn) 25%, var(--line))">
+  <span class="text-warn">{{ icon("triangle-alert", "size-5") }}</span>
+  <p class="min-w-0 flex-1 text-sm text-ink-2"><span class="font-semibold text-ink">These print as a bill of supply, not a tax invoice.</span> Missing: {{ gaps|join(", ") }}.</p>
+  <a href="{{ app }}/settings/billing" class="btn btn-secondary btn-sm">Fill them in{{ icon("arrow-right", "size-3.5") }}</a>
+</div>
+{% endif %}
+
+<section class="card overflow-hidden" data-testid="raise-invoice">
+  {{ card_head("Raise an invoice", unbilled_count ~ " sale" ~ ("" if unbilled_count == 1 else "s") ~ " not billed yet · one invoice is for one customer · next number " ~ next_number) }}
+  {% if groups %}
+  <div class="divide">
+    {% for g in groups %}
+    <form method="post" action="/c/{{ client.slug }}/invoice?next={{ back|urlencode }}" class="px-5 py-4" x-data="{ open: {{ 'true' if loop.first else 'false' }}, buyer: false }">
+      <div class="flex flex-wrap items-center gap-3">
+        <button type="button" class="flex min-w-0 flex-1 items-center gap-3 text-left" @click="open = !open" :aria-expanded="open">
+          <span class="avatar">{{ (g.party or "C")[:1]|upper }}</span>
+          <span class="min-w-0">
+            <span class="block truncate font-semibold">{{ g.party or "Cash sale" }}</span>
+            <span class="block text-xs text-ink-3">{{ g.count }} sale{{ "" if g.count == 1 else "s" }} not billed · {{ g.total|money }}{% if g.count > g.sales|length %} · latest {{ g.sales|length }} shown{% endif %}</span>
+          </span>
+          <span class="ml-1 text-ink-3 transition-transform" :class="open && 'rotate-180'">{{ icon("chevron-down", "size-4") }}</span>
+        </button>
+        <button class="btn btn-primary btn-sm" x-show="open">{{ icon("file-text", "size-3.5") }}Raise invoice</button>
+      </div>
+      <div x-show="open" x-cloak class="mt-3 flex flex-col gap-3 pl-12">
+        <div class="overflow-hidden rounded-xl border border-line">
+          {% for s in g.sales %}
+          <label class="flex cursor-pointer items-center gap-3 border-b border-line px-3 py-2.5 last:border-b-0 hover:bg-surface-2">
+            <input type="checkbox" class="check" name="sale_ids" value="{{ s.id }}">
+            <span class="min-w-0 flex-1 truncate text-sm"><span class="font-medium">{{ s.item }}</span> <span class="text-ink-3">· {{ s.qty|qty }} × {{ s.rate|money }}</span></span>
+            <span class="whitespace-nowrap text-xs text-ink-3">{{ s.date|date("%d %b") }} · <span class="mono">{{ s.id }}</span></span>
+            <span class="num w-24 text-right text-sm font-semibold">{{ s.amount|money }}</span>
+          </label>
+          {% endfor %}
+        </div>
+        <button type="button" class="self-start text-xs font-semibold text-brand hover:underline" @click="buyer = !buyer" x-text="buyer ? 'Hide buyer details' : 'Add buyer GSTIN, state or address'">Add buyer GSTIN, state or address</button>
+        <div x-show="buyer" x-cloak class="grid gap-3 md:grid-cols-3">
+          <div class="field"><label class="label" for="gstin-{{ loop.index }}">Buyer's GSTIN</label><input id="gstin-{{ loop.index }}" name="party_gstin" class="input input-sm" placeholder="optional"></div>
+          <div class="field"><label class="label" for="state-{{ loop.index }}">Buyer's state</label>
+            <select id="state-{{ loop.index }}" name="party_state" class="select input-sm"><option value="">Same state as you</option>{% for k, v in states %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
+            <span class="hint">Another state means IGST instead of CGST + SGST</span></div>
+          <div class="field"><label class="label" for="addr-{{ loop.index }}">Buyer's address</label><input id="addr-{{ loop.index }}" name="party_address" class="input input-sm" placeholder="optional"></div>
+        </div>
+      </div>
+    </form>
+    {% endfor %}
+  </div>
+  {% else %}
+  {{ empty("Everything is billed", "Every sale on the book already has an invoice against it.") }}
+  {% endif %}
+</section>
+
+<section class="card overflow-hidden" data-testid="invoices-raised">
+  {{ card_head("Invoices raised", "Numbering is sequential and never reused — a cancelled invoice keeps its number") }}
+  {% if invoices %}
+  <div class="scroll-x">
+    <table class="table">
+      <thead><tr><th>Number</th><th>Date</th><th>Customer</th><th class="r">Lines</th><th class="r">Tax</th><th class="r">Amount</th><th>Status</th><th class="r"><span class="sr-only">Actions</span></th></tr></thead>
+      <tbody>
+        {% for i in invoices %}
+        <tr data-testid="invoice-row">
+          <td class="mono whitespace-nowrap text-sm font-semibold">{{ i.number }}</td>
+          <td class="whitespace-nowrap text-ink-2">{{ i.date|date("%d %b %Y") }}</td>
+          <td><span class="block max-w-[16rem] truncate font-medium">{{ i.party or "Cash sale" }}</span></td>
+          <td class="r num text-ink-2">{{ i.lines|length }}</td>
+          <td class="r num text-ink-2">{{ i.tax|money if i.taxed else "—" }}</td>
+          <td class="r num whitespace-nowrap font-semibold">{{ i.rounded|money }}</td>
+          <td>{% if i.paid %}<span class="badge tone-ok">Paid</span>{% else %}<span class="badge tone-warn">Due</span>{% endif %}</td>
+          <td class="r">
+            <div class="flex justify-end gap-1.5">
+              <a class="btn btn-secondary btn-sm" href="{{ app }}/doc/invoice/{{ i.id }}" target="_blank" rel="noopener">{{ icon("eye", "size-3.5") }}Open</a>
+              <a class="btn btn-ghost btn-sm" href="{{ app }}/doc/invoice/{{ i.id }}/pdf">PDF</a>
+              <form method="post" action="/c/{{ client.slug }}/invoice/{{ i.id }}/delete?next={{ back|urlencode }}" onsubmit="return confirm('Cancel invoice {{ i.number }}? Its number stays used.')">
+                <button class="btn btn-ghost btn-icon btn-sm" aria-label="Cancel invoice {{ i.number }}" title="Cancel">{{ icon("trash-2", "size-3.5") }}</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  {{ empty("No invoices yet", "Tick a customer's sales above and raise the first one.", "file-text", "dim") }}
+  {% endif %}
+</section>
+{% endblock %}
