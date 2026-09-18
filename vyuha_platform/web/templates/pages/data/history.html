@@ -1,0 +1,30 @@
+{% extends "layouts/section.html" %}
+{% from "components/ui.html" import card_head, empty %}
+{% block page %}
+{% set app = "/app/" ~ client.slug %}
+<section class="card overflow-hidden" data-testid="data-history">
+  {{ card_head("Every file, every run", count ~ " in total", app ~ "/data/add", "Send more") }}
+  {% if runs %}
+  <div class="scroll-x">
+    <table class="table">
+      <thead><tr><th>File</th><th>Read</th><th>What was in it</th><th class="r">Revenue</th><th class="r">Alerts</th><th>How sure</th><th class="r"><span class="sr-only">Open</span></th></tr></thead>
+      <tbody>
+        {% for r in runs %}
+        <tr data-testid="run-row">
+          <td><span class="block max-w-[16rem] truncate font-medium">{{ r.filename }}</span><span class="block text-xs text-ink-3">{{ r.source_method or "read directly" }}</span></td>
+          <td class="whitespace-nowrap text-ink-2">{{ r.uploaded_at|ago }}</td>
+          <td class="text-ink-2"><span class="block max-w-[16rem] truncate">{{ r.sheets_read|join(", ") or "—" }}</span></td>
+          <td class="r num">{{ r.revenue|money if r.status == "ok" else "—" }}</td>
+          <td class="r num text-ink-2">{{ r.alert_count if r.status == "ok" else "—" }}</td>
+          <td>{% if r.status == "ok" %}<span class="badge {{ 'tone-ok' if r.confidence == 'high' else 'tone-warn' }}">{{ r.confidence }}</span>{% else %}<span class="badge tone-bad">failed</span>{% endif %}</td>
+          <td class="r">{% if r.status == "ok" and r.dashboard %}<a class="btn btn-ghost btn-sm" href="{{ app }}/doc/dashboard/{{ r.id }}" target="_blank" rel="noopener">{{ icon("eye", "size-3.5") }}Open</a>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  {{ empty("Nothing sent yet", "Files you send appear here, with what Vyuha made of each.", "database", "brand") }}
+  {% endif %}
+</section>
+{% endblock %}

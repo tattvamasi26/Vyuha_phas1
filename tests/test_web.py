@@ -353,6 +353,73 @@ def test_an_expense_recorded_on_the_site_is_listed_there():
     assert "Landlord Ganesh" in due and 'data-testid="expense-row"' in due
 
 
+def test_the_finance_pages_render_the_statements():
+    slug = _onboard("Finance Walk Traders")
+    _stock(slug)
+    client.post(f"/c/{slug}/expense", data={"category": "Rent", "party": "Landlord",
+                                            "amount": "9000"})
+    hooks = {"overview": ("finance-stats", "due-week", "filings"), "pnl": ("pnl", "break-even"),
+             "balance": ("balance", "assumptions"), "cashflow": ("cashflow",),
+             "dues": ("dues-stats", "receivables", "payables"), "gst": ("gst",),
+             "reports": ("downloads", "send-ca")}
+    for page, wanted in hooks.items():
+        resp = client.get(f"/app/{slug}/finance/{page}")
+        assert resp.status_code == 200, (page, resp.status_code)
+        for hook in wanted:
+            assert f'data-testid="{hook}"' in resp.text, (page, hook)
+    # The period picker narrows the statement rather than being decoration.
+    month = f"month:{date.today().isoformat()[:7]}"
+    assert client.get(f"/app/{slug}/finance/pnl?period={month}").status_code == 200
+    assert "All time" in client.get(f"/app/{slug}/finance/pnl?period=nonsense").text
+
+
+def test_every_page_in_the_menu_is_built():
+    """No page in the nav may still be the "being built" card."""
+    from vyuha_platform.web.views import pages as page_views
+    slug = _onboard("Every Page Traders")
+    _stock(slug)
+    listed = [(s.key, p.key) for s in nav.SECTIONS[1:] for p in s.pages]
+    missing = [k for k in listed if k not in page_views.REGISTRY]
+    assert not missing, missing
+    for section, page in listed:
+        resp = client.get(f"/app/{slug}/{section}/{page}")
+        assert resp.status_code == 200, (section, page, resp.status_code)
+        assert 'data-testid="page-building"' not in resp.text, (section, page)
+
+
+def test_the_team_pages_mark_the_register_and_set_a_target():
+    slug = _onboard("Team Walk Traders")
+    _stock(slug)
+    client.post(f"/c/{slug}/branch", data={"name": "Hubballi", "place": "Market Yard"})
+    client.post(f"/c/{slug}/staff", data={"name": "Manju", "role": "Manager",
+                                          "phone": "98000 00001"})
+    from vyuha_platform import people
+    person = people.load(slug).staff[0]
+
+    back = f"/app/{slug}/team/attendance"
+    resp = client.post(f"/app/{slug}/team/attendance",
+                       data={"staff_id": person.id, "state": "present", "next": back})
+    assert resp.url.path == back, resp.url
+    assert any(a.staff == person.id and a.state == "present"
+               for a in people.load(slug).attendance)
+
+    resp = client.post(f"/app/{slug}/team/target",
+                       data={"staff_id": person.id, "target": "250000", "commission": "1.5"})
+    assert resp.status_code == 200
+    fresh = people.load(slug).person(person.id)
+    assert fresh.target == 250000 and fresh.commission_pct == 1.5
+
+
+def test_a_private_link_is_minted_and_revoked_from_settings():
+    slug = _onboard("Shared Link Traders")
+    resp = client.post(f"/app/{slug}/access/share")
+    assert resp.status_code == 200
+    assert 'data-testid="fresh-pin"' in resp.text, "the PIN was not shown"
+    assert auth.invite_for(slug) is not None
+    client.post(f"/app/{slug}/access/revoke")
+    assert auth.invite_for(slug) is None
+
+
 def test_classic_addresses_map_to_their_pages_on_the_site():
     assert nav.site_path("s", "/c/s/desk/chase") == "/app/s/sales/collections"
     assert nav.site_path("s", "/c/s/operations/alerts?show=dead") == \

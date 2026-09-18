@@ -1,0 +1,53 @@
+{% extends "layouts/section.html" %}
+{% from "components/ui.html" import card_head %}
+{% block page %}
+<div class="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)]">
+  <section class="card overflow-hidden" data-testid="settings-access">
+    {{ card_head("The owner's private link", "A link plus a 4-digit PIN — no password to remember") }}
+    {% if not may_share %}
+    <p class="px-5 py-6 text-sm text-ink-3">Only the Vyuha team can issue or revoke a link. Ask whoever set this up.</p>
+    {% elif invite %}
+    <div class="flex flex-col gap-4 p-5">
+      <div class="field">
+        <label class="label" for="link">Link</label>
+        <input id="link" class="input mono !text-xs" value="{{ link }}" readonly onclick="this.select()">
+        <span class="hint">Send it on WhatsApp. The link alone is not access.</span>
+      </div>
+      {% if fresh_pin %}
+      <div class="card p-4" style="background: var(--ok-soft); border-color: color-mix(in oklab, var(--ok) 25%, var(--line))">
+        <p class="text-sm font-semibold">The PIN, shown once</p>
+        <p class="figure mt-1 text-4xl tracking-[0.35em]" data-testid="fresh-pin">{{ fresh_pin }}</p>
+        <p class="mt-1 text-xs text-ink-2">Send it separately from the link, and write it down now — it is stored only as a hash, so a lost PIN means issuing a new link.</p>
+      </div>
+      {% else %}
+      <p class="text-sm text-ink-3">The PIN was shown when this link was issued and cannot be looked up. Issue a new link if it has been lost.</p>
+      {% endif %}
+      <div class="flex flex-wrap items-center gap-2">
+        <form method="post" action="/app/{{ client.slug }}/access/share"><button class="btn btn-secondary">{{ icon("refresh-cw", "size-4") }}Issue a new link</button></form>
+        <form method="post" action="/app/{{ client.slug }}/access/revoke" onsubmit="return confirm('Revoke the link? Whoever has it is locked out immediately.')">
+          <button class="btn btn-ghost">{{ icon("lock", "size-4") }}Revoke</button>
+        </form>
+      </div>
+      <p class="text-xs text-ink-3">Issued {{ invite.created_at|ago }}{% if invite.last_used %} · last opened {{ invite.last_used|ago }}{% endif %}.</p>
+    </div>
+    {% else %}
+    <div class="flex flex-col items-start gap-4 p-5">
+      <p class="text-sm text-ink-2">No link yet. Issuing one gives the owner their own way in — they tap the link, type four digits once, and the phone is remembered for thirty days.</p>
+      <form method="post" action="/app/{{ client.slug }}/access/share"><button class="btn btn-primary">{{ icon("user-plus", "size-4") }}Issue a link and PIN</button></form>
+    </div>
+    {% endif %}
+  </section>
+
+  <section class="card p-5">
+    <p class="font-semibold">How this stays safe</p>
+    <ul class="mt-3 flex flex-col gap-2.5 text-sm text-ink-2">
+      {% for t in ["Two halves make one key: a link nobody can guess, and a PIN that makes a forwarded message harmless.",
+                   "Five wrong PINs lock the link for fifteen minutes, which turns guessing into about a month of waiting.",
+                   "Revoking kills the remembered device immediately.",
+                   "The link opens this one business and nothing else — no other workspace, and none of the Vyuha team's screens."] %}
+      <li class="flex gap-2">{{ icon("circle-dot", "size-3.5 mt-1 text-brand") }}<span>{{ t }}</span></li>
+      {% endfor %}
+    </ul>
+  </section>
+</div>
+{% endblock %}

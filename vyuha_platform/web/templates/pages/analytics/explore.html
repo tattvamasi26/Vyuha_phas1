@@ -1,0 +1,56 @@
+{% extends "layouts/section.html" %}
+{% from "components/ui.html" import card_head, empty %}
+{% block page %}
+{% set here = "/app/" ~ client.slug ~ "/analytics/explore" %}
+<section class="card overflow-hidden" data-testid="explore">
+  <form method="get" action="{{ here }}" class="grid gap-4 border-b border-line p-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-end">
+    <div class="field">
+      <label class="label" for="ex-group">Group by</label>
+      <select id="ex-group" name="group" class="select">{% for key, what in dimensions.items() %}<option value="{{ key }}" {% if group == key %}selected{% endif %}>{{ what|capitalize }}</option>{% endfor %}</select>
+    </div>
+    <div class="field">
+      <label class="label" for="ex-measure">Measure</label>
+      <select id="ex-measure" name="measure" class="select">{% for key, pair in measures.items() %}<option value="{{ key }}" {% if measure == key %}selected{% endif %}>{{ pair[0] }}</option>{% endfor %}</select>
+    </div>
+    <div class="field">
+      <label class="label" for="ex-period">Period</label>
+      <select id="ex-period" name="period" class="select">{% for key, text, kind in periods %}<option value="{{ key }}" {% if period == key %}selected{% endif %}>{{ text }}</option>{% endfor %}</select>
+    </div>
+    <div class="field">
+      <label class="label" for="ex-party">Only this customer</label>
+      <input id="ex-party" name="party" class="input" value="{{ party }}" placeholder="any">
+    </div>
+    <button class="btn btn-primary !h-11">{{ icon("filter", "size-4") }}Show</button>
+    <label class="flex items-center gap-2 text-sm text-ink-2 lg:col-span-5"><input type="checkbox" class="check" name="unpaid" value="1" {% if unpaid %}checked{% endif %}>Only sales still unpaid</label>
+  </form>
+
+  {% if rows %}
+  <div class="scroll-x px-4 pb-2 pt-4">{{ chart }}</div>
+  <div class="scroll-x border-t border-line">
+    <table class="table">
+      <thead><tr><th>{{ dimensions[group]|capitalize }}</th><th class="r">Revenue</th><th class="r">Quantity</th><th class="r">Bills</th><th class="r">Average bill</th><th class="r">Margin</th><th class="r">Unpaid</th></tr></thead>
+      <tbody>
+        {% for r in rows %}
+        <tr data-testid="explore-row">
+          <td><span class="block max-w-[18rem] truncate font-medium">{{ r.group }}</span></td>
+          <td class="r num {{ 'font-semibold' if measure == 'revenue' else '' }}">{{ r.revenue|money }}</td>
+          <td class="r num text-ink-2">{{ r.qty|qty }}</td>
+          <td class="r num text-ink-2">{{ r.bills }}</td>
+          <td class="r num text-ink-2">{{ r.avg_bill|money }}</td>
+          <td class="r num text-ink-2">{{ r.margin|money if r.margin else "—" }}{% if r.margin_pct is not none %} <span class="text-xs text-ink-3">{{ r.margin_pct }}%</span>{% endif %}</td>
+          <td class="r num {{ 'text-bad' if r.unpaid else 'text-ink-3' }}">{{ r.unpaid|money if r.unpaid else "—" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="border-t border-line px-5 py-3 text-xs text-ink-3">
+    {{ out.sales_matched }} sale{{ "" if out.sales_matched == 1 else "s" }} in {{ period_label|lower }} · {{ out.groups_found }} group{{ "" if out.groups_found == 1 else "s" }} · {{ out.total_revenue|money }} in total{% if out.note %} · {{ out.note }}{% endif %}
+  </p>
+  {% else %}
+  {{ empty("Nothing matches", out.note or "Try a wider period, or clear the filters.", "search", "dim") }}
+  {% endif %}
+</section>
+
+<p class="text-sm text-ink-3">Anything you can ask for here, you can also ask the assistant in words — press <span class="kbd">Ctrl</span> <span class="kbd">K</span> or the Ask button.</p>
+{% endblock %}

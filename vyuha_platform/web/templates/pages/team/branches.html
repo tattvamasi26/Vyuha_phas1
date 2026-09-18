@@ -1,0 +1,62 @@
+{% extends "layouts/section.html" %}
+{% from "components/ui.html" import stat, card_head, empty %}
+{% block page %}
+<section class="grid grid-cols-2 gap-4 xl:grid-cols-4" aria-label="Branch figures" data-testid="branch-stats">
+  {% for s in stats %}{{ stat(s.label, s.value, s.sub, s.icon, s.tone) }}{% endfor %}
+</section>
+
+<div class="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+  <section class="card overflow-hidden" data-testid="branches">
+    {{ card_head("Branch against branch", "Revenue, what is still owed, and what each one spends") }}
+    {% if rows %}
+    <div class="scroll-x">
+      <table class="table">
+        <thead><tr><th>Branch</th><th class="r">Revenue</th><th class="w-32">Share</th><th class="r">Collected</th><th class="r">Owed</th><th class="r">Spend</th><th class="r">Net</th><th class="r">People</th></tr></thead>
+        <tbody>
+          {% for r in rows %}
+          <tr data-testid="branch-row">
+            <td><span class="block font-semibold">{{ r.name }}</span>{% if r.place %}<span class="block text-xs text-ink-3">{{ r.place }}</span>{% endif %}</td>
+            <td class="r num font-semibold">{{ r.revenue|money }}</td>
+            <td><div class="level"><i style="width: {{ (r.share * 100)|round|int }}%"></i></div><span class="mt-1 block text-xs text-ink-3">{{ (r.share * 100)|round|int }}%</span></td>
+            <td class="r num text-ink-2">{{ r.collected|money }}</td>
+            <td class="r num {{ 'text-bad' if r.owed else 'text-ink-3' }}">{{ r.owed|money if r.owed else "—" }}</td>
+            <td class="r num text-ink-2">{{ r.spend|money }}</td>
+            <td class="r num font-semibold">{{ r.net|money }}</td>
+            <td class="r num text-ink-2">{{ r.staff }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    {{ empty("One place, no comparison", "Add a second branch and this fills in. A single-branch business does not need it.", "building-2", "brand") }}
+    {% endif %}
+  </section>
+
+  <div class="flex flex-col gap-6">
+    <section class="card overflow-hidden" data-testid="add-branch">
+      {{ card_head("Add a branch", "A godown or a second shop") }}
+      <form method="post" action="/c/{{ client.slug }}/branch?next={{ back|urlencode }}" class="flex flex-col gap-4 p-5">
+        <div class="field"><label class="label" for="br-name">Name</label><input id="br-name" name="name" class="input" required placeholder="e.g. Hubballi"></div>
+        <div class="field"><label class="label" for="br-place">Where</label><input id="br-place" name="place" class="input" placeholder="Market Yard, Hubballi"></div>
+        <div class="field"><label class="label" for="br-manager">Who runs it</label><input id="br-manager" name="manager" class="input" placeholder="optional"></div>
+        <button class="btn btn-primary">{{ icon("plus", "size-4") }}Add the branch</button>
+      </form>
+    </section>
+
+    {% if transfers %}
+    <section class="card overflow-hidden">
+      {{ card_head("Stock moved", "Between godowns — not a sale, so revenue is untouched") }}
+      <ul class="divide">
+        {% for t in transfers %}
+        <li class="px-5 py-3">
+          <p class="text-sm font-semibold">{{ t.item }} <span class="font-normal text-ink-3">· {{ t.qty|qty }}</span></p>
+          <p class="text-xs text-ink-3">{{ names.get(t.from_branch, "—") }} → {{ names.get(t.to_branch, "—") }} · {{ t.date|date("%d %b") }}</p>
+        </li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

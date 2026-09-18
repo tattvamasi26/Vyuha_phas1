@@ -1,0 +1,70 @@
+{% extends "layouts/section.html" %}
+{% from "components/ui.html" import stat, card_head, empty %}
+{% from "components/period.html" import line %}
+{% block page %}
+{% set app = "/app/" ~ client.slug %}
+{% if not has_gstin %}
+<section class="card p-8" data-testid="gst">
+  <p class="eyebrow">No GSTIN set</p>
+  <h2 class="mt-2 text-xl font-bold">Bills print as a bill of supply</h2>
+  <p class="mt-1 max-w-xl text-ink-2">No tax is collected on them, so there is nothing to report here. Add your GSTIN and state, and this fills in from the invoices you raise.</p>
+  <a href="{{ app }}/settings/billing" class="btn btn-primary mt-4">What prints on your bills{{ icon("arrow-right", "size-4") }}</a>
+</section>
+{% else %}
+<section class="grid grid-cols-2 gap-4 xl:grid-cols-4" aria-label="GST figures" data-testid="gst">
+  {% for s in stats %}{{ stat(s.label, s.value, s.sub, s.icon, s.tone) }}{% endfor %}
+</section>
+
+<div class="grid items-start gap-6 lg:grid-cols-2">
+  <section class="card overflow-hidden" data-testid="filings">
+    {{ card_head("Filing dates", "What is due, and how close") }}
+    {% if filings %}
+    <ul class="divide">
+      {% for f in filings %}
+      <li class="flex flex-wrap items-center gap-3 px-5 py-3">
+        <div class="min-w-0 flex-1">
+          <p class="font-semibold">{{ f.name }} <span class="font-normal text-ink-3">· {{ f.period }}</span></p>
+          <p class="text-xs text-ink-3">{{ f.covers }}</p>
+        </div>
+        <span class="badge {{ 'tone-bad' if f.severity == 'critical' else ('tone-warn' if f.severity == 'warning' else 'tone-dim') }}">{{ f.when }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="px-5 py-6 text-sm text-ink-3">Nothing falls due in the next few weeks.</p>
+    {% endif %}
+    <p class="border-t border-line px-5 py-3 text-xs text-ink-3">{{ scheme }}</p>
+  </section>
+
+  <section class="card overflow-hidden">
+    {{ card_head("By rate", "Taxable value and tax, per GST rate") }}
+    {% if by_rate %}
+    <div class="scroll-x">
+      <table class="table">
+        <thead><tr><th>Rate</th><th class="r">Taxable</th><th class="r">Tax</th></tr></thead>
+        <tbody>
+          {% for rate, row in by_rate %}
+          <tr><td class="font-semibold">{{ "%g"|format(rate) }}%</td><td class="r num">{{ row.taxable|money }}</td><td class="r num font-semibold">{{ row.tax|money }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    {{ empty("No taxed invoices yet", "Raise an invoice with GST on it and the summary appears here.", "file-text", "dim") }}
+    {% endif %}
+  </section>
+</div>
+
+<section class="card overflow-hidden">
+  {{ card_head("Roughly where you stand", "Between filings — not a return") }}
+  <div class="stmt p-5">
+    {{ line("Tax you collected", owed.output|money, "", "from invoices actually raised") }}
+    {{ line("Input credit, estimated", "−" ~ owed.est_input|money, "", "5% on recorded purchases") }}
+    {{ line("Rough net", (owed.output - owed.est_input)|money, "total") }}
+  </div>
+  <p class="border-t border-line px-5 py-3 text-xs text-ink-3">
+    Input credit is an <span class="font-semibold text-ink-2">estimate</span>. Vyuha does not hold your suppliers' GSTINs or their invoice numbers, so this is not a return and must not be filed from. It is here to tell you roughly where you stand between filings.
+  </p>
+</section>
+{% endif %}
+{% endblock %}

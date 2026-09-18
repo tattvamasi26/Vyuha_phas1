@@ -1,0 +1,29 @@
+{% extends "layouts/section.html" %}
+{% from "components/ui.html" import card_head, empty %}
+{% block page %}
+<section class="card overflow-hidden" data-testid="sent">
+  {{ card_head("Everything that left, and to whom", counts.sent ~ " sent · " ~ counts.waiting ~ " still waiting",
+               "/app/" ~ client.slug ~ "/inbox/waiting", "Waiting") }}
+  {% if items %}
+  <div class="scroll-x">
+    <table class="table">
+      <thead><tr><th>What</th><th>To</th><th>Channel</th><th>When</th><th>Outcome</th><th>By</th></tr></thead>
+      <tbody>
+        {% for i in items %}
+        <tr data-testid="sent-row">
+          <td><span class="block max-w-[18rem] truncate font-medium">{{ i.label }}</span>{% if i.subject %}<span class="block max-w-[18rem] truncate text-xs text-ink-3">{{ i.subject }}</span>{% endif %}</td>
+          <td class="whitespace-nowrap text-ink-2">{{ i.to or "—" }}</td>
+          <td class="text-ink-2">{{ "Email" if i.channel == "email" else "WhatsApp" }}</td>
+          <td class="whitespace-nowrap text-ink-2">{{ (i.settled or i.created)|ago }}</td>
+          <td><span class="badge tone-{{ tones.get(i.status, 'dim') }}">{{ i.status }}</span>{% if i.detail %}<span class="mt-0.5 block max-w-[16rem] truncate text-xs text-ink-3">{{ i.detail }}</span>{% endif %}</td>
+          <td class="text-ink-2">{{ i.approved_by or "—" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  {{ empty("Nothing has gone out yet", "Alerts, receipts and reminders appear here once they leave.", "send", "dim") }}
+  {% endif %}
+</section>
+{% endblock %}

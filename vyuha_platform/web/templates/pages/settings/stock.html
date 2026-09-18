@@ -1,0 +1,39 @@
+{% extends "layouts/section.html" %}
+{% from "components/ui.html" import card_head, empty %}
+{% block page %}
+<section class="card overflow-hidden" data-testid="settings-stock">
+  {{ card_head("Stock levels", "A level of 0 means Vyuha will never warn you about that item") }}
+  {% if items %}
+  {% if unset %}
+  <p class="border-b border-line px-5 py-3 text-sm text-ink-2" style="background: var(--warn-soft)">
+    {{ unset|length }} item{{ "" if unset|length == 1 else "s" }} sit{{ "s" if unset|length == 1 else "" }} at zero — Vyuha cannot warn you about {{ "it" if unset|length == 1 else "them" }}.
+  </p>
+  {% endif %}
+  <form method="post" action="/c/{{ client.slug }}/stock/reorder?next={{ back|urlencode }}">
+    <div class="scroll-x">
+      <table class="table">
+        <thead><tr><th>Item</th><th>Category</th><th class="r">In stock</th><th class="r">Warn below</th><th class="r">Sells at</th><th class="r">Costs</th></tr></thead>
+        <tbody>
+          {% for i in items %}
+          <tr data-testid="level-row">
+            <td class="font-medium">{{ i.name }}</td>
+            <td class="text-ink-2">{{ i.category }}</td>
+            <td class="r num">{{ i.stock_qty|qty }} <span class="text-xs text-ink-3">{{ i.unit }}</span></td>
+            <td class="r"><input name="lvl_{{ i.sku }}" value="{{ '%g'|format(i.reorder_level) }}" class="input input-sm !w-24 text-right {{ '!border-warn' if not i.reorder_level else '' }}" inputmode="decimal" aria-label="Reorder level for {{ i.name }}"></td>
+            <td class="r num text-ink-2">{{ i.rate|money }}</td>
+            <td class="r num text-ink-2">{{ i.cost|money if i.cost else "—" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="flex items-center justify-between gap-3 border-t border-line px-5 py-3">
+      <p class="text-xs text-ink-3">Set these from how long a delivery takes: enough stock to last until the next one arrives.</p>
+      <button class="btn btn-primary">Save levels</button>
+    </div>
+  </form>
+  {% else %}
+  {{ empty("Nothing on the shelf yet", "Add what you sell under Operations › Record.", "boxes", "brand") }}
+  {% endif %}
+</section>
+{% endblock %}

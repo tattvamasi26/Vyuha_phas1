@@ -1,0 +1,91 @@
+{% extends "layouts/section.html" %}
+{% from "components/ui.html" import stat, card_head, empty %}
+{% block page %}
+{% set app = "/app/" ~ client.slug %}
+{% if not has_data %}
+<section class="card">{{ empty("No numbers yet", "Record a sale or send a file — the statements build themselves from there.", "wallet", "brand") }}</section>
+{% else %}
+<section class="grid grid-cols-2 gap-4 xl:grid-cols-4" aria-label="Money figures" data-testid="finance-stats">
+  {% for s in stats %}{{ stat(s.label, s.value, s.sub, s.icon, s.tone) }}{% endfor %}
+</section>
+
+<section class="card overflow-hidden">
+  <header class="px-5 pt-4">
+    <h2 class="text-base font-bold">Revenue by month</h2>
+    <p class="text-xs text-ink-3">Billed, not collected · this month is lighter because it is not over yet</p>
+  </header>
+  <div class="scroll-x px-4 pb-3 pt-3">{{ chart }}</div>
+</section>
+
+<div class="grid gap-6 lg:grid-cols-2">
+  <section class="card overflow-hidden" data-testid="due-week">
+    {{ card_head("Landing this week", "Money arriving and money leaving, next seven days") }}
+    <div class="grid grid-cols-2 divide-x divide-line border-b border-line">
+      <div class="p-4"><p class="text-xs font-semibold text-ink-3">Coming in</p><p class="figure mt-1 text-xl text-ok">{{ incoming_total|money }}</p></div>
+      <div class="p-4"><p class="text-xs font-semibold text-ink-3">Going out</p><p class="figure mt-1 text-xl text-bad">{{ outgoing_total|money }}</p></div>
+    </div>
+    {% if incoming or outgoing %}
+    <ul class="divide">
+      {% for s in incoming %}
+      <li class="flex items-center gap-3 px-5 py-2.5">
+        <span class="badge tone-ok">In</span>
+        <span class="min-w-0 flex-1 truncate text-sm">{{ s.party or "Cash sale" }} <span class="text-ink-3">· due {{ s.due_date|date("%d %b") }}</span></span>
+        <span class="num text-sm font-semibold">{{ s.amount|money }}</span>
+      </li>
+      {% endfor %}
+      {% for e in outgoing %}
+      <li class="flex items-center gap-3 px-5 py-2.5">
+        <span class="badge tone-bad">Out</span>
+        <span class="min-w-0 flex-1 truncate text-sm">{{ e.party or e.category }} <span class="text-ink-3">· due {{ e.due_date|date("%d %b") }}</span></span>
+        <span class="num text-sm font-semibold">{{ e.amount|money }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="px-5 py-6 text-sm text-ink-3">Nothing falls due in the next seven days.</p>
+    {% endif %}
+  </section>
+
+  <section class="card overflow-hidden" data-testid="filings">
+    {{ card_head("Filing dates", "What is due, and how close", app ~ "/finance/gst", "GST") }}
+    {% if filings %}
+    <ul class="divide">
+      {% for f in filings %}
+      <li class="flex flex-wrap items-center gap-3 px-5 py-3">
+        <div class="min-w-0 flex-1">
+          <p class="font-semibold">{{ f.name }} <span class="font-normal text-ink-3">· {{ f.period }}</span></p>
+          <p class="text-xs text-ink-3">{{ f.covers }}</p>
+        </div>
+        <span class="badge {{ 'tone-bad' if f.severity == 'critical' else ('tone-warn' if f.severity == 'warning' else 'tone-dim') }}">{{ f.when }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    <p class="border-t border-line px-5 py-3 text-xs text-ink-3">{{ scheme }}</p>
+    {% else %}
+    <p class="px-5 py-6 text-sm text-ink-3">Nothing falls due in the next few weeks.</p>
+    {% endif %}
+  </section>
+</div>
+
+<section class="card overflow-hidden">
+  {{ card_head("Month by month", "Revenue, gross profit and what was left", app ~ "/finance/pnl", "Profit & loss") }}
+  <div class="scroll-x">
+    <table class="table">
+      <thead><tr><th>Month</th><th class="r">Revenue</th><th class="r">Cost of goods</th><th class="r">Gross</th><th class="r">Running costs</th><th class="r">Profit</th></tr></thead>
+      <tbody>
+        {% for m in monthly %}
+        <tr>
+          <td class="font-medium">{{ m.label }}</td>
+          <td class="r num">{{ m.revenue|money }}</td>
+          <td class="r num text-ink-2">{{ m.cogs|money }}</td>
+          <td class="r num text-ink-2">{{ m.gross|money }}</td>
+          <td class="r num text-ink-2">{{ m.opex|money }}</td>
+          <td class="r num font-semibold {{ 'text-bad' if m.profit < 0 else '' }}">{{ m.profit|money }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+{% endblock %}

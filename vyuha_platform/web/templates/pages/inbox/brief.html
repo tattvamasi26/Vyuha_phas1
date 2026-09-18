@@ -1,0 +1,47 @@
+{% extends "layouts/section.html" %}
+{% from "components/ui.html" import card_head, empty %}
+{% block page %}
+{% set app = "/app/" ~ client.slug %}
+{% if not alerts %}
+<section class="card" data-testid="brief">{{ empty("Nothing to send yet", "A brief is built from what needs attention. Record a sale or send a file and one appears.", "message-circle", "brand") }}</section>
+{% else %}
+<div class="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)]">
+  <section class="card overflow-hidden" data-testid="brief">
+    {{ card_head("The brief", "The top " ~ [alerts|length, 5]|min ~ " things, in one message") }}
+    <pre class="prose-ans m-5 rounded-xl bg-surface-2 p-4 text-sm text-ink-2" style="font-family: var(--font-sans)">{{ text }}</pre>
+    <div class="flex flex-wrap items-center gap-2 border-t border-line px-5 py-4">
+      {% if not phone %}
+      <p class="text-sm text-ink-2">No WhatsApp number for this business yet.</p>
+      <a href="{{ app }}/settings/business" class="btn btn-primary btn-sm">Add one{{ icon("arrow-right", "size-3.5") }}</a>
+      {% elif whatsapp_live %}
+      <form method="post" action="/c/{{ client.slug }}/whatsapp?next={{ back|urlencode }}">
+        <input type="hidden" name="text" value="{{ text }}">
+        <button class="btn btn-primary">{{ icon("send", "size-4") }}Send now to +{{ phone }}</button>
+      </form>
+      <p class="text-xs text-ink-3">Goes straight out — one click, no new tab.</p>
+      {% else %}
+      <a class="btn btn-primary" href="{{ wa }}" target="_blank" rel="noopener">{{ icon("message-circle", "size-4") }}Open WhatsApp to send</a>
+      <p class="text-xs text-ink-3">No provider connected, so this opens WhatsApp with the brief typed out and you tap send.</p>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="card overflow-hidden">
+    {{ card_head("Email it instead", "Every email is saved as a draft first") }}
+    <form method="post" action="/c/{{ client.slug }}/email?next={{ back|urlencode }}" class="flex flex-col gap-4 p-5">
+      <div class="field">
+        <label class="label" for="to">To</label>
+        <input id="to" class="input" value="{{ email or 'No email set for this business' }}" disabled>
+        {% if not email %}<span class="hint">Add one under <a class="font-semibold text-brand hover:underline" href="{{ app }}/settings/business">Settings › Business</a>.</span>{% endif %}
+      </div>
+      <div class="field"><label class="label" for="subject">Subject</label><input id="subject" name="subject" class="input" value="{{ subject }}" required></div>
+      <div class="field"><label class="label" for="body">Message</label><textarea id="body" name="body" class="textarea" rows="10" required>{{ text }}</textarea></div>
+      <div class="flex items-center justify-between gap-3">
+        <p class="text-xs text-ink-3">The dashboard is attached.</p>
+        <button class="btn btn-secondary" {% if not email %}disabled{% endif %}>{{ icon("mail", "size-4") }}Save as a draft</button>
+      </div>
+    </form>
+  </section>
+</div>
+{% endif %}
+{% endblock %}

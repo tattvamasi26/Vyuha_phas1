@@ -1,0 +1,61 @@
+{% extends "layouts/section.html" %}
+{% from "components/ui.html" import card_head, empty %}
+{% block page %}
+<section class="card overflow-hidden" data-testid="ratios">
+  {{ card_head("The numbers a lender asks for", "Each with what it means, in a sentence") }}
+  <div class="grid sm:grid-cols-2">
+    {% for r in ratios %}
+    <div class="border-b border-line p-5 {{ 'sm:border-r' if loop.index is odd else '' }}">
+      <div class="flex items-baseline justify-between gap-3">
+        <p class="font-semibold">{{ r.name }}</p>
+        <span class="figure text-2xl {{ 'text-ok' if r.good else 'text-bad' }}">{{ "%.1f"|format(r.value) }}<span class="text-base">{{ "×" if r.unit == "x" else r.unit }}</span></span>
+      </div>
+      <p class="mt-1 text-sm text-ink-3">{{ r.note }}</p>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+<div class="grid items-start gap-6 lg:grid-cols-2">
+  <section class="card overflow-hidden" data-testid="concentration">
+    {{ card_head("Where the money comes from", risk_note) }}
+    {% if concentration.customers %}
+    <div class="scroll-x">
+      <table class="table">
+        <thead><tr><th>Customer</th><th class="w-28">Share</th><th class="r">Revenue</th><th class="r">Owed</th></tr></thead>
+        <tbody>
+          {% for c in concentration.customers %}
+          <tr>
+            <td><span class="block max-w-[14rem] truncate font-medium">{{ c.party }}</span></td>
+            <td><div class="level {{ 'is-low' if c.share >= 0.4 else '' }}"><i style="width: {{ (c.share * 100)|round|int }}%"></i></div><span class="mt-1 block text-xs text-ink-3">{{ (c.share * 100)|round|int }}%</span></td>
+            <td class="r num">{{ c.amount|money }}</td>
+            <td class="r num {{ 'text-bad' if c.owed else 'text-ink-3' }}">{{ c.owed|money if c.owed else "—" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}{{ empty("No sales yet", "This fills in from the bills.", "users", "dim") }}{% endif %}
+  </section>
+
+  <section class="card overflow-hidden">
+    {{ card_head("Where it goes", "Suppliers and heads by spend") }}
+    {% if concentration.suppliers %}
+    <div class="scroll-x">
+      <table class="table">
+        <thead><tr><th>Supplier or head</th><th class="w-28">Share</th><th class="r">Spend</th></tr></thead>
+        <tbody>
+          {% for s in concentration.suppliers %}
+          <tr>
+            <td><span class="block max-w-[14rem] truncate font-medium">{{ s.party }}</span></td>
+            <td><div class="level"><i style="width: {{ (s.share * 100)|round|int }}%"></i></div><span class="mt-1 block text-xs text-ink-3">{{ (s.share * 100)|round|int }}%</span></td>
+            <td class="r num">{{ s.amount|money }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}{{ empty("Nothing recorded", "Purchases and expenses appear here.", "wallet", "dim") }}{% endif %}
+  </section>
+</div>
+{% endblock %}

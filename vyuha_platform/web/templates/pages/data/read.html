@@ -1,0 +1,68 @@
+{% extends "layouts/section.html" %}
+{% from "components/ui.html" import stat, card_head, empty %}
+{% block page %}
+{% set app = "/app/" ~ client.slug %}
+{% if not run %}
+<section class="card" data-testid="readback">{{ empty("Nothing read yet", "Send a file under Add data and this fills in.", "file-spreadsheet", "brand") }}</section>
+{% elif not ok %}
+<section class="card p-6" data-testid="readback" style="border-color: color-mix(in oklab, var(--bad) 32%, var(--line))">
+  <p class="eyebrow">That did not read</p>
+  <h2 class="mt-2 text-xl font-bold">{{ run.filename }}</h2>
+  <p class="mt-2 text-ink-2">{{ run.error }}</p>
+  {% for n in plain[:10] %}<p class="mt-1 text-sm text-ink-3">· {{ n }}</p>{% endfor %}
+</section>
+{% else %}
+<section class="grid grid-cols-2 gap-4 xl:grid-cols-4" aria-label="What was read" data-testid="readback">
+  {{ stat("Revenue read", run.revenue|money_short, "from the sales it found", "trending-up") }}
+  {{ stat("Stock value", run.stock_value|money_short, "from the stock statement", "boxes") }}
+  {{ stat("Outstanding", run.outstanding|money_short, "money not yet collected", "hand-coins") }}
+  {{ stat("How sure", run.confidence|title, run.source_method or "read directly", "badge-check",
+          "ok" if run.confidence == "high" else "warn") }}
+</section>
+
+<section class="card overflow-hidden">
+  <header class="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-4">
+    <div class="min-w-0">
+      <h2 class="truncate text-base font-bold">{{ run.filename }}</h2>
+      <p class="text-xs text-ink-3">{{ run.sheets_read|join(", ") or "nothing named" }} · {{ run.uploaded_at|ago }} · {{ run.alert_count }} alert{{ "" if run.alert_count == 1 else "s" }}</p>
+    </div>
+    <div class="flex gap-2">
+      <a class="btn btn-secondary btn-sm" href="{{ app }}/doc/dashboard" target="_blank" rel="noopener">{{ icon("eye", "size-3.5") }}Open the dashboard</a>
+      <a class="btn btn-ghost btn-sm" href="{{ app }}/doc/export/pdf">PDF</a>
+    </div>
+  </header>
+  {% if per_file %}
+  <ul class="divide">
+    {% for name, what in per_file %}
+    <li class="px-5 py-3">
+      <p class="font-semibold">{{ name }}</p>
+      <p class="text-sm text-ink-3">{{ what }}</p>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% if plain %}
+  <div class="border-t border-line px-5 py-4">
+    {% for n in plain %}<p class="text-sm text-ink-2">· {{ n }}</p>{% endfor %}
+  </div>
+  {% endif %}
+  {% if skipped %}
+  <p class="border-t border-line px-5 py-3 text-xs text-ink-3">Could not read: {{ skipped[:8]|join(", ") }}{% if skipped|length > 8 %} and {{ skipped|length - 8 }} more{% endif %}.</p>
+  {% endif %}
+</section>
+
+{% if alerts %}
+<section class="card overflow-hidden">
+  {{ card_head("What it found", "The same list Home ranks") }}
+  <ul class="divide">
+    {% for a in alerts[:8] %}
+    <li class="flex gap-3 px-5 py-3">
+      <span class="ring-tone {{ 'tone-bad' if a.severity == 'critical' else 'tone-warn' }} !size-8">{{ icon("triangle-alert", "size-4") }}</span>
+      <div class="min-w-0"><p class="font-semibold">{{ a.title }}</p><p class="text-sm text-ink-3">{{ a.detail }}</p></div>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+{% endif %}
+{% endblock %}

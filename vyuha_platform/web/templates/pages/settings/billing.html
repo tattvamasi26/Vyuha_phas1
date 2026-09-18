@@ -1,0 +1,49 @@
+{% extends "layouts/section.html" %}
+{% from "components/ui.html" import card_head %}
+{% block page %}
+{% if gaps %}
+<div class="card flex flex-wrap items-center gap-4 p-4" data-testid="billing-gaps" style="background: var(--warn-soft); border-color: color-mix(in oklab, var(--warn) 25%, var(--line))">
+  <span class="text-warn">{{ icon("triangle-alert", "size-5") }}</span>
+  <p class="min-w-0 flex-1 text-sm text-ink-2"><span class="font-semibold text-ink">Bills print as a bill of supply, not a tax invoice.</span> Missing: {{ gaps|join(", ") }}. Fill them in below and every invoice from then on carries them.</p>
+</div>
+{% endif %}
+
+<section class="card overflow-hidden" data-testid="settings-billing">
+  {{ card_head("What prints on your bills", "Set once · the next number is " ~ next_number) }}
+  <form method="post" action="/c/{{ client.slug }}/invoice/identity?next={{ back|urlencode }}" class="flex flex-col gap-5 p-5">
+    <div class="field">
+      <span class="label">Bill design</span>
+      <div class="flex flex-wrap gap-2" role="radiogroup" aria-label="Bill design">
+        {% for key, pair in templates.items() %}
+        <label class="choice"><input type="radio" name="invoice_template" value="{{ key }}" {% if chosen == key %}checked{% endif %}>{{ pair[0] }}</label>
+        {% endfor %}
+      </div>
+      <span class="hint">{{ templates.get(chosen, ("", ""))[1] }}</span>
+    </div>
+
+    <div class="grid gap-4 sm:grid-cols-2">
+      <div class="field"><label class="label" for="b-gstin">Your GSTIN</label><input id="b-gstin" name="gstin" class="input" value="{{ client.gstin }}" placeholder="29ABCDE1234F1Z5"></div>
+      <div class="field">
+        <label class="label" for="b-state">Your state</label>
+        <select id="b-state" name="state" class="select"><option value="">Your state…</option>{% for k, v in states %}<option value="{{ k }}" {% if client.state == k %}selected{% endif %}>{{ v }}</option>{% endfor %}</select>
+        <span class="hint">A buyer in another state means IGST instead of CGST + SGST.</span>
+      </div>
+    </div>
+
+    <div class="field"><label class="label" for="b-address">Address, as it should print</label><textarea id="b-address" name="address" class="textarea" rows="3">{{ client.address }}</textarea></div>
+
+    <div class="grid gap-4 sm:grid-cols-3">
+      <div class="field"><label class="label" for="b-bank">Bank and branch</label><input id="b-bank" name="bank_name" class="input" value="{{ client.bank_name }}"></div>
+      <div class="field"><label class="label" for="b-acc">Account number</label><input id="b-acc" name="bank_account" class="input" value="{{ client.bank_account }}"></div>
+      <div class="field"><label class="label" for="b-ifsc">IFSC</label><input id="b-ifsc" name="bank_ifsc" class="input" value="{{ client.bank_ifsc }}"></div>
+    </div>
+
+    <div class="field"><label class="label" for="b-terms">Terms printed at the foot</label><input id="b-terms" name="invoice_terms" class="input" value="{{ client.invoice_terms }}" placeholder="e.g. Payment within 30 days. Goods once sold are not taken back."></div>
+
+    <div class="flex items-center justify-between gap-3">
+      <p class="text-xs text-ink-3">Invoices already raised are untouched — a document that has gone to a customer cannot change afterwards.</p>
+      <button class="btn btn-primary">{{ icon("check", "size-4") }}Save</button>
+    </div>
+  </form>
+</section>
+{% endblock %}

@@ -16,9 +16,11 @@ def main() -> None:
     ap.add_argument("--reload", action="store_true", help="auto-reload on code change")
     ap.add_argument("--watch", action="store_true",
                     help="with 'css': rebuild whenever a template changes")
-    ap.add_argument("command", nargs="?", default="serve", choices=["serve", "seed", "css"],
-                    help="'seed' rebuilds the demo workspace; 'css' builds the site's "
-                         "stylesheet; both then exit")
+    ap.add_argument("command", nargs="?", default="serve",
+                    choices=["serve", "seed", "seed-bearings", "css"],
+                    help="'seed' rebuilds the agri demo workspace, 'seed-bearings' the "
+                         "bearings distributor; 'css' builds the site's stylesheet; each "
+                         "then exits")
     args = ap.parse_args()
 
     if args.command == "css":
@@ -28,6 +30,11 @@ def main() -> None:
     if args.command == "seed":
         from .demo_seed import main as seed
         seed()
+        return
+
+    if args.command == "seed-bearings":
+        from .demo_bearings import main as seed_bearings
+        seed_bearings()
         return
 
     url = f"http://{args.host}:{args.port}"

@@ -1,0 +1,55 @@
+{% extends "layouts/section.html" %}
+{% from "components/ui.html" import card_head %}
+{% from "components/period.html" import line %}
+{% block page %}
+<div class="grid items-start gap-6 lg:grid-cols-2">
+  <section class="card overflow-hidden" data-testid="balance">
+    {{ card_head("What you own", "As of " ~ as_of|date("%d %B %Y")) }}
+    <div class="stmt p-5">
+      {{ line("Cash from trading", bs.cash_from_trading|money, "", "receipts less payments recorded here") }}
+      {{ line("Money owed to you", bs.receivables|money) }}
+      {{ line("Stock on the shelf", bs.stock_value|money, "", "at cost where known, else at selling rate") }}
+      {{ line("Current assets", bs.current_assets|money, "total") }}
+    </div>
+  </section>
+
+  <section class="card overflow-hidden">
+    {{ card_head("What you owe", "Bills recorded and not yet paid") }}
+    <div class="stmt p-5">
+      {{ line("Suppliers and expenses", bs.payables|money) }}
+      {{ line("Current liabilities", bs.current_liabilities|money, "total") }}
+    </div>
+    <div class="grid grid-cols-2 divide-x divide-line border-t border-line">
+      <div class="p-5"><p class="text-xs font-semibold text-ink-3">Working capital</p><p class="figure mt-1 text-2xl">{{ bs.working_capital|money }}</p></div>
+      <div class="p-5"><p class="text-xs font-semibold text-ink-3">Net worth from trading</p><p class="figure mt-1 text-2xl">{{ bs.net_worth_from_trading|money }}</p></div>
+    </div>
+  </section>
+</div>
+
+<div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+  <section class="card overflow-hidden">
+    {{ card_head("How it reads", "Three ratios a lender looks at first") }}
+    <ul class="divide">
+      {% for r in ratios %}
+      <li class="flex items-center gap-4 px-5 py-3.5">
+        <div class="min-w-0 flex-1"><p class="font-semibold">{{ r.name }}</p><p class="text-xs text-ink-3">{{ r.note }}</p></div>
+        <span class="figure text-lg {{ 'text-ok' if r.good else 'text-bad' }}">{{ "%.1f"|format(r.value) }}{{ r.unit if r.unit != "x" else "×" }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  <section class="card p-5" data-testid="assumptions" style="background: var(--info-soft); border-color: color-mix(in oklab, var(--info) 22%, var(--line))">
+    <div class="flex gap-3">
+      <span class="text-info">{{ icon("info", "size-5") }}</span>
+      <div>
+        <p class="font-semibold">What this statement cannot see</p>
+        <ul class="mt-2 flex flex-col gap-1.5 text-sm text-ink-2">
+          {% for a in bs.assumptions %}<li class="flex gap-2">{{ icon("circle-dot", "size-3.5 mt-1 text-info") }}<span>{{ a }}</span></li>{% endfor %}
+        </ul>
+        <p class="mt-3 text-sm text-ink-2">A trading position, not a filed balance sheet. Give it to your CA as a starting point, never as the finished thing.</p>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}

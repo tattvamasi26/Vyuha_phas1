@@ -1,0 +1,58 @@
+{% extends "layouts/section.html" %}
+{% from "components/ui.html" import card_head %}
+{% from "components/period.html" import period_form, line %}
+{% set here = "/app/" ~ client.slug ~ "/finance/cashflow" %}
+{% block actions %}{{ period_form(here, periods, period) }}{% endblock %}
+{% block page %}
+<div class="grid items-start gap-6 lg:grid-cols-2">
+  <section class="card overflow-hidden" data-testid="cashflow">
+    {{ card_head("Cash flow · " ~ period_label, "Cash basis: what actually moved") }}
+    <div class="stmt p-5">
+      {{ line("Money received", cf.received|money) }}
+      {{ line("Money paid out", "−" ~ cf.paid_out|money) }}
+      {{ line("Net movement", cf.net_movement|money, "total") }}
+    </div>
+  </section>
+
+  <section class="card overflow-hidden">
+    {{ card_head("The gap between profit and cash", "Profit you have not collected is not money you can spend") }}
+    <div class="stmt p-5">
+      {{ line("Billed in this period", cf.billed|money) }}
+      {{ line("Of that, not yet collected", cf.billed_not_collected|money, "", "sitting with customers") }}
+      {{ line("Costs incurred", cf.incurred|money) }}
+      {{ line("Of that, not yet paid", cf.incurred_not_paid|money, "", "sitting with you") }}
+    </div>
+  </section>
+</div>
+
+<div class="grid gap-6 lg:grid-cols-2">
+  <section class="card overflow-hidden">
+    <header class="px-5 pt-4"><h2 class="text-base font-bold">Money in, by month</h2><p class="text-xs text-ink-3">Receipts, not bills</p></header>
+    <div class="scroll-x px-4 pb-3 pt-3">{{ in_chart }}</div>
+  </section>
+  <section class="card overflow-hidden">
+    <header class="px-5 pt-4"><h2 class="text-base font-bold">Money out, by month</h2><p class="text-xs text-ink-3">Payments, not bills received</p></header>
+    <div class="scroll-x px-4 pb-3 pt-3">{{ out_chart }}</div>
+  </section>
+</div>
+
+<section class="card overflow-hidden">
+  {{ card_head("Month by month", "What came in, what went out, and what that left") }}
+  <div class="scroll-x">
+    <table class="table">
+      <thead><tr><th>Month</th><th class="r">Received</th><th class="r">Paid out</th><th class="r">Net</th><th class="r">Billed</th></tr></thead>
+      <tbody>
+        {% for m in monthly %}
+        <tr>
+          <td class="font-medium">{{ m.label }}</td>
+          <td class="r num text-ok">{{ m.received|money }}</td>
+          <td class="r num text-bad">{{ m.paid|money }}</td>
+          <td class="r num font-semibold">{{ (m.received - m.paid)|money }}</td>
+          <td class="r num text-ink-3">{{ m.revenue|money }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

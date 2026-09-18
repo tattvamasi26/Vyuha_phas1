@@ -442,6 +442,42 @@
   .cols-label { fill: var(--ink-3); font: 500 12px var(--font-sans); }
   .cols-value { fill: var(--ink-2); font: 600 11.5px var(--font-mono); }
 
+  /* the drop zone on Data › Add */
+  .drop {
+    display: block; text-align: center; cursor: pointer;
+    padding: 2rem 1.25rem; border-radius: 1rem;
+    border: 1.5px dashed var(--line-strong); background: var(--surface-2);
+    transition: border-color 0.15s, background-color 0.15s;
+  }
+  .drop:hover { border-color: var(--brand); background: var(--brand-soft); }
+  .drop:focus-within { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-ring); }
+
+  /* the attendance register's squares */
+  .mark {
+    display: inline-block; width: 0.85rem; height: 0.85rem; border-radius: 0.28rem;
+    background: var(--sunken); border: 1px solid var(--line);
+  }
+  .mark-present { background: var(--ok); border-color: var(--ok); }
+  .mark-half { background: var(--warn); border-color: var(--warn); }
+  .mark-leave { background: var(--info); border-color: var(--info); }
+  .mark-absent { background: var(--bad); border-color: var(--bad); }
+
+  /* a statement: label left, figure right, totals ruled off */
+  .stmt { display: flex; flex-direction: column; }
+  .stmt-row {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 1rem;
+    padding: 0.5rem 0; border-bottom: 1px dashed var(--line);
+  }
+  .stmt-row:last-child { border-bottom: 0; }
+  .stmt-row .v { font-family: var(--font-display); font-weight: 700; font-variant-numeric: tabular-nums; }
+  .stmt-row.is-sub { padding-left: 1rem; color: var(--ink-2); font-size: 0.875rem; border-bottom-style: dotted; }
+  .stmt-row.is-sub .v { font-weight: 600; font-size: 0.9375rem; }
+  .stmt-row.is-total {
+    margin-top: 0.25rem; padding-top: 0.75rem; border-top: 1.5px solid var(--line-strong);
+    border-bottom: 0; font-weight: 700;
+  }
+  .stmt-row.is-total .v { font-size: 1.25rem; }
+
   /* stock on the shelf against its reorder mark */
   .level { position: relative; height: 0.4rem; min-width: 6rem; border-radius: 999px; background: var(--sunken); }
   .level > i { display: block; height: 100%; border-radius: 999px; background: var(--ok); }

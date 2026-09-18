@@ -1,0 +1,65 @@
+{% extends "layouts/section.html" %}
+{% from "components/ui.html" import stat, card_head, empty %}
+{% block page %}
+<section class="grid grid-cols-2 gap-4 xl:grid-cols-4" aria-label="Register figures" data-testid="attendance-stats">
+  {% for s in stats %}{{ stat(s.label, s.value, s.sub, s.icon, s.tone) }}{% endfor %}
+</section>
+
+<section class="card overflow-hidden" data-testid="register">
+  {{ card_head("Today's register", "Nobody is absent until somebody says so") }}
+  {% if register %}
+  <ul class="divide">
+    {% for r in register %}
+    <li class="flex flex-wrap items-center gap-4 px-5 py-3">
+      <span class="avatar !size-9">{{ r.name[:1]|upper }}</span>
+      <div class="min-w-0 flex-1">
+        <p class="truncate font-semibold">{{ r.name }}</p>
+        <p class="text-xs text-ink-3">{{ r.role }}{% if r.branch %} · {{ r.branch }}{% endif %}</p>
+      </div>
+      {% if r.state == "unmarked" %}<span class="badge tone-dim">Not marked</span>
+      {% elif r.state == "present" %}<span class="badge tone-ok">In</span>
+      {% elif r.state == "half" %}<span class="badge tone-warn">Half day</span>
+      {% elif r.state == "leave" %}<span class="badge tone-info">Leave</span>
+      {% else %}<span class="badge tone-bad">Out</span>{% endif %}
+      <form method="post" action="/app/{{ client.slug }}/team/attendance" class="flex gap-1.5">
+        <input type="hidden" name="staff_id" value="{{ r.id }}">
+        <input type="hidden" name="next" value="{{ back }}">
+        {% for key, label in states %}
+        <button name="state" value="{{ key }}" class="btn btn-sm {{ 'btn-secondary' if r.state != key else 'btn-soft' }}">{{ label }}</button>
+        {% endfor %}
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  {{ empty("Nobody on the register", "Add your team under Staff and the register appears here.", "users", "brand") }}
+  {% endif %}
+</section>
+
+{% if grid %}
+<section class="card overflow-hidden" data-testid="register-grid">
+  {{ card_head("The fortnight", "One row per person · an empty square is a day nobody marked") }}
+  <div class="scroll-x">
+    <table class="table">
+      <thead><tr><th>Name</th>{% for l in labels %}<th class="text-center text-[0.6rem]">{{ l }}</th>{% endfor %}</tr></thead>
+      <tbody>
+        {% for row in grid %}
+        <tr>
+          <td class="whitespace-nowrap font-medium">{{ row.person.name }}</td>
+          {% for m in row.marks %}
+          <td class="text-center">
+            <span class="mark mark-{{ m or 'none' }}" title="{{ m or 'not marked' }}"></span>
+          </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="flex flex-wrap items-center gap-4 border-t border-line px-5 py-3 text-xs text-ink-3">
+    {% for key, label in states %}<span class="inline-flex items-center gap-1.5"><span class="mark mark-{{ key }}"></span>{{ label }}</span>{% endfor %}
+    <span class="inline-flex items-center gap-1.5"><span class="mark mark-none"></span>Not marked</span>
+  </p>
+</section>
+{% endif %}
+{% endblock %}

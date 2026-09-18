@@ -1,0 +1,70 @@
+{% extends "layouts/section.html" %}
+{% from "components/ui.html" import card_head, empty %}
+{% from "components/period.html" import period_form, line %}
+{% set here = "/app/" ~ client.slug ~ "/finance/pnl" %}
+{% block actions %}{{ period_form(here, periods, period) }}{% endblock %}
+{% block page %}
+<div class="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+  <section class="card overflow-hidden" data-testid="pnl">
+    {{ card_head("Profit & loss · " ~ period_label, "Accrual basis: what was billed and what it cost, not what was collected") }}
+    <div class="stmt p-5">
+      {{ line("Revenue", pl.revenue|money, note=pl.bills ~ " bills") }}
+      {{ line("Cost of goods sold", "−" ~ pl.cogs|money, note="item cost × quantity sold") }}
+      {{ line("Gross profit", pl.gross_profit|money, "total", "%.1f%% of revenue"|format(pl.gross_margin_pct)) }}
+      {% for head, amount in pl.opex_rows %}
+      {{ line(head, "−" ~ amount|money, "sub") }}
+      {% endfor %}
+      {{ line("Running costs", "−" ~ pl.opex|money) }}
+      {{ line("Net profit", pl.net_profit|money, "total", "%.1f%% of revenue"|format(pl.net_margin_pct)) }}
+    </div>
+    <div class="border-t border-line px-5 py-3 text-xs text-ink-3">
+      Purchases in this period were {{ pl.purchases_in_period|money }} — shown separately from cost of goods, because buying a container in March is not a loss in March.
+      {% if pl.cost_coverage_pct < 99 %}<br><span class="font-semibold text-ink-2">Cost is known on {{ pl.cost_coverage_pct|round|int }}% of lines</span> — gross margin is only as good as that.{% endif %}
+    </div>
+  </section>
+
+  <div class="flex flex-col gap-6">
+    <section class="card overflow-hidden" data-testid="break-even">
+      {{ card_head("Break-even", "Turnover a month needed to cover running costs") }}
+      <div class="stmt p-5">
+        {{ line("Running costs a month", break_even.fixed_monthly|money) }}
+        {{ line("Gross margin", "%.1f%%"|format(break_even.contribution_margin_pct)) }}
+        {{ line("Break-even a month", break_even.break_even_monthly|money, "total") }}
+        {{ line("Actually doing", break_even.actual_monthly|money, "", "average over the months on the book") }}
+      </div>
+      <p class="border-t border-line px-5 py-3 text-xs {{ 'text-ok' if break_even.clears else 'text-bad' }}">
+        {% if break_even.clears %}Clearing break-even by {{ break_even.headroom|money }} a month.{% else %}Short of break-even by {{ (-break_even.headroom)|money }} a month.{% endif %}
+        Every head except purchases is treated as fixed.
+      </p>
+    </section>
+
+    <section class="card overflow-hidden">
+      {{ card_head("Where the running costs go", "Each head, and what it is as a share of revenue") }}
+      {% if heads %}
+      <div class="scroll-x">
+        <table class="table">
+          <thead><tr><th>Head</th><th class="r">Amount</th><th class="r">Share of revenue</th><th class="r">Unpaid</th></tr></thead>
+          <tbody>
+            {% for h in heads %}
+            <tr>
+              <td class="font-medium">{{ h.head }}</td>
+              <td class="r num">{{ h.amount|money }}</td>
+              <td class="r num text-ink-2">{{ "%.1f%%"|format(h.pct_of_revenue) }}</td>
+              <td class="r num {{ 'text-bad' if h.unpaid else 'text-ink-3' }}">{{ h.unpaid|money if h.unpaid else "—" }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      {{ empty("Nothing recorded", "Purchases and expenses appear here once they are recorded.", "wallet", "dim") }}
+      {% endif %}
+    </section>
+  </div>
+</div>
+
+<section class="card overflow-hidden">
+  <header class="px-5 pt-4"><h2 class="text-base font-bold">Profit by month</h2><p class="text-xs text-ink-3">Gross profit less running costs, month by month</p></header>
+  <div class="scroll-x px-4 pb-3 pt-3">{{ chart }}</div>
+</section>
+{% endblock %}

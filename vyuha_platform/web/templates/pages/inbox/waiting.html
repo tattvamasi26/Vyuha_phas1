@@ -1,0 +1,40 @@
+{% extends "layouts/section.html" %}
+{% from "components/ui.html" import stat, card_head, empty %}
+{% block page %}
+<section class="grid grid-cols-2 gap-4 xl:grid-cols-4" aria-label="Outbox figures" data-testid="inbox-stats">
+  {% for s in stats %}{{ stat(s.label, s.value, s.sub, s.icon, s.tone) }}{% endfor %}
+</section>
+
+<section class="card overflow-hidden" data-testid="waiting">
+  {{ card_head("Waiting on you", "Nothing here has left the building") }}
+  {% if rows %}
+  <ul class="divide">
+    {% for r in rows %}
+    <li class="px-5 py-4" x-data="{ open: false }" data-testid="outbox-row">
+      <div class="flex flex-wrap items-start gap-4">
+        <span class="ring-tone tone-{{ r.dispo[1] }}">{{ icon("mail" if r.i.channel == "email" else "message-circle") }}</span>
+        <div class="min-w-0 flex-1">
+          <p class="font-semibold">{{ r.i.label }}{% if r.i.subject %} <span class="font-normal text-ink-3">· {{ r.i.subject }}</span>{% endif %}</p>
+          <p class="text-sm text-ink-3">To {{ r.i.to or "nobody — no number set" }} · {{ r.i.created|ago }}{% if r.i.source %} · {{ r.i.source }}{% endif %}</p>
+          <p class="mt-1 text-xs text-ink-3">{{ r.dispo[2] }}</p>
+        </div>
+        <span class="badge tone-{{ r.dispo[1] }}">{{ r.dispo[0] }}</span>
+      </div>
+      <div class="mt-3 flex flex-wrap items-center gap-2 pl-14">
+        <button type="button" class="btn btn-ghost btn-sm" @click="open = !open" :aria-expanded="open"><span x-text="open ? 'Hide the message' : 'See the message'">See the message</span></button>
+        {% if r.wa %}<a class="btn btn-primary btn-sm" href="{{ r.wa }}" target="_blank" rel="noopener">{{ icon("message-circle", "size-3.5") }}Open WhatsApp</a>{% endif %}
+        {% if (r.i.channel == "whatsapp" and whatsapp_live) or (r.i.channel == "email" and email_live) %}
+        <form method="post" action="/c/{{ client.slug }}/outbox/{{ r.i.id }}/send?next={{ back|urlencode }}"><button class="btn btn-primary btn-sm">{{ icon("send", "size-3.5") }}Send now</button></form>
+        {% endif %}
+        <form method="post" action="/c/{{ client.slug }}/outbox/{{ r.i.id }}/sent?next={{ back|urlencode }}"><button class="btn btn-secondary btn-sm">{{ icon("check", "size-3.5") }}I sent it</button></form>
+        <form method="post" action="/c/{{ client.slug }}/outbox/{{ r.i.id }}/cancel?next={{ back|urlencode }}" onsubmit="return confirm('Cancel this message?')"><button class="btn btn-ghost btn-sm">Cancel</button></form>
+      </div>
+      <p x-show="open" x-cloak class="prose-ans mt-3 rounded-xl bg-surface-2 p-4 text-sm text-ink-2">{{ r.i.body }}</p>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  {{ empty("Nothing is waiting", "Alerts that can send themselves have gone; anything needing a person would be here.") }}
+  {% endif %}
+</section>
+{% endblock %}

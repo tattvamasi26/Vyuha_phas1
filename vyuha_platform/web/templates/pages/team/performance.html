@@ -1,0 +1,52 @@
+{% extends "layouts/section.html" %}
+{% from "components/ui.html" import stat, card_head, empty %}
+{% block page %}
+<section class="grid grid-cols-2 gap-4 xl:grid-cols-4" aria-label="Selling figures" data-testid="performance-stats">
+  {% for s in stats %}{{ stat(s.label, s.value, s.sub, s.icon, s.tone) }}{% endfor %}
+</section>
+
+<section class="card overflow-hidden" data-testid="performance">
+  {{ card_head("Who is selling", "The last " ~ days ~ " days, against each person's target") }}
+  {% if rows %}
+  <div class="scroll-x">
+    <table class="table">
+      <thead><tr><th>Name</th><th>Branch</th><th class="r">Sold</th><th class="r">Bills</th><th class="r">Customers</th><th class="w-44">Against target</th><th class="r">Commission</th><th class="r">Target &amp; %</th></tr></thead>
+      <tbody>
+        {% for r in rows %}
+        <tr data-testid="person-row">
+          <td><span class="flex items-center gap-2.5"><span class="avatar !size-8 !text-xs">{{ r.name[:1]|upper }}</span><span><span class="block font-semibold">{{ r.name }}</span><span class="block text-xs text-ink-3">{{ r.role }}</span></span></span></td>
+          <td class="text-ink-2">{{ r.branch }}</td>
+          <td class="r num font-semibold">{{ r.revenue|money }}</td>
+          <td class="r num text-ink-2">{{ r.bills }}</td>
+          <td class="r num text-ink-2">{{ r.customers }}</td>
+          <td>
+            {% if r.pct_of_target is not none %}
+            <div class="level {{ 'is-low' if r.pct_of_target < 100 else '' }}"><i style="width: {{ [r.pct_of_target, 100]|min }}%"></i></div>
+            <span class="mt-1 block text-xs {{ 'text-ok' if r.on_track else 'text-ink-3' }}">{{ r.pct_of_target }}% of {{ r.target|money }}</span>
+            {% else %}
+            <span class="text-xs text-ink-3">No target set</span>
+            {% endif %}
+          </td>
+          <td class="r num text-ink-2">{{ r.commission|money if r.commission else "—" }}</td>
+          <td class="r">
+            <form method="post" action="/app/{{ client.slug }}/team/target" class="flex justify-end gap-1.5">
+              <input type="hidden" name="staff_id" value="{{ r.id }}">
+              <input type="hidden" name="next" value="{{ back }}">
+              <input name="target" class="input input-sm !w-24 text-right" inputmode="decimal" value="{{ r.target or '' }}" aria-label="Monthly target for {{ r.name }}" placeholder="target">
+              <input name="commission" class="input input-sm !w-16 text-right" inputmode="decimal" aria-label="Commission percent for {{ r.name }}" placeholder="%">
+              <button class="btn btn-secondary btn-sm">Save</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if unattributed %}
+  <p class="border-t border-line px-5 py-3 text-xs text-ink-3">{{ unattributed|money }} of sales in this window has nobody against it. It is left out rather than shared between people — a number split evenly is one nobody can act on.</p>
+  {% endif %}
+  {% else %}
+  {{ empty("Nobody to compare yet", "Add your team under Staff, then record sales against them.", "users", "brand") }}
+  {% endif %}
+</section>
+{% endblock %}

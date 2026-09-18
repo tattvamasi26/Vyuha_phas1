@@ -1,0 +1,62 @@
+{% extends "layouts/section.html" %}
+{% from "components/ui.html" import card_head %}
+{% block page %}
+{% if typed_in %}
+<div class="card flex flex-wrap items-center gap-4 p-4">
+  <span class="text-info">{{ icon("info", "size-5") }}</span>
+  <p class="min-w-0 flex-1 text-sm text-ink-2"><span class="font-semibold text-ink">This business types its entries in.</span> You can still send a file — it is read and merged, and anything Vyuha already holds is not duplicated.</p>
+  <a href="/app/{{ client.slug }}/operations/record" class="btn btn-secondary btn-sm">Record instead{{ icon("arrow-right", "size-3.5") }}</a>
+</div>
+{% endif %}
+
+<div class="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)]">
+  <section class="card overflow-hidden" data-testid="send-files">
+    {{ card_head("Send files", "As many as you like · no need to clean them up first") }}
+    <form method="post" action="/c/{{ client.slug }}/upload?next={{ back|urlencode }}" enctype="multipart/form-data" class="flex flex-col gap-4 p-5" id="upload-form">
+      <label class="drop" for="files">
+        <span class="ring-tone tone-brand !size-12 !rounded-2xl">{{ icon("upload", "size-6") }}</span>
+        <span class="mt-3 block font-display text-lg font-bold">Choose the files</span>
+        <span class="mt-1 block text-sm text-ink-3">Excel, CSV, tab-separated, PDF, or a photo of a register page</span>
+        <input type="file" name="file" id="files" multiple class="sr-only" onchange="document.getElementById('upload-form').submit()">
+      </label>
+      <p class="text-xs text-ink-3">
+        A sales register, a stock statement, an outstanding list — send them together and they are read as one picture.
+        {% if not can_read_photos %}<br>Photographs and scanned PDFs need a Claude key, which is not set on this machine.{% endif %}
+      </p>
+    </form>
+  </section>
+
+  {% if not is_guest %}
+  <section class="card overflow-hidden" data-testid="read-folder">
+    {{ card_head("Or read a folder on this machine", "Nothing is moved — the folder is read where it sits") }}
+    <form method="post" action="/c/{{ client.slug }}/folder?next={{ back|urlencode }}" class="flex flex-col gap-4 p-5">
+      <div class="field">
+        <label class="label" for="path">Folder</label>
+        <input id="path" name="path" class="input mono !text-xs" placeholder="C:\Users\you\Desktop\client files" autocomplete="off">
+        <span class="hint">Nobody wants to select ninety files in a dialog.</span>
+      </div>
+      <label class="flex items-center gap-2 text-sm text-ink-2"><input type="checkbox" class="check" name="recursive" value="1" checked>Include sub-folders</label>
+      <div class="flex justify-end"><button class="btn btn-secondary">{{ icon("database", "size-4") }}Read the folder</button></div>
+    </form>
+  </section>
+  {% endif %}
+</div>
+
+{% if runs %}
+<section class="card overflow-hidden">
+  {{ card_head("Recently read", "The last few", "/app/" ~ client.slug ~ "/data/history", "All of it") }}
+  <ul class="divide">
+    {% for r in runs %}
+    <li class="flex flex-wrap items-center gap-3 px-5 py-3">
+      <span class="ring-tone {{ 'tone-ok' if r.status == 'ok' else 'tone-bad' }} !size-8">{{ icon("file-spreadsheet", "size-4") }}</span>
+      <div class="min-w-0 flex-1">
+        <p class="truncate font-semibold">{{ r.filename }}</p>
+        <p class="truncate text-xs text-ink-3">{{ r.uploaded_at|ago }} · {{ r.sheets_read|join(", ") or "nothing named" }}</p>
+      </div>
+      <span class="badge {{ 'tone-ok' if r.status == 'ok' else 'tone-bad' }}">{{ r.confidence if r.status == "ok" else "failed" }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+{% endblock %}

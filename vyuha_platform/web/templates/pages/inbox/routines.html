@@ -1,0 +1,69 @@
+{% extends "layouts/section.html" %}
+{% from "components/ui.html" import card_head, empty %}
+{% block page %}
+<div class="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_400px]">
+  <section class="card overflow-hidden" data-testid="routines">
+    {{ card_head("Scheduled briefs", "Who gets what, and when") }}
+    {% if routines %}
+    <ul class="divide">
+      {% for r in routines %}
+      <li class="flex flex-wrap items-center gap-4 px-5 py-4" data-testid="routine-row">
+        <span class="ring-tone {{ 'tone-brand' if r.active else 'tone-dim' }}">{{ icon("clock") }}</span>
+        <div class="min-w-0 flex-1">
+          <p class="font-semibold">{{ r.name }}{% if not r.active %} <span class="badge tone-dim">Paused</span>{% endif %}</p>
+          <p class="text-sm text-ink-3">{{ r.at }} · {{ r.days|join(", ") }} · to {{ r.to or "the business's own number" }}</p>
+          <p class="mt-1 flex flex-wrap gap-1.5">{% for s in r.sections %}<span class="badge tone-dim">{{ sections.get(s, (s, ""))[0] }}</span>{% endfor %}</p>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <form method="post" action="/c/{{ client.slug }}/routine/{{ r.id }}/toggle?next={{ back|urlencode }}"><button class="btn btn-secondary btn-sm">{{ "Pause" if r.active else "Resume" }}</button></form>
+          <form method="post" action="/c/{{ client.slug }}/routine/{{ r.id }}/delete?next={{ back|urlencode }}" onsubmit="return confirm('Delete “{{ r.name }}”?')"><button class="btn btn-ghost btn-icon btn-sm" aria-label="Delete {{ r.name }}">{{ icon("trash-2", "size-3.5") }}</button></form>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+    <div class="flex flex-wrap items-center justify-between gap-3 border-t border-line px-5 py-3">
+      <p class="text-xs text-ink-3">Opening a page is this deployment's clock — a routine fires on the first request after its time.</p>
+      <form method="post" action="/c/{{ client.slug }}/routine/run?next={{ back|urlencode }}"><button class="btn btn-secondary btn-sm">{{ icon("zap", "size-3.5") }}Run what is due now</button></form>
+    </div>
+    {% else %}
+    {{ empty("No routines yet", "A morning brief means the owner starts the day knowing what needs him, without opening anything.", "clock", "brand") }}
+    {% endif %}
+  </section>
+
+  <section class="card overflow-hidden" data-testid="add-routine">
+    {{ card_head("Add a routine", "Configuration, not code — pick who, when and what") }}
+    <form method="post" action="/c/{{ client.slug }}/routine?next={{ back|urlencode }}" class="flex flex-col gap-4 p-5">
+      <div class="field"><label class="label" for="r-name">Name</label><input id="r-name" name="name" class="input" required placeholder="e.g. Owner's 8am brief"></div>
+      <div class="grid grid-cols-2 gap-3">
+        <div class="field">
+          <label class="label" for="r-who">Goes to</label>
+          <select id="r-who" name="staff_id" class="select">
+            <option value="">The business's own number</option>
+            {% for s in staff %}<option value="{{ s.id }}">{{ s.name }} · {{ s.role }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="field"><label class="label" for="r-at">At</label><input id="r-at" name="at" type="time" class="input" value="08:00"></div>
+      </div>
+      <div class="field">
+        <span class="label">Days</span>
+        <div class="flex flex-wrap gap-1.5">
+          {% for d in days %}<label class="choice"><input type="checkbox" name="days" value="{{ d }}" {% if d != "Sun" %}checked{% endif %}>{{ d }}</label>{% endfor %}
+        </div>
+      </div>
+      <div class="field">
+        <span class="label">What goes in it</span>
+        <div class="flex flex-col gap-2">
+          {% for key, pair in sections.items() %}
+          <label class="flex items-start gap-2.5 text-sm">
+            <input type="checkbox" class="check mt-0.5" name="sections" value="{{ key }}" {% if key in ["decisions", "money"] %}checked{% endif %}>
+            <span><span class="font-semibold">{{ pair[0] }}</span><span class="block text-xs text-ink-3">{{ pair[1] }}</span></span>
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+      <button class="btn btn-primary">{{ icon("plus", "size-4") }}Add the routine</button>
+      <p class="text-xs text-ink-3">A person only gets what their role has any business reading — a delivery hand does not get the money position.</p>
+    </form>
+  </section>
+</div>
+{% endblock %}

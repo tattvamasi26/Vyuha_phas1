@@ -1,0 +1,53 @@
+{% extends "layouts/section.html" %}
+{% from "components/ui.html" import card_head, empty %}
+{% block page %}
+{% set app = "/app/" ~ client.slug %}
+<div class="grid items-start gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+  <section class="card overflow-hidden" data-testid="downloads">
+    {{ card_head("Download the pack", "Built from the same numbers as every screen") }}
+    {% if run %}
+    <ul class="divide">
+      {% for fmt, label, what, ic in [
+          ("pdf", "Report (PDF)", "The headline figures, what needs a decision, and the read-back — the thing to print or attach", "file-text"),
+          ("pptx", "Deck (PowerPoint)", "The same story as slides, for a meeting or a bank", "layers"),
+          ("html", "Dashboard (web page)", "Self-contained — it opens on a phone with no internet, so it can be forwarded", "chart-column")] %}
+      <li class="flex flex-wrap items-center gap-4 px-5 py-4">
+        <span class="ring-tone tone-brand">{{ icon(ic) }}</span>
+        <div class="min-w-0 flex-1">
+          <p class="font-semibold">{{ label }}</p>
+          <p class="text-sm text-ink-3">{{ what }}</p>
+        </div>
+        <a class="btn btn-secondary" href="{{ app }}/doc/export/{{ fmt }}">{{ icon("upload", "size-4") }}Download</a>
+      </li>
+      {% endfor %}
+    </ul>
+    <p class="border-t border-line px-5 py-3 text-xs text-ink-3">Built from {{ run.filename }}, read {{ run.uploaded_at|ago }}.</p>
+    {% else %}
+    {{ empty("Nothing to build a report from yet", "Record some sales or send a file, and the pack builds itself.", "file-text", "dim") }}
+    {% endif %}
+  </section>
+
+  <section class="card overflow-hidden" data-testid="send-ca">
+    {{ card_head("Send it to your accountant", "Email is always saved as a draft first — you press send") }}
+    <form method="post" action="/c/{{ client.slug }}/email?next={{ back|urlencode }}" class="flex flex-col gap-4 p-5">
+      <div class="field">
+        <label class="label" for="to">To</label>
+        <input id="to" class="input" value="{{ email_to or 'No email set for this business' }}" disabled>
+        {% if not email_to %}<span class="hint">Add one under <a class="font-semibold text-brand hover:underline" href="{{ app }}/settings/business">Settings › Business</a>.</span>{% endif %}
+      </div>
+      <div class="field">
+        <label class="label" for="subject">Subject</label>
+        <input id="subject" name="subject" class="input" value="{{ subject }}" required>
+      </div>
+      <div class="field">
+        <label class="label" for="body">Message</label>
+        <textarea id="body" name="body" class="textarea" rows="8" required>{{ body }}</textarea>
+      </div>
+      <div class="flex items-center justify-between gap-3">
+        <p class="text-xs text-ink-3">The dashboard is attached automatically.</p>
+        <button class="btn btn-primary" {% if not email_to %}disabled{% endif %}>{{ icon("mail", "size-4") }}Save as a draft</button>
+      </div>
+    </form>
+  </section>
+</div>
+{% endblock %}

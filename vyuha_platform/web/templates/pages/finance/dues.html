@@ -1,0 +1,45 @@
+{% extends "layouts/section.html" %}
+{% from "components/ui.html" import stat, card_head, empty %}
+{% block page %}
+{% set app = "/app/" ~ client.slug %}
+<section class="grid grid-cols-2 gap-4 xl:grid-cols-4" aria-label="Dues" data-testid="dues-stats">
+  {% for s in stats %}{{ stat(s.label, s.value, s.sub, s.icon, s.tone) }}{% endfor %}
+</section>
+
+<div class="grid items-start gap-6 lg:grid-cols-2">
+  {% for title, sub, ageing, who, link, testid in [
+      ("Money owed to you", "Aged from the due date · overdue in red", receivables, "Customer", app ~ "/sales/collections", "receivables"),
+      ("Money you owe", "Same buckets, so the two read side by side", payables, "Supplier or head", app ~ "/operations/purchases", "payables")] %}
+  <section class="card overflow-hidden" data-testid="{{ testid }}">
+    {{ card_head(title, sub, link, "Act on it") }}
+    {% if ageing.total %}
+    <ul class="divide border-b border-line">
+      {% for label, amount, pct in ageing.buckets %}
+      <li class="flex items-center gap-4 px-5 py-2.5">
+        <span class="w-28 shrink-0 text-sm {{ 'text-ink-3' if label == 'Not yet due' else 'font-semibold' }}">{{ label }}</span>
+        <span class="level {{ 'is-out' if label == '90+ days' else ('is-low' if label != 'Not yet due' else '') }} min-w-0 flex-1"><i style="width: {{ pct|round|int }}%"></i></span>
+        <span class="num w-28 text-right text-sm font-semibold">{{ amount|money }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    <div class="scroll-x">
+      <table class="table">
+        <thead><tr><th>{{ who }}</th><th class="r">Oldest</th><th class="r">Total</th></tr></thead>
+        <tbody>
+          {% for p in ageing.parties[:12] %}
+          <tr>
+            <td><span class="block max-w-[14rem] truncate font-medium">{{ p.party }}</span></td>
+            <td class="r num text-ink-2">{{ p.oldest }} days</td>
+            <td class="r num font-semibold">{{ p.total|money }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    {{ empty("Nothing outstanding", "Every bill here is settled.") }}
+    {% endif %}
+  </section>
+  {% endfor %}
+</div>
+{% endblock %}

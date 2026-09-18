@@ -1,0 +1,42 @@
+{% extends "layouts/section.html" %}
+{% from "components/ui.html" import card_head, empty %}
+{% block page %}
+{% set app = "/app/" ~ client.slug %}
+<div class="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)]">
+  <section class="card overflow-hidden" data-testid="documents">
+    {{ card_head("The deck", "Written from your numbers — every figure is computed, never invented") }}
+    {% if run %}
+    <ul class="divide">
+      {% for label, what, href, ic, primary in [
+          ("Open it", "A real presentation — arrow keys, and it prints", app ~ "/doc/deck", "eye", True),
+          ("PowerPoint", "Editable, for a meeting or a bank", app ~ "/doc/deck/pptx", "layers", False),
+          ("PDF", "Fixed, for sending", app ~ "/doc/deck/pdf", "file-text", False)] %}
+      <li class="flex flex-wrap items-center gap-4 px-5 py-4">
+        <span class="ring-tone tone-brand">{{ icon(ic) }}</span>
+        <div class="min-w-0 flex-1"><p class="font-semibold">{{ label }}</p><p class="text-sm text-ink-3">{{ what }}</p></div>
+        <a class="btn {{ 'btn-primary' if primary else 'btn-secondary' }}" href="{{ href }}" {% if primary %}target="_blank" rel="noopener"{% endif %}>{{ "Open" if primary else "Download" }}</a>
+      </li>
+      {% endfor %}
+    </ul>
+    <p class="border-t border-line px-5 py-3 text-xs text-ink-3">Ask the assistant for a different one — "make a deck for the bank", "a review for the last quarter" — and this deck becomes that.</p>
+    {% else %}
+    {{ empty("Nothing to build a deck from yet", "Record some sales or send a file first.", "layers", "dim") }}
+    {% endif %}
+  </section>
+
+  <section class="card overflow-hidden">
+    {{ card_head("The rest of the pack", "Statements and the dashboard", app ~ "/finance/reports", "Reports") }}
+    <ul class="divide">
+      {% for label, what, href in [
+          ("Report (PDF)", "Headline figures, what needs a decision, and the read-back", app ~ "/doc/export/pdf"),
+          ("Dashboard (web page)", "Self-contained — opens on a phone with no internet", app ~ "/doc/export/html"),
+          ("Deck (PowerPoint)", "The same story as slides", app ~ "/doc/export/pptx")] %}
+      <li class="flex items-center gap-4 px-5 py-3.5">
+        <div class="min-w-0 flex-1"><p class="font-semibold">{{ label }}</p><p class="text-sm text-ink-3">{{ what }}</p></div>
+        <a class="btn btn-ghost btn-sm" href="{{ href }}">{{ icon("upload", "size-3.5") }}Get it</a>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+</div>
+{% endblock %}

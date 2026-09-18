@@ -1,0 +1,72 @@
+{% extends "layouts/section.html" %}
+{% from "components/ui.html" import card_head, empty %}
+{% block page %}
+{% set app = "/app/" ~ client.slug %}
+<div class="card flex flex-wrap items-center gap-4 p-4">
+  <span class="text-info">{{ icon("info", "size-5") }}</span>
+  <p class="min-w-0 flex-1 text-sm text-ink-2">
+    Vyuha tells <span class="font-semibold text-ink">whoever owns the problem</span>, not whoever is senior: stock to the manager, money to the accountant, a customer gone quiet to a salesperson. The owner hears about everything.
+    {% if reachable < staff_count %}<span class="font-semibold text-ink"> {{ staff_count - reachable }} of {{ staff_count }} people have no number</span> — they are skipped silently.{% endif %}
+  </p>
+  <a href="{{ app }}/team/staff" class="btn btn-secondary btn-sm">Team{{ icon("arrow-right", "size-3.5") }}</a>
+</div>
+
+<section class="card overflow-hidden" data-testid="rules">
+  {{ card_head("Who would be told right now", "The same list Home ranks — before anybody is told") }}
+  {% if rows %}
+  <ul class="divide">
+    {% for r in rows %}
+    <li class="flex flex-wrap items-start gap-4 px-5 py-4" data-testid="rule-row">
+      <span class="ring-tone {{ 'tone-bad' if r.event.severity == 'critical' else 'tone-warn' }} mt-0.5">{{ icon("triangle-alert", "size-4") }}</span>
+      <div class="min-w-0 flex-1">
+        <p class="font-semibold">{{ r.event.title }}</p>
+        <p class="text-sm text-ink-3">{{ r.event.detail }}</p>
+        <p class="mt-1 text-xs text-ink-3">Claimed by <span class="font-semibold text-ink-2">{{ r.event.tag }}</span>{% if r.event.source %} · raised by {{ r.event.source }}{% endif %}</p>
+      </div>
+      <div class="flex flex-col items-end gap-1.5">
+        {% if r.held %}<span class="badge tone-bad">{{ icon("lock", "size-3") }}Waits for approval</span>{% endif %}
+        {% for who in r.to %}
+        <span class="badge {{ 'tone-dim' if who in r.quiet else 'tone-brand' }}" title="{{ 'Told recently — inside the cooldown' if who in r.quiet else 'Would be told now' }}">{{ who.who }} · {{ who.role }}</span>
+        {% endfor %}
+        {% if not r.to %}<span class="badge tone-warn">Nobody reachable</span>{% endif %}
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  {{ empty("Nothing worth interrupting anybody about", "Only things somebody can act on tonight are pushed.") }}
+  {% endif %}
+</section>
+
+<div class="grid items-start gap-6 lg:grid-cols-2">
+  <section class="card overflow-hidden">
+    {{ card_head("The rules", "Which kind of problem reaches which role, and how often") }}
+    <div class="scroll-x">
+      <table class="table">
+        <thead><tr><th>Kind</th><th>Goes to</th><th class="r">At most once every</th></tr></thead>
+        <tbody>
+          {% for tag, a in audiences.items() %}
+          <tr><td class="font-medium">{{ tag|capitalize }}</td><td class="text-ink-2">{{ a.roles|join(", ") }}</td><td class="r num text-ink-2">{{ a.cooldown }} day{{ "" if a.cooldown == 1 else "s" }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card overflow-hidden">
+    {{ card_head("Already told", "So nothing is said twice") }}
+    {% if history %}
+    <ul class="divide">
+      {% for n in history[:12] %}
+      <li class="flex items-center gap-3 px-5 py-2.5">
+        <div class="min-w-0 flex-1"><p class="truncate text-sm font-semibold">{{ n.title or n.key }}</p><p class="truncate text-xs text-ink-3">{{ n.who or n.to }}{% if n.role %} · {{ n.role }}{% endif %}</p></div>
+        <span class="whitespace-nowrap text-xs text-ink-3">{{ n.sent|ago }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="px-5 py-6 text-sm text-ink-3">Nobody has been told anything yet.</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

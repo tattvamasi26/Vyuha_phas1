@@ -32,6 +32,8 @@ python -m venv .venv
 
 .venv/Scripts/python -m vyuha_platform --open   # the web platform on :8000 (also --host, --port, --reload)
 .venv/Scripts/python -m vyuha_platform seed     # wipe and rebuild both demo businesses, then exit
+.venv/Scripts/python -m vyuha_platform seed-bearings   # the bearings distributor demo (bearings@vyuha.test / vyuha-bearings)
+.venv/Scripts/python demo/make_bearings.py      # that client's own messy files, into demo/samples/bearings/
 .venv/Scripts/python demo/make_samples.py       # the nine messy sample files
 .venv/Scripts/python demo/make_samples.py --bulk 100   # 103 files over 14 months (gitignored)
 
@@ -444,13 +446,15 @@ needs them. All are installed in `.venv`; **none are declared in `pyproject.toml
   (`glyph_for()`) — drawings rather than photos, for the same offline, never-404 reasons as the
   trade fallbacks.
 
-## The new site (`vyuha_platform/web/`) — the UX rewire, Phase 1
+## The site (`vyuha_platform/web/`) — the product's front door
 
-A full rewire of the product's UI is under way, one phase at a time. The approved plan (seven phases:
-data core v2 on SQLite per business, communication core, the site's sections, the assistant,
-continuous feeds, cutover) lives at `C:\Users\HP\.claude\plans\wise-wiggling-ripple.md`; the
-feature file is `requirements/01-features/02-ux-rewire.md`. Phase 1 — the shell, Home and the
-Onboarding Studio — is built and runs **beside** the classic screens, which stay until cutover.
+The UX rewire. **Signing in lands here** (`app.py`'s `/` sends an owner to their business and an
+operator to the Studio), and **nothing on the site links to a classic screen**: a test asserts no
+page contains `href="/c/`. Every section is built — Home, Sales, Operations, Finance, Team,
+Analytics, Inbox, Data, Settings, 34 pages in all — plus the Onboarding Studio and a style guide.
+The classic screens still exist and still work; they are simply unreachable from the site, and go
+at cutover. The plan is `C:\Users\HP\.claude\plans\wise-wiggling-ripple.md`; the feature file is
+`requirements/01-features/02-ux-rewire.md`.
 
 - **Stack:** Jinja2 templates + HTMX + Alpine.js + Tailwind v4, all served from `/static/app`
   (no CDN at runtime). `web/assets/app.css` holds the design tokens (CSS variables, light by
@@ -460,15 +464,25 @@ Onboarding Studio — is built and runs **beside** the classic screens, which st
   build of Tailwind under Node; `web/build.py` then writes `tools/tailwind/entry.css` with the
   relative paths re-pointed, because that build resolves `@import "tailwindcss"` from the input
   file's own folder.
-- **Routes:** `/app/<slug>` (Home), `/app/<slug>/<section>/<page>` (placeholders that say what is
-  coming and open the classic screen doing that job today), `POST /app/<slug>/assistant` (the
-  existing `agent.investigate` loop, answered into a slide-over), `/studio` + `/studio/<slug>/<stage>`
-  (operators and masters only), `/styleguide`. Mounted in `app.py` right after the static mount;
-  the paths overlap nothing classic.
-- **Data as data:** `web/nav.py` is the site map (sections, pages, blurbs, the classic screen for
-  each); `onboarding.py` holds the eight stages, the data-map interview (8 domains × where the
-  record lives) and a per-business JSON record (in `store.PER_SLUG`). Stage status is derived from
-  the business wherever possible, never only stored.
+- **Routes:** `/app/<slug>` (Home) and `/app/<slug>/<section>/<page>`, which looks the page up in
+  `web/views/pages.REGISTRY` — a page listed in `nav.py` with no entry there renders a "being
+  built" card, so the menu and the pages can land in either order (a test forbids that state).
+  Plus `POST /app/<slug>/assistant`, the team actions the classic app never had
+  (`/team/attendance`, `/team/target` — the classic register posted to a route that was never
+  written), `/access/share` and `/access/revoke` (the PIN is shown once, so minting **renders**
+  the page rather than redirecting with a PIN in the URL), `/studio…`, and `/styleguide`.
+- **Documents live under `/app/<slug>/doc/…`** — invoice, invoice PDF, the report pack
+  (pdf/pptx/html), the deck, and a saved dashboard. Five or six path segments, so they never meet
+  the section route. They call the same renderers the classic exports use.
+- **Forms post to the classic handlers.** A page's form actions point at `/c/<slug>/…` with
+  `?next=/app/…`; the middleware in `web/__init__.py` rewrites that handler's redirect to `next`,
+  carrying its `m`/`k` message. One code path for recording a sale, and no second implementation
+  to keep in step. `next` must start with `/app/`, so it cannot be used as an open redirect.
+- **Data as data:** `web/nav.py` is the site map (sections, pages, blurbs, and the classic screen
+  each replaced); `nav.site_path()` maps a classic address to its page, which is how
+  `today.findings()` links work on Home without changing the domain code. `onboarding.py` holds
+  the eight stages, the data-map interview (8 domains × where the record lives) and a per-business
+  JSON record (in `store.PER_SLUG`). Stage status is derived from the business, never only stored.
 - **Access:** `access.py` restates the classic isolation rules once — `workspace(account, slug)` is
   the only way a new route resolves a business.
 - **Gotchas already hit:** `<body x-data>` is what makes Alpine directives work anywhere in the

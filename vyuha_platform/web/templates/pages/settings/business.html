@@ -1,0 +1,36 @@
+{% extends "layouts/section.html" %}
+{% from "components/ui.html" import card_head %}
+{% block page %}
+<div class="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)]">
+  <section class="card overflow-hidden" data-testid="settings-business">
+    {{ card_head("This business", "Where alerts go, and when Vyuha should warn you") }}
+    <form method="post" action="/c/{{ client.slug }}/contact?next={{ back|urlencode }}" class="flex flex-col gap-4 p-5">
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div class="field"><label class="label" for="s-contact">Who to address</label><input id="s-contact" name="contact" class="input" value="{{ client.contact }}" placeholder="The owner's name"></div>
+        <div class="field"><label class="label" for="s-phone">WhatsApp number</label><input id="s-phone" name="phone" class="input" inputmode="tel" value="{{ client.phone }}"><span class="hint">Alerts and the morning brief go here.</span></div>
+      </div>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div class="field"><label class="label" for="s-email">Email</label><input id="s-email" name="email" type="email" class="input" value="{{ client.email }}" placeholder="For statements and the CA pack"></div>
+        <div class="field"><label class="label" for="s-industry">Trade</label><input id="s-industry" name="industry" class="input" value="{{ client.industry }}" placeholder="e.g. Bearings & power transmission"></div>
+      </div>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div class="field"><label class="label" for="s-dead">Dead stock after</label><input id="s-dead" name="dead_stock_days" class="input" inputmode="numeric" value="{{ client.dead_stock_days }}"><span class="hint">Days without a sale before Vyuha calls it idle cash.</span></div>
+        <div class="field"><label class="label" for="s-cover">Warn at cover of</label><input id="s-cover" name="low_cover_days" class="input" inputmode="numeric" value="{{ client.low_cover_days }}"><span class="hint">Days of stock left before it counts as running out.</span></div>
+      </div>
+      <div class="flex justify-end"><button class="btn btn-primary">{{ icon("check", "size-4") }}Save</button></div>
+    </form>
+  </section>
+
+  <section class="card p-5">
+    <p class="font-semibold">What this changes</p>
+    <ul class="mt-3 flex flex-col gap-2.5 text-sm text-ink-2">
+      {% for t in ["The number every alert, reminder and brief goes to.",
+                   "The email a statement or the CA pack is drafted to.",
+                   "When an item counts as dead stock on Home and in Inventory.",
+                   "How early Vyuha warns that something is about to run out."] %}
+      <li class="flex gap-2">{{ icon("circle-dot", "size-3.5 mt-1 text-brand") }}<span>{{ t }}</span></li>
+      {% endfor %}
+    </ul>
+  </section>
+</div>
+{% endblock %}

@@ -199,6 +199,10 @@ def guess(name: str, industry: str = "") -> str:
     """Pick a sensible trade from what they typed, so nobody has to choose twice."""
     text = f"{name} {industry}".lower()
     for key, words in (
+        # Bearings and power transmission are spares, not retail — and a distributor of
+        # them reads as manufacturing rather than as a shop.
+        ("manufacturing", ("bearing", "transmission", "sprocket", "pulley", "gearbox",
+                           "engineering works", "spares", "industrial")),
         ("nursery", ("nursery", "plant", "garden", "compost", "flor", "landscap")),
         ("farming", ("farm", "agri", "krishi", "estate", "plantation", "areca",
                      "coffee", "spice", "paddy", "harvest", "grower")),

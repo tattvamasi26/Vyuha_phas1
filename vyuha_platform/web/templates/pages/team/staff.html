@@ -1,0 +1,58 @@
+{% extends "layouts/section.html" %}
+{% from "components/ui.html" import stat, card_head, empty %}
+{% block page %}
+<section class="grid grid-cols-2 gap-4 xl:grid-cols-4" aria-label="Team figures" data-testid="team-stats">
+  {% for s in stats %}{{ stat(s.label, s.value, s.sub, s.icon, s.tone) }}{% endfor %}
+</section>
+
+<div class="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
+  <section class="card overflow-hidden" data-testid="staff">
+    {{ card_head("Your people", "What each of them sold in the last " ~ days ~ " days") }}
+    {% if rows %}
+    <div class="scroll-x">
+      <table class="table">
+        <thead><tr><th>Name</th><th>Role</th><th>Branch</th><th>Number</th><th class="r">Sold</th><th class="r"><span class="sr-only">Actions</span></th></tr></thead>
+        <tbody>
+          {% for r in rows %}
+          <tr data-testid="staff-row">
+            <td><span class="flex items-center gap-2.5"><span class="avatar !size-8 !text-xs">{{ r.s.name[:1]|upper }}</span><span class="font-semibold">{{ r.s.name }}</span></span></td>
+            <td><span class="badge tone-dim">{{ r.s.role }}</span></td>
+            <td class="text-ink-2">{{ r.branch or "—" }}</td>
+            <td class="text-ink-2">{% if r.s.phone %}+{{ r.s.phone }}{% else %}<span class="badge tone-warn">No number</span>{% endif %}</td>
+            <td class="r num">{{ r.sold.revenue|money if r.sold else "—" }}</td>
+            <td class="r">
+              <form method="post" action="/c/{{ client.slug }}/staff/{{ r.s.id }}/delete?next={{ back|urlencode }}" onsubmit="return confirm('Remove {{ r.s.name }} from the team?')">
+                <button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove {{ r.s.name }}" title="Remove">{{ icon("trash-2", "size-3.5") }}</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    {{ empty("Nobody added yet", "Add the people who work here — Vyuha tells the right person about the right problem.", "users", "brand") }}
+    {% endif %}
+  </section>
+
+  <section class="card overflow-hidden" data-testid="add-person">
+    {{ card_head("Add a person", "A number matters: alerts go to whoever owns the problem") }}
+    <form method="post" action="/c/{{ client.slug }}/staff?next={{ back|urlencode }}" class="flex flex-col gap-4 p-5">
+      <div class="field"><label class="label" for="st-name">Name</label><input id="st-name" name="name" class="input" required></div>
+      <div class="field">
+        <label class="label" for="st-role">Role</label>
+        <select id="st-role" name="role" class="select">{% for r in roles %}<option {% if r == "Salesperson" %}selected{% endif %}>{{ r }}</option>{% endfor %}</select>
+        <span class="hint">Stock goes to the Manager, money to the Accountant, quiet customers to a Salesperson.</span>
+      </div>
+      {% if branches %}
+      <div class="field">
+        <label class="label" for="st-branch">Branch</label>
+        <select id="st-branch" name="branch" class="select"><option value="">Not set</option>{% for b in branches %}<option value="{{ b.id }}">{{ b.name }}</option>{% endfor %}</select>
+      </div>
+      {% endif %}
+      <div class="field"><label class="label" for="st-phone">WhatsApp number</label><input id="st-phone" name="phone" class="input" inputmode="tel" placeholder="98450 12345"></div>
+      <button class="btn btn-primary">{{ icon("user-plus", "size-4") }}Add to the team</button>
+    </form>
+  </section>
+</div>
+{% endblock %}

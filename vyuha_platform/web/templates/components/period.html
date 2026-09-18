@@ -1,0 +1,18 @@
+{# The period picker every statement shares: a plain GET form, no JavaScript. #}
+{% macro period_form(here, periods, period, label="Period") -%}
+<form method="get" action="{{ here }}" class="flex items-center gap-2">
+  <label class="label !mb-0" for="period">{{ label }}</label>
+  <select id="period" name="period" class="select input-sm !w-auto" onchange="this.form.submit()">
+    {% for key, text, kind in periods %}<option value="{{ key }}" {% if key == period %}selected{% endif %}>{{ text }}</option>{% endfor %}
+  </select>
+  <noscript><button class="btn btn-secondary btn-sm">Show</button></noscript>
+</form>
+{%- endmacro %}
+
+{# One line of a statement: label on the left, figure on the right. #}
+{% macro line(label, value, kind="", note="") -%}
+<div class="stmt-row {{ 'is-' ~ kind if kind else '' }}">
+  <span class="min-w-0"><span class="block truncate">{{ label }}</span>{% if note %}<span class="block text-xs text-ink-3">{{ note }}</span>{% endif %}</span>
+  <span class="v whitespace-nowrap">{{ value }}</span>
+</div>
+{%- endmacro %}
