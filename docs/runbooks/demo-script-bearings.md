@@ -13,7 +13,8 @@ so a rehearsed line is still true tomorrow.*
 .venv/Scripts/python -m vyuha_platform --open            # the server on :8000
 ```
 
-Log in as **bearings@vyuha.test / vyuha-bearings**.
+Log in as **bearings@vyuha.test / vyuha-bearings**. That account is an operator, so you land on
+the Studio — open the business from there.
 
 Have open: the site at `/app/shakti-bearings-power-transmission`, and a second tab on
 `/studio`. Have `demo/samples/bearings/` in a Finder/Explorer window, ready to drag.
