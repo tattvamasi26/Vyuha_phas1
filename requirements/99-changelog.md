@@ -37,3 +37,24 @@
   16 new pages checked for sideways scroll at each width (the check caught the Studio's
   Previous/Next footer overflowing a phone; fixed).
 - reviewer notes: waiting on the owner's Phase 1 review; nothing committed yet.
+
+## 2026-09-18
+- shipped: **the site is the product's front door**. Signing in lands on it, all 34 pages are
+  built — Home, Sales, Operations, Finance, Team, Analytics, Inbox, Data, Settings, plus the
+  Studio and the style guide — and nothing on it links to a classic screen. Two tests enforce
+  exactly that: no page in the menu may still be a placeholder, and no page may contain
+  `href="/c/`.
+- shipped: site forms reuse the classic handlers with `?next=/app/…` (a middleware points the
+  redirect back), documents are served under `/app/<slug>/doc/…`, and marking the register and
+  setting a target got the routes the classic app never had.
+- shipped: the bearings demo — `python -m vyuha_platform seed-bearings` builds Shakti Bearings
+  & Power Transmission (361 bills, ₹24.3 lakh, 27.9% gross, 17 GST invoices across both tax
+  shapes), and `demo/make_bearings.py` writes that client's own messy files.
+- shipped: `docs/` — what Vyuha does, using it fully, the onboarding runbook, and a demo script
+  whose figures are the ones the seed produces.
+- tests: **294 passing** across eight suites — web 34, platform 57, console 71, agents 49,
+  invoice 19, library 22, intake 23, pipeline 19.
+- verified: every page captured at 1440 px; Home, the data map and the section pages also at
+  360 and 768 px with a sideways-scroll check.
+- reviewer notes: the phone pass over the new sections, and the data core, are next. Nothing is
+  committed — the work sits on `feature/ux-rewire`.

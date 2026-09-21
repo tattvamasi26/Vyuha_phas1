@@ -1,46 +1,55 @@
-# 02 — UX rewire: onboarding → data flow → customer site → assistant
+# 02 — UX rewire: one website, from onboarding to the assistant
 
 ## Description
 
-The founder asked for the product's UI/UX to be rewired end to end, starting from onboarding:
-an operator-led onboarding that captures a business's history from any source (files, Tally,
-paper registers), continuous data flow through four feeds (typed entries, regular files,
-WhatsApp forwarding, Tally sync), and a modern responsive site — Home, Sales, Operations,
-Finance, Team, Analytics — with an AI assistant and communication built into every task.
+The founder asked for the product's UI/UX to be rewired end to end, and then — after seeing
+the first cut — for **one website**: signing in lands on it, every section is built in the new
+design, and nothing sends anybody to a classic screen. Laptop first, phone next.
 
-Approved plan (2026-09-12): `C:\Users\HP\.claude\plans\wise-wiggling-ripple.md`, seven phases,
-each ending with tests, screenshots at 360 / 768 / 1440 px and the owner's go-ahead.
+Approved plan (2026-09-12): `C:\Users\HP\.claude\plans\wise-wiggling-ripple.md`.
 
 ## Acceptance criteria
 
-### Phase 1 — First look (shipped 2026-09-14)
-- [x] Data bugs that would show on screen are fixed: ISO dates no longer swap day and month;
-      an invoice cannot bill several customers; an upload no longer wipes earlier uploads; a
-      re-sent file no longer doubles a typed-in book's sales.
-- [x] Jinja2 + HTMX + Alpine + Tailwind toolchain, assets pinned and served locally.
-- [x] Design system: tokens (light default, dark mode), components, a style-guide page.
+### Shipped
+- [x] Data bugs that would show on screen: ISO dates no longer swap day and month; an invoice
+      cannot bill several customers; a second upload no longer wipes the first; a re-sent file
+      no longer doubles a typed-in book's sales.
+- [x] Jinja2 + HTMX + Alpine + Tailwind toolchain, assets pinned and served locally; design
+      tokens, components and a style guide.
 - [x] App shell: sidebar on a laptop, bottom bar with a centre "+" on a phone, Ctrl+K palette,
-      assistant slide-over, theme toggle.
-- [x] Home on today's data: KPIs with sparklines, ranked "Needs you", today, recent activity,
-      data freshness — the first decision is on the first phone screen.
-- [x] Every section reachable; unbuilt pages say what is coming and open the classic screen.
-- [x] Onboarding Studio: businesses by stage; stepper with profile, data map and masters working;
-      later stages described.
-- [x] `tests/test_web.py` covers the routes, the Studio forms, access rules and the data fixes.
+      assistant slide-over, dark mode. No page scrolls sideways at 360 / 768 / 1440 px.
+- [x] Home on today's data: ranked "Needs you" with one action each, KPIs with sparklines,
+      today, recent activity, data freshness.
+- [x] **The site is the front door** — `/` sends an owner to their business and an operator to
+      the Studio.
+- [x] **Every section built**, 34 pages: Sales (overview, bills, customers, collections),
+      Operations (record, inventory, purchases, invoices), Finance (overview, P&L, balance
+      sheet, cash flow, dues, GST, reports), Team (staff, attendance, performance, branches),
+      Analytics (explore, ratios, documents), Inbox (waiting, sent, brief, who gets told,
+      routines), Data (add, what was read, history), Settings (business, billing, stock, access).
+- [x] **Nothing links to a classic screen** — enforced by a test, as is "no page in the menu is
+      still a placeholder".
+- [x] Onboarding Studio: businesses by stage; profile, data map and masters working.
+- [x] Documents (invoice, PDF, report pack, deck, dashboard) served under `/app/<slug>/doc/…`.
+- [x] Demo profile for a bearings distributor, plus that client's own messy files, plus four
+      documents in `docs/`.
+- [x] `tests/test_web.py` — 34 tests over the routes, the forms, access rules and the data fixes.
 
-### Later phases (planned)
-- [ ] Phase 2 — data core v2 (SQLite per business) + opening position, staged history import
-      with review and undo, photo review, entry grid, coverage and sign-off.
-- [ ] Phase 3 — communication & documents core; Sales and Operations sections.
-- [ ] Phase 4 — Finance, Team (staff logins with enforced roles), Analytics; Inbox, Data, Settings.
-- [ ] Phase 5 — the assistant: streaming, new tools, analysis, documents, action cards, evals.
-- [ ] Phase 6 — continuous feeds (email-in, watched folder, WhatsApp webhook, Tally connector)
-      and onboarding stages 7–8.
-- [ ] Phase 7 — hardening, accessibility, performance, security, cutover from the classic UI.
+### Still to do
+- [ ] Data core v2 (SQLite per business) and onboarding stages 4–8: opening position, staged
+      history import with review and undo, coverage and sign-off.
+- [ ] The phone pass over the sections built laptop-first.
+- [ ] Communication core: one Send sheet, templates, WhatsApp documents, email attachments.
+- [ ] The assistant: streaming, more tools, analysis, action cards, an evaluation set.
+- [ ] Continuous feeds: scheduler, email-in, watched folder, WhatsApp webhook, Tally connector.
+- [ ] Cutover: retire `ui.py` / `console.py` / `modules.py`, and the operator tools that still
+      use them (deployment Settings, the activity log, the staff console).
 
-## Status: in-progress (Phase 1 shipped, Phase 2 next)
+## Status: in-progress (the site is complete and is the front door; the data core is next)
 
 ## Notes / decisions
 
 - ADR 011 — front-end stack; ADR 012 — operator-led onboarding as an eight-stage stepper.
-- The new site runs beside the classic screens until cutover; nothing classic was removed.
+- Site forms post to the classic handlers with `?next=/app/…`, and a middleware points the
+  handler's redirect back at the site. One code path per action, and no second implementation
+  to keep in step.
