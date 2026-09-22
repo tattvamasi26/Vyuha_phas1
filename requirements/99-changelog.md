@@ -58,3 +58,25 @@
   360 and 768 px with a sideways-scroll check.
 - reviewer notes: the phone pass over the new sections, and the data core, are next. Nothing is
   committed — the work sits on `feature/ux-rewire`.
+
+## 2026-09-22
+- shipped: `docs/runbooks/onboard-from-scratch.md` and the **Onboarding Workbook** artifact —
+  every Studio field and option, the order imports have to go in, and a practice business to
+  rehearse the whole thing on.
+- shipped: `demo/make_practice.py` -> `demo/samples/practice/` — Deshpande Electricals &
+  Motors, Dharwad: a business to onboard from an empty workspace, in a trade neither demo
+  uses so nothing collides. Seven files, two of them traps on purpose.
+- fixed: **the dues file in both demo packs was read as sales, not receivables.**
+  `TABLE_RULES` requires an `OUTSTANDING` field and the column was headed "Amount", so the
+  whole file landed as extra sales with no ageing and no collections queue. Renamed to
+  "Outstanding Amount"; `vyuha check` now reports `[Receivables]` with Rs 1.12 L (bearings)
+  and Rs 1.52 L (practice) overdue where it previously reported none at all.
+- fixed: `demo/make_bearings.py` crashed on the rupee sign when its output was piped
+  (cp1252) — after every file had already been written. Both generators now transliterate
+  through a local `say()`, the same reason `vyuha/cli.py` has one.
+- found, documented, not fixed: a purchase register imports as **revenue** (there is no
+  purchases table kind — measured at +102% over the bearings sales register), and no importer
+  ever sets item cost (`library.materialise`), so a file-only onboarding reports zero gross
+  margin and values stock at the selling price. Both are written up as traps in the runbook
+  and both belong to the data core.
+- tests: intake 23 and library 22 — the two suites that read `demo/samples/` — both green.

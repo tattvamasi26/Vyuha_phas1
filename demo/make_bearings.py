@@ -147,7 +147,11 @@ def outstanding(rng: random.Random) -> tuple[str, str]:
     ws = wb.active
     ws.title = "Outstanding"
     _title(ws, "Party-wise outstanding", "F")
-    ws.append(["Invoice No", "Party", "Invoice Date", "Due Date", "Amount", "Days"])
+    # "Outstanding Amount", not "Amount": TABLE_RULES requires the OUTSTANDING
+    # field for a receivables table, and a plain "Amount" heading resolves to
+    # AMOUNT — which read this whole file as five more sales, with no ageing.
+    ws.append(["Invoice No", "Party", "Invoice Date", "Due Date",
+               "Outstanding Amount", "Days"])
 
     rows = [("SB/2711", "Nandi Sugars Ltd", 104, 74, 58800),
             ("SB/2744", "Hubballi Foundry Works", 66, 36, 39000),
@@ -179,6 +183,15 @@ def purchases(rng: random.Random) -> tuple[str, str]:
     return path.name, "A year of purchases as a clean CSV — the control, and what the cost side of the margin comes from."
 
 
+def say(text: str) -> None:
+    """The Windows console is cp1252 and cannot encode ₹ — transliterate on the way out.
+
+    Same reason ``vyuha/cli.py`` has one. Without it, piping this script's output to a
+    file crashes it *after* every file has already been written.
+    """
+    print(text.replace("₹", "Rs "))
+
+
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     rng = random.Random(SEED)
@@ -192,10 +205,10 @@ def main() -> None:
         lines.append(f"- **{name}** — {what}")
     (OUT / "README.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-    print(f"\n  Wrote {len(built)} files to {OUT}\n")
+    say(f"\n  Wrote {len(built)} files to {OUT}\n")
     for name, what in built:
-        print(f"  {name:<26} {what[:72]}")
-    print()
+        say(f"  {name:<26} {what[:72]}")
+    say("")
 
 
 if __name__ == "__main__":

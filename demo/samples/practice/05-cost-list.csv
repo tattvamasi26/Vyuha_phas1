@@ -1,0 +1,25 @@
+Item Code,Description,Sells at,Our Cost
+MOT-1HP,1 HP Single Phase Motor,4850,3650
+MOT-2HP,2 HP Three Phase Motor,8200,6300
+MOT-5HP,5 HP Three Phase Motor,17500,13800
+PMP-05HP,0.5 HP Monoblock Pump,3950,2980
+PMP-SUB1,1 HP Submersible Pump,9600,7450
+STR-DOL3,DOL Starter 3 HP,1850,1320
+STR-SD10,Star Delta Starter 10 HP,6400,4900
+CAP-36UF,Capacitor 36 MFD,210,132
+CAP-60UF,Capacitor 60 MFD,340,225
+CBL-25SQ,2.5 sq mm Wire 90m Coil,1980,1560
+CBL-40SQ,4 sq mm Wire 90m Coil,3150,2480
+CBL-ARM4,4 Core Armoured Cable 10m,4200,3300
+SWG-MCB32,32A MCB Single Pole,260,168
+SWG-RCCB63,63A RCCB Four Pole,2850,2100
+SWG-DB8,8 Way Distribution Board,1650,1180
+PNL-CTRL,Motor Control Panel 5 HP,14500,11200
+LMP-LED9,9W LED Bulb,95,54
+LMP-LED20,20W LED Batten,340,205
+FAN-CEL,Ceiling Fan 1200mm,1750,1290
+FAN-EXH,Exhaust Fan 250mm,1250,890
+ACC-GLND,Cable Gland Set 20mm,180,105
+ACC-LUG,Copper Lug 25mm 10pc,240,150
+TOL-MULT,Digital Multimeter,1450,980
+WTR-HTR,15L Water Heater,6800,5200
