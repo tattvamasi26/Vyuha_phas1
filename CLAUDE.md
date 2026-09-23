@@ -496,6 +496,36 @@ at cutover. The plan is `C:\Users\HP\.claude\plans\wise-wiggling-ripple.md`; the
   conversions kept in `uploads/<slug>/_converted/` (`app._source_files`), and a books-mode merge
   skips sale lines it already holds (`library.materialise`).
 
+## The guided demo (`demo_tour.py` + `/demo`)
+
+One button that walks a room through the whole product, live. Added 2026-09-23 on branch
+`feature/guided-demo`. **It is not a recording and there is no demo mode inside the product**:
+every step names a real address, and every action calls the same function the real screen calls
+(`store.add_client`, `onboarding.save`, `people.add_staff`, `app._ingest`), so what a prospect
+watches is what they would get.
+
+- **`demo_tour.py` — the script as data**, like `agents.py` and `routines.py`. 30 `Step`s over 7
+  `Chapter`s, each naming a page, a `data-testid` to spotlight, what to *say out loud*, an
+  optional presenter `note`, and an optional action. Reordering the demo is editing a list.
+  `ACTIONS` builds the business from nothing: create → data map (which flips it to upload mode,
+  exactly as the Studio does) → profile → staff → the practice pack's stock, sales and dues files
+  through the real ingest path → the costs typed in, which is the beat where gross margin stops
+  being zero. `reset()` deletes the demo business outright so a rehearsal is repeatable. The
+  business is resolved **by name under the presenter's own account**, so no action can reach one
+  somebody actually trades on.
+- **`web/routes/demo.py`** — `/demo` (the presenter's control page), `/demo/steps.json`,
+  `POST /demo/act/{key}`, `POST /demo/reset`. Operators and masters only; a tenant or guest gets
+  403.
+- **`static/app/js/tour.js` + `static/app/tour.css`** — the overlay. Position lives in
+  `localStorage` because the walk crosses real page loads. Pause (or Escape) restores the app
+  exactly as it was and leaves a Resume pill; stepping off the script is allowed and offers the
+  way back rather than seizing the page; ← and → move between steps. No dependencies — Alpine is
+  used only if present, for toasts.
+- **`app._ingest` is imported inside the function**, never at module scope: `app.py` mounts this
+  package's routes at line ~73, long before `_ingest` is defined at ~743.
+- `tests/test_demo.py` (17) includes the test that matters — **no step may point at a page that
+  does not exist**, checked against `web.views.pages.REGISTRY` and `onboarding.BY_KEY`.
+
 ## Accounts, and the flow through the product
 
 Signup is **open**: anyone reaches the landing page at `/`, creates an account, and gets their

@@ -1,0 +1,175 @@
+/* Vyuha — the guided demo overlay.
+ *
+ * Plain CSS on the same tokens as app.css (which is compiled from web/assets/app.css by
+ * Tailwind). Kept as its own file on purpose: the overlay is not part of the design system
+ * a page is built from, it sits on top of every page, and a separate stylesheet means the
+ * demo can be styled without rebuilding the site's CSS.
+ *
+ * Nothing here is inside a dark-mode block: the tokens already flip on <html class="dark">.
+ */
+
+.vt-mask,
+.vt-card,
+.vt-pill {
+  position: fixed;
+  z-index: 9000;
+}
+
+/* The hole in the dark. One element, one enormous shadow — no four-div cage to keep in
+   step, and it follows the target on scroll. */
+.vt-mask {
+  border-radius: 14px;
+  box-shadow: 0 0 0 3px var(--brand), 0 0 0 9999px rgb(9 10 12 / 0.62);
+  pointer-events: none;
+  transition: top .18s ease, left .18s ease, width .18s ease, height .18s ease;
+}
+
+.vt-mask.is-flat {
+  box-shadow: 0 0 0 9999px rgb(9 10 12 / 0.62);
+}
+
+.vt-card {
+  width: min(430px, calc(100vw - 24px));
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  box-shadow: 0 24px 60px -18px rgb(9 10 12 / 0.55), 0 2px 6px rgb(9 10 12 / 0.18);
+  padding: 18px 20px 16px;
+  font-family: var(--font-sans, system-ui, sans-serif);
+  font-size: 15px;
+  line-height: 1.6;
+  display: grid;
+  gap: 12px;
+}
+
+.vt-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.vt-chapter { color: var(--brand); }
+.vt-count { color: var(--ink-3); font-family: var(--font-mono, monospace); letter-spacing: .04em; }
+
+.vt-title {
+  font-family: var(--font-display, inherit);
+  font-size: 19px;
+  font-weight: 700;
+  line-height: 1.2;
+  margin: 0;
+  text-wrap: balance;
+}
+
+.vt-say { margin: 0; color: var(--ink-2); }
+.vt-say.is-off { color: var(--ink); }
+
+.vt-note {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  padding: 9px 12px;
+  font-size: 13.5px;
+  color: var(--ink-2);
+}
+.vt-note summary { cursor: pointer; font-weight: 600; color: var(--ink); }
+.vt-note p { margin: 7px 0 0; }
+
+.vt-do {
+  width: 100%;
+  background: var(--brand);
+  color: #fff;
+  border: 0;
+  border-radius: 11px;
+  padding: 11px 14px;
+  font: 600 14.5px/1.2 var(--font-sans, system-ui, sans-serif);
+  cursor: pointer;
+}
+.vt-do:hover { background: var(--brand-strong, var(--brand)); }
+.vt-do[disabled] { opacity: .6; cursor: progress; }
+
+.vt-bar {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.vt-bar button,
+.vt-bar select {
+  font: 600 13px/1 var(--font-sans, system-ui, sans-serif);
+  color: var(--ink-2);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  padding: 8px 11px;
+  cursor: pointer;
+}
+.vt-bar button:hover,
+.vt-bar select:hover { color: var(--ink); border-color: var(--ink-3); }
+.vt-bar button[disabled] { opacity: .45; cursor: default; }
+
+.vt-bar .vt-next {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--bg);
+}
+.vt-bar .vt-next:hover { opacity: .9; color: var(--bg); }
+
+.vt-bar .vt-sp { flex: 1; }
+
+.vt-jump {
+  max-width: 132px;
+  appearance: none;
+  text-overflow: ellipsis;
+}
+
+.vt-progress {
+  height: 3px;
+  border-radius: 999px;
+  background: var(--sunken);
+  overflow: hidden;
+}
+.vt-progress i {
+  display: block;
+  height: 100%;
+  background: var(--brand);
+  transition: width .2s ease;
+}
+
+/* Paused: the app is fully usable again and only this stays behind. */
+.vt-pill {
+  left: 16px;
+  bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  background: var(--ink);
+  color: var(--bg);
+  border: 0;
+  border-radius: 999px;
+  padding: 11px 16px;
+  font: 600 13.5px/1 var(--font-sans, system-ui, sans-serif);
+  box-shadow: 0 12px 30px -12px rgb(9 10 12 / 0.7);
+  cursor: pointer;
+}
+.vt-pill span { opacity: .7; font-weight: 500; }
+.vt-pill:hover { opacity: .92; }
+
+@media (max-width: 640px) {
+  .vt-card { width: calc(100vw - 16px); }
+  .vt-bar { flex-wrap: wrap; }
+  .vt-jump { max-width: 100%; order: 9; width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vt-mask, .vt-progress i { transition: none; }
+}

@@ -28,6 +28,11 @@
     <div class="ml-auto flex items-center gap-1 sm:gap-2">
       <button type="button" class="btn btn-ghost btn-icon md:hidden" @click="$dispatch('open-palette')" aria-label="Search">{{ icon("search") }}</button>
 
+      {% if is_operator and not is_guest %}
+      {# The guided demo. Ours, not the client's — it only ever shows for an operator. #}
+      <a class="btn btn-secondary hidden lg:inline-flex" href="/demo" data-testid="start-demo">{{ icon("zap", "size-4") }}Demo</a>
+      {% endif %}
+
       {% if area == "site" and client %}
       <div class="relative hidden lg:block" x-data="{ open: false }" @click.outside="open = false" @keydown.escape="open = false">
         <button type="button" class="btn btn-secondary" @click="open = !open" :aria-expanded="open" aria-haspopup="menu">{{ icon("plus", "size-4") }}New</button>

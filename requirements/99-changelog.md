@@ -80,3 +80,28 @@
   margin and values stock at the selling price. Both are written up as traps in the runbook
   and both belong to the data core.
 - tests: intake 23 and library 22 — the two suites that read `demo/samples/` — both green.
+
+## 2026-09-23
+- shipped: **the guided demo** (feature 03) on branch `feature/guided-demo` — one button that
+  walks a room through the whole product, live. It creates a business from nothing, answers the
+  eight-record data map, fills the profile and the staff list, puts the practice pack's stock,
+  sales and outstanding files through the **real ingest path**, types the costs in — the beat
+  where gross margin stops being zero — and then walks 30 steps across Home, Sales, Operations,
+  Finance, Team, Analytics, Inbox and Settings, carrying the words to say at each one.
+- `demo_tour.py` holds the script as data (30 steps, 7 chapters, 8 actions), the way `agents.py`
+  and `routines.py` do; `web/routes/demo.py` serves `/demo`, the script as JSON, the actions and
+  the reset; `static/app/js/tour.js` and `tour.css` are the overlay, with no new dependency.
+- There is **no demo mode inside the product**: every action calls the function the real screen
+  calls, so what a prospect watches is what they would get. The demo business is resolved by name
+  under the presenter's own account, so nothing can touch a business somebody trades on.
+- The presenter is never trapped: Pause (or Escape) restores the app exactly as it was and leaves
+  a Resume button, every action is optional so you can type it yourself, stepping off the script
+  is allowed and offers the way back, and `POST /demo/reset` deletes the demo business so a
+  rehearsal that went sideways is one click from clean.
+- fixed: the practice pack's sales register folded the item code into the description, so every
+  sold line became a *different* item from the stock statement's and the shelf read 45 items
+  where there are 24. The code now travels in its own column.
+- tests: **51 green** — new `tests/test_demo.py` (17), including one that fails the build if any
+  step points at a page that does not exist, and `tests/test_web.py` (34) after the shell changes.
+- verified by driving all 30 steps over HTTP against the running app: every action succeeded,
+  every page returned 200, every spotlight target was present, and reset left no trace.

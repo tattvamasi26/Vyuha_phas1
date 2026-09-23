@@ -111,10 +111,15 @@ def icon(name: str, cls: str = "size-5", label: str = "") -> Markup:
         f'<use href="/static/app/icons.svg#i-{escape(name)}"></use></svg>')
 
 
-def asset_v() -> str:
-    """Cache-buster for app.css — its build time."""
+def asset_v(name: str = "app.css") -> str:
+    """Cache-buster for a static asset — its build time.
+
+    Defaults to the compiled stylesheet, which is what most pages ask for; anything
+    shipped separately (the demo overlay) passes its own name, or a stale browser cache
+    is the first thing that goes wrong in front of a prospect.
+    """
     try:
-        return str(int((STATIC / "app.css").stat().st_mtime))
+        return str(int((STATIC / name).stat().st_mtime))
     except OSError:
         return "0"
 

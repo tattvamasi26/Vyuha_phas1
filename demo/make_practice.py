@@ -112,8 +112,12 @@ def sales_register(rng: random.Random) -> tuple[str, str]:
     wb = Workbook()
     ws = wb.active
     ws.title = "Sales Register"
-    _title(ws, "Sales Register — last 12 months", "H")
-    ws.append(["Date", "Bill No", "Party Name", "Item", "Qty", "Rate", "Amount", "Remarks"])
+    _title(ws, "Sales Register — last 12 months", "I")
+    # The code travels in its own column, as a decent register keeps it. Folding it into
+    # the description ("1 HP Motor (MOT-1HP)") makes every sold line a *different* item
+    # from the one on the stock statement, and the shelf doubles.
+    ws.append(["Date", "Bill No", "Party Name", "Item Code", "Item", "Qty", "Rate",
+               "Amount", "Remarks"])
 
     total = 0.0
     for i in range(215):
@@ -126,16 +130,17 @@ def sales_register(rng: random.Random) -> tuple[str, str]:
             when.strftime("%d-%m-%Y"),              # dates as text, day first
             f"DE/{4100 + i}",
             rng.choice(PARTIES),
-            f"{name} ({code})",
+            code,
+            name,
             qty,
             f"₹ {rate:,.0f}",                        # rupee symbol and comma grouping
             f"₹ {amount:,.0f}",
             rng.choice(["", "", "", "urgent", "counter sale", "against PO", "site delivery"]),
         ])
         if i == 128:                                 # a Grand Total in the middle
-            ws.append(["", "", "GRAND TOTAL", "", "", "", f"₹ {total:,.0f}", ""])
+            ws.append(["", "", "GRAND TOTAL", "", "", "", "", f"₹ {total:,.0f}", ""])
             ws.append([])                            # and a blank spacer after it
-    ws.append(["", "", "GRAND TOTAL", "", "", "", f"₹ {total:,.0f}", ""])
+    ws.append(["", "", "GRAND TOTAL", "", "", "", "", f"₹ {total:,.0f}", ""])
     _autosize(ws)
     wb.save(path)
     return path.name, ("A year of bills: a merged title, three junk rows above the header, "

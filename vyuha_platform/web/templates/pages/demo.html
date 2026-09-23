@@ -1,0 +1,136 @@
+{% extends "layouts/studio.html" %}
+{% block content %}
+<div class="flex flex-col gap-6" data-testid="demo">
+
+  <header class="flex flex-wrap items-end justify-between gap-4">
+    <div class="min-w-0">
+      <h1 class="text-2xl font-bold sm:text-[1.75rem]">Guided demo</h1>
+      <p class="mt-1 max-w-[70ch] text-ink-2">
+        The whole product in front of a prospect, in order: a business set up from nothing,
+        a year of their own messy files put through it, then every screen they would use.
+        It drives the live product — nothing here is a recording.
+      </p>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <button type="button" class="btn btn-primary btn-lg" data-testid="demo-start"
+              onclick="window.VyuhaTour.start(0)">
+        {{ icon("zap", "size-4") }}Start the demo
+      </button>
+    </div>
+  </header>
+
+  {# ------------------------------------------------------------ the state #}
+  <section class="card flex flex-wrap items-center gap-x-8 gap-y-4 p-5" data-testid="demo-state">
+    <div>
+      <p class="text-xs font-semibold uppercase tracking-wider text-ink-3">The demo business</p>
+      <p class="mt-1 font-semibold">{{ business }}</p>
+    </div>
+    {% if state.exists %}
+    <div>
+      <p class="text-xs font-semibold uppercase tracking-wider text-ink-3">Built so far</p>
+      <p class="mt-1 font-mono text-sm">{{ state.items }} items · {{ state.sales }} sales · {{ state.runs }} file run(s)</p>
+    </div>
+    <div>
+      <p class="text-xs font-semibold uppercase tracking-wider text-ink-3">Reads from</p>
+      <p class="mt-1 font-mono text-sm">{{ "files" if state.mode == "upload" else "typed entries" }}</p>
+    </div>
+    <div class="ml-auto flex flex-wrap items-center gap-2">
+      <a class="btn btn-secondary" href="/app/{{ state.slug }}">Open it{{ icon("arrow-right", "size-4") }}</a>
+      <button type="button" class="btn btn-ghost !text-bad" data-testid="demo-reset"
+              onclick="vyuhaDemoReset(this)">{{ icon("trash-2", "size-4") }}Clear and start over</button>
+    </div>
+    {% else %}
+    <div>
+      <p class="text-xs font-semibold uppercase tracking-wider text-ink-3">State</p>
+      <p class="mt-1 text-ink-2">Not created yet — the demo builds it in front of them.</p>
+    </div>
+    {% endif %}
+  </section>
+
+  {% if not state.files %}
+  <div class="card flex flex-wrap items-center gap-4 border-warn/40 p-4">
+    <span class="text-warn">{{ icon("triangle-alert", "size-5") }}</span>
+    <p class="min-w-0 flex-1 text-sm text-ink-2">
+      <span class="font-semibold text-ink">The client's files are not generated yet.</span>
+      The demo will write them the first time it needs them, or run
+      <code class="font-mono text-xs">python demo/make_practice.py</code> now so the room never waits.
+    </p>
+  </div>
+  {% endif %}
+
+  {# --------------------------------------------------------- how it works #}
+  <section class="grid gap-4 md:grid-cols-3">
+    <div class="card p-5">
+      <p class="font-semibold">You are never trapped</p>
+      <p class="mt-1 text-sm text-ink-2">
+        <span class="font-semibold text-ink">Pause</span> (or Escape) puts the app back exactly
+        as it was and leaves a small Resume button. Click anything, type anything, answer a
+        question, then carry on where you stopped.
+      </p>
+    </div>
+    <div class="card p-5">
+      <p class="font-semibold">Every action is optional</p>
+      <p class="mt-1 text-sm text-ink-2">
+        A step that fills a form offers a button — but you can type it yourself instead if the
+        room would rather watch you do it. Skip with <span class="font-semibold text-ink">Next</span>.
+      </p>
+    </div>
+    <div class="card p-5">
+      <p class="font-semibold">Wander off freely</p>
+      <p class="mt-1 text-sm text-ink-2">
+        Go somewhere the script did not ask for and it says so, and offers the way back,
+        rather than dragging the page away from you. <span class="font-mono text-xs">←</span> and
+        <span class="font-mono text-xs">→</span> move between steps.
+      </p>
+    </div>
+  </section>
+
+  {# --------------------------------------------------------- the script #}
+  <section class="card overflow-hidden" data-testid="demo-script">
+    <header class="flex flex-wrap items-center gap-3 border-b border-line px-5 py-4">
+      <div class="min-w-0 flex-1">
+        <h2 class="font-bold">The script</h2>
+        <p class="text-sm text-ink-3">{{ steps|length }} steps in {{ chapters|length }} chapters. Start anywhere.</p>
+      </div>
+    </header>
+
+    {% set ns = namespace(chapter="") %}
+    <ol class="divide">
+      {% for s in steps %}
+      {% if s.chapter != ns.chapter %}
+      {% set ns.chapter = s.chapter %}
+      <li class="bg-surface-2 px-5 py-2.5">
+        <p class="text-xs font-bold uppercase tracking-wider text-brand">
+          {{ chapters | selectattr("key", "equalto", s.chapter) | map(attribute="label") | first }}
+        </p>
+      </li>
+      {% endif %}
+      <li class="flex flex-wrap items-baseline gap-x-4 gap-y-1 px-5 py-3 hover:bg-surface-2">
+        <span class="w-6 font-mono text-xs text-ink-3">{{ "%02d"|format(loop.index) }}</span>
+        <span class="min-w-0 flex-1">
+          <span class="font-semibold">{{ s.title }}</span>
+          {% if s.action %}<span class="badge tone-brand ml-2">does the typing</span>{% endif %}
+          <span class="mt-0.5 block text-sm text-ink-3">{{ s.say|truncate(120) }}</span>
+        </span>
+        <button type="button" class="btn btn-ghost btn-sm"
+                onclick="window.VyuhaTour.start({{ loop.index0 }})">Start here</button>
+      </li>
+      {% endfor %}
+    </ol>
+  </section>
+</div>
+
+<script>
+  function vyuhaDemoReset(btn) {
+    if (!window.confirm("Delete the demo business and everything in it?")) return;
+    btn.disabled = true;
+    fetch("/demo/reset", { method: "POST", credentials: "same-origin" })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        try { localStorage.removeItem("vy-tour"); } catch (e) {}
+        window.location.href = "/demo?m=" + encodeURIComponent(res.message) + "&k=ok";
+      })
+      .catch(function () { btn.disabled = false; });
+  }
+</script>
+{% endblock %}

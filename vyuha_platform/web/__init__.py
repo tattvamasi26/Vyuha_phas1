@@ -23,10 +23,11 @@ from fastapi import FastAPI
 
 
 def mount(app: FastAPI) -> None:
-    from .routes import site, studio, styleguide
+    from .routes import demo, site, studio, styleguide
 
     app.include_router(studio.router)
     app.include_router(styleguide.router)
+    app.include_router(demo.router)
     app.include_router(site.router)
     app.middleware("http")(_back_to_the_page)
 

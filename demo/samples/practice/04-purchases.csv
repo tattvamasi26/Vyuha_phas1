@@ -1,43 +1,43 @@
 Date,Supplier,Bill No,Item,Qty,Rate,Amount
-2025-12-05,Crompton Distributors,PB-2300,4 Core Armoured Cable 10m (CBL-ARM4),100,3300,330000
-2026-09-04,Crompton Distributors,PB-2301,63A RCCB Four Pole (SWG-RCCB63),100,2100,210000
-2026-09-03,Crompton Distributors,PB-2302,0.5 HP Monoblock Pump (PMP-05HP),20,2980,59600
-2026-01-26,Crompton Distributors,PB-2303,4 sq mm Wire 90m Coil (CBL-40SQ),25,2480,62000
-2026-05-17,Crompton Distributors,PB-2304,Ceiling Fan 1200mm (FAN-CEL),25,1290,32250
-2025-11-06,Crompton Distributors,PB-2305,Capacitor 36 MFD (CAP-36UF),10,132,1320
-2026-07-06,Crompton Distributors,PB-2306,Exhaust Fan 250mm (FAN-EXH),20,890,17800
-2025-10-17,Havells Regional Depot,PB-2307,1 HP Single Phase Motor (MOT-1HP),100,3650,365000
-2026-06-28,Havells Regional Depot,PB-2308,Digital Multimeter (TOL-MULT),10,980,9800
-2026-01-18,Crompton Distributors,PB-2309,5 HP Three Phase Motor (MOT-5HP),50,13800,690000
-2026-02-14,Finolex Cables Agency,PB-2310,Capacitor 60 MFD (CAP-60UF),50,225,11250
-2026-05-14,Crompton Distributors,PB-2311,Copper Lug 25mm 10pc (ACC-LUG),10,150,1500
-2026-08-24,Havells Regional Depot,PB-2312,1 HP Single Phase Motor (MOT-1HP),100,3650,365000
-2025-10-25,Havells Regional Depot,PB-2313,63A RCCB Four Pole (SWG-RCCB63),20,2100,42000
-2026-04-20,Crompton Distributors,PB-2314,15L Water Heater (WTR-HTR),40,5200,208000
-2026-04-07,Finolex Cables Agency,PB-2315,Exhaust Fan 250mm (FAN-EXH),40,890,35600
-2025-10-19,Havells Regional Depot,PB-2316,5 HP Three Phase Motor (MOT-5HP),50,13800,690000
-2026-01-22,Finolex Cables Agency,PB-2317,Exhaust Fan 250mm (FAN-EXH),20,890,17800
-2026-04-11,Havells Regional Depot,PB-2318,Star Delta Starter 10 HP (STR-SD10),25,4900,122500
-2026-04-08,Finolex Cables Agency,PB-2319,15L Water Heater (WTR-HTR),20,5200,104000
-2026-02-12,Crompton Distributors,PB-2320,15L Water Heater (WTR-HTR),100,5200,520000
-2026-05-07,Finolex Cables Agency,PB-2321,Motor Control Panel 5 HP (PNL-CTRL),20,11200,224000
-2026-02-17,Finolex Cables Agency,PB-2322,8 Way Distribution Board (SWG-DB8),25,1180,29500
-2026-01-18,Havells Regional Depot,PB-2323,Capacitor 60 MFD (CAP-60UF),100,225,22500
-2026-01-31,Havells Regional Depot,PB-2324,9W LED Bulb (LMP-LED9),40,54,2160
-2025-11-20,Havells Regional Depot,PB-2325,32A MCB Single Pole (SWG-MCB32),25,168,4200
-2026-08-13,Crompton Distributors,PB-2326,1 HP Single Phase Motor (MOT-1HP),50,3650,182500
-2025-10-19,Crompton Distributors,PB-2327,Star Delta Starter 10 HP (STR-SD10),100,4900,490000
-2025-10-29,Crompton Distributors,PB-2328,9W LED Bulb (LMP-LED9),25,54,1350
-2026-04-08,Crompton Distributors,PB-2329,Digital Multimeter (TOL-MULT),25,980,24500
-2025-12-20,Crompton Distributors,PB-2330,15L Water Heater (WTR-HTR),20,5200,104000
-2026-02-28,Crompton Distributors,PB-2331,2.5 sq mm Wire 90m Coil (CBL-25SQ),10,1560,15600
-2026-07-07,Finolex Cables Agency,PB-2332,Motor Control Panel 5 HP (PNL-CTRL),50,11200,560000
-2026-01-19,Crompton Distributors,PB-2333,4 Core Armoured Cable 10m (CBL-ARM4),50,3300,165000
-2026-03-20,Havells Regional Depot,PB-2334,Capacitor 60 MFD (CAP-60UF),50,225,11250
-2026-08-24,Crompton Distributors,PB-2335,4 sq mm Wire 90m Coil (CBL-40SQ),100,2480,248000
-2026-03-03,Crompton Distributors,PB-2336,Digital Multimeter (TOL-MULT),20,980,19600
-2026-07-16,Finolex Cables Agency,PB-2337,0.5 HP Monoblock Pump (PMP-05HP),10,2980,29800
-2026-02-16,Finolex Cables Agency,PB-2338,1 HP Submersible Pump (PMP-SUB1),50,7450,372500
-2026-08-18,Havells Regional Depot,PB-2339,4 sq mm Wire 90m Coil (CBL-40SQ),50,2480,124000
-2026-08-15,Finolex Cables Agency,PB-2340,2 HP Three Phase Motor (MOT-2HP),20,6300,126000
-2026-04-09,Havells Regional Depot,PB-2341,20W LED Batten (LMP-LED20),100,205,20500
+2025-12-07,Crompton Distributors,PB-2300,4 Core Armoured Cable 10m (CBL-ARM4),100,3300,330000
+2026-09-06,Crompton Distributors,PB-2301,63A RCCB Four Pole (SWG-RCCB63),100,2100,210000
+2026-09-05,Crompton Distributors,PB-2302,0.5 HP Monoblock Pump (PMP-05HP),20,2980,59600
+2026-01-28,Crompton Distributors,PB-2303,4 sq mm Wire 90m Coil (CBL-40SQ),25,2480,62000
+2026-05-19,Crompton Distributors,PB-2304,Ceiling Fan 1200mm (FAN-CEL),25,1290,32250
+2025-11-08,Crompton Distributors,PB-2305,Capacitor 36 MFD (CAP-36UF),10,132,1320
+2026-07-08,Crompton Distributors,PB-2306,Exhaust Fan 250mm (FAN-EXH),20,890,17800
+2025-10-19,Havells Regional Depot,PB-2307,1 HP Single Phase Motor (MOT-1HP),100,3650,365000
+2026-06-30,Havells Regional Depot,PB-2308,Digital Multimeter (TOL-MULT),10,980,9800
+2026-01-20,Crompton Distributors,PB-2309,5 HP Three Phase Motor (MOT-5HP),50,13800,690000
+2026-02-16,Finolex Cables Agency,PB-2310,Capacitor 60 MFD (CAP-60UF),50,225,11250
+2026-05-16,Crompton Distributors,PB-2311,Copper Lug 25mm 10pc (ACC-LUG),10,150,1500
+2026-08-26,Havells Regional Depot,PB-2312,1 HP Single Phase Motor (MOT-1HP),100,3650,365000
+2025-10-27,Havells Regional Depot,PB-2313,63A RCCB Four Pole (SWG-RCCB63),20,2100,42000
+2026-04-22,Crompton Distributors,PB-2314,15L Water Heater (WTR-HTR),40,5200,208000
+2026-04-09,Finolex Cables Agency,PB-2315,Exhaust Fan 250mm (FAN-EXH),40,890,35600
+2025-10-21,Havells Regional Depot,PB-2316,5 HP Three Phase Motor (MOT-5HP),50,13800,690000
+2026-01-24,Finolex Cables Agency,PB-2317,Exhaust Fan 250mm (FAN-EXH),20,890,17800
+2026-04-13,Havells Regional Depot,PB-2318,Star Delta Starter 10 HP (STR-SD10),25,4900,122500
+2026-04-10,Finolex Cables Agency,PB-2319,15L Water Heater (WTR-HTR),20,5200,104000
+2026-02-14,Crompton Distributors,PB-2320,15L Water Heater (WTR-HTR),100,5200,520000
+2026-05-09,Finolex Cables Agency,PB-2321,Motor Control Panel 5 HP (PNL-CTRL),20,11200,224000
+2026-02-19,Finolex Cables Agency,PB-2322,8 Way Distribution Board (SWG-DB8),25,1180,29500
+2026-01-20,Havells Regional Depot,PB-2323,Capacitor 60 MFD (CAP-60UF),100,225,22500
+2026-02-02,Havells Regional Depot,PB-2324,9W LED Bulb (LMP-LED9),40,54,2160
+2025-11-22,Havells Regional Depot,PB-2325,32A MCB Single Pole (SWG-MCB32),25,168,4200
+2026-08-15,Crompton Distributors,PB-2326,1 HP Single Phase Motor (MOT-1HP),50,3650,182500
+2025-10-21,Crompton Distributors,PB-2327,Star Delta Starter 10 HP (STR-SD10),100,4900,490000
+2025-10-31,Crompton Distributors,PB-2328,9W LED Bulb (LMP-LED9),25,54,1350
+2026-04-10,Crompton Distributors,PB-2329,Digital Multimeter (TOL-MULT),25,980,24500
+2025-12-22,Crompton Distributors,PB-2330,15L Water Heater (WTR-HTR),20,5200,104000
+2026-03-02,Crompton Distributors,PB-2331,2.5 sq mm Wire 90m Coil (CBL-25SQ),10,1560,15600
+2026-07-09,Finolex Cables Agency,PB-2332,Motor Control Panel 5 HP (PNL-CTRL),50,11200,560000
+2026-01-21,Crompton Distributors,PB-2333,4 Core Armoured Cable 10m (CBL-ARM4),50,3300,165000
+2026-03-22,Havells Regional Depot,PB-2334,Capacitor 60 MFD (CAP-60UF),50,225,11250
+2026-08-26,Crompton Distributors,PB-2335,4 sq mm Wire 90m Coil (CBL-40SQ),100,2480,248000
+2026-03-05,Crompton Distributors,PB-2336,Digital Multimeter (TOL-MULT),20,980,19600
+2026-07-18,Finolex Cables Agency,PB-2337,0.5 HP Monoblock Pump (PMP-05HP),10,2980,29800
+2026-02-18,Finolex Cables Agency,PB-2338,1 HP Submersible Pump (PMP-SUB1),50,7450,372500
+2026-08-20,Havells Regional Depot,PB-2339,4 sq mm Wire 90m Coil (CBL-40SQ),50,2480,124000
+2026-08-17,Finolex Cables Agency,PB-2340,2 HP Three Phase Motor (MOT-2HP),20,6300,126000
+2026-04-11,Havells Regional Depot,PB-2341,20W LED Batten (LMP-LED20),100,205,20500

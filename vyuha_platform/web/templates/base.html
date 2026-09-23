@@ -9,12 +9,14 @@
 <link rel="icon" href="/static/app/icon.svg" type="image/svg+xml">
 <link rel="manifest" href="/static/app/manifest.webmanifest">
 <link rel="stylesheet" href="/static/app/app.css?v={{ asset_v() }}">
+{% if is_operator %}<link rel="stylesheet" href="/static/app/tour.css?v={{ asset_v('tour.css') }}">{% endif %}
 <script>
   (function () { try { if (localStorage.getItem("vy-theme") === "dark") document.documentElement.classList.add("dark"); } catch (e) {} })();
 </script>
 <script defer src="/static/app/vendor/htmx.min.js"></script>
 <script defer src="/static/app/vendor/alpine-focus.min.js"></script>
 <script defer src="/static/app/js/app.js?v={{ asset_v() }}"></script>
+{% if is_operator %}<script defer src="/static/app/js/tour.js?v={{ asset_v('js/tour.js') }}"></script>{% endif %}
 <script defer src="/static/app/vendor/alpine.min.js"></script>
 </head>
 <body x-data data-flash="{{ flash or '' }}" data-flash-kind="{{ flash_kind or 'ok' }}" data-area="{{ area or '' }}">
