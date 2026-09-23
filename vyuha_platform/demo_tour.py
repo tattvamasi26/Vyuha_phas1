@@ -3,10 +3,20 @@
 A prospect does not want a slide deck and cannot be shown a dead screenshot: they want to
 watch their own kind of business be set up from nothing and then be walked through what
 they would use on a Tuesday. This module is that walk, and it is **data, not a recording**
-— the same choice `agents.py`, `modules.py` and `routines.py` make. A step names a page, a
-thing on it to point at, what to say, and optionally an action that does the typing.
+— the same choice `agents.py`, `modules.py` and `routines.py` make.
 
-Three rules it is built on:
+Every step carries two different pieces of writing, because a demo has two audiences:
+
+* ``point`` — one plain sentence, in large type, that **the room reads off the screen**.
+  It is the claim being made, and it has to survive being read at three metres by somebody
+  who has never seen the product.
+* ``say`` — the fuller line for the **presenter** to speak over it, in small type.
+
+Keeping them apart is what stops the demo becoming a paragraph nobody reads aloud and
+nobody in the room can follow either. ``note`` is for the presenter alone and is never said
+unless asked.
+
+Three rules the whole thing is built on:
 
 * **It drives the real product.** Every action calls the same function the screens call —
   ``store.add_client``, ``onboarding.save``, ``people.add_staff``, and the very ingest
@@ -58,6 +68,11 @@ class Chapter:
     key: str
     label: str
     blurb: str
+    #: Roughly how long this chapter should take, so a presenter can keep to twenty
+    #: minutes without watching a clock.
+    minutes: int
+    #: The one thing the room should take away from it. Shown on the chapter card.
+    proves: str
 
 
 @dataclass(frozen=True)
@@ -65,7 +80,10 @@ class Step:
     key: str
     chapter: str
     title: str
-    #: What to say out loud. Written to be read aloud, not summarised.
+    #: **The room reads this.** One plain sentence, large. Keep it short enough to take
+    #: in at a glance — if it needs a comma-spliced second clause, it is two steps.
+    point: str
+    #: What the presenter says over it.
     say: str
     #: Where the step happens. ``{slug}`` is the demo business. Empty means "stay here".
     path: str = ""
@@ -79,204 +97,212 @@ class Step:
 
 
 CHAPTERS: tuple[Chapter, ...] = (
-    Chapter("open", "Why we are here", "One sentence, before any screen"),
-    Chapter("onboard", "Set the business up", "From nothing to a workspace, live"),
-    Chapter("data", "Their own files", "The mess goes in; the read-back comes out"),
-    Chapter("day", "An ordinary day", "What needs doing, what sold, what is on the shelf"),
-    Chapter("money", "The money", "Profit, position, tax — and what we cannot see"),
-    Chapter("tell", "Telling the right person", "The part nobody else does"),
-    Chapter("close", "What happens next", "Honest about what is not built"),
+    Chapter("open", "Why we are here", "One sentence, before any screen", 1,
+            "This is a live product, not a slideshow."),
+    Chapter("onboard", "Set the business up", "From nothing to a workspace, live", 5,
+            "Getting set up is our job, not theirs."),
+    Chapter("data", "Their own files", "The mess goes in; the read-back comes out", 4,
+            "No cleaning up, and we show our working."),
+    Chapter("day", "An ordinary day", "What needs doing, what sold, what is on the shelf", 4,
+            "One screen says what to do today."),
+    Chapter("money", "The money", "Profit, position, tax — and what we cannot see", 3,
+            "The statements a bank or a CA asks for."),
+    Chapter("tell", "Telling the right person", "The part nobody else does", 2,
+            "The person who owns the problem hears about it."),
+    Chapter("close", "What happens next", "Honest about what is not built", 1,
+            "You would start exactly the way you just watched."),
 )
 
 STEPS: tuple[Step, ...] = (
     # ------------------------------------------------------------------ open
     Step("open.why", "open", "What we are about to do",
-         "Vyuha takes the Excel a distributor already keeps and turns it into a business "
-         "that tells them what needs doing today. In the next twenty minutes I am going to "
-         "set up a business from nothing, put a year of their own messy files through it, "
-         "and then walk you through what they would open on a Tuesday morning. Nothing here "
-         "is a mock-up — every screen you see is the live product.",
+         point="In twenty minutes, a real business — built from nothing, in front of you.",
+         say="I am going to set a business up from scratch, put a year of their own messy "
+             "Excel through it, and then walk you through what they would open on a Tuesday "
+             "morning. Every screen you see is the live product.",
          path="/studio",
          note="If they ask about price, park it to the end. Let the product do the work."),
     Step("open.portfolio", "open", "Our side of it",
-         "This is the Onboarding Studio, and it is ours, not theirs. Every business we look "
-         "after sits here with the stage it has reached, so nothing gets half-set-up and "
-         "forgotten. The client never sees this screen.",
+         point="Every business we look after, and how far along each one is.",
+         say="This is the Studio, and it is ours, not theirs — the client never sees this "
+             "screen. Nothing gets half-set-up and forgotten.",
          target='[data-testid="studio"]'),
 
     # -------------------------------------------------------------- onboard
     Step("onboard.new", "onboard", "Four fields, not forty",
-         "Onboarding asks four things: the business name, the owner's name, the owner's "
-         "WhatsApp number, and what kind of trade it is. That is the whole form. Everything "
-         "else gets gathered as we go, because a form nobody finishes is a business nobody "
-         "onboards.",
+         point="Setting a business up takes four fields.",
+         say="Name, owner, the owner's WhatsApp number, and the kind of trade. That is the "
+             "whole form — everything else we gather as we go, because a form nobody "
+             "finishes is a business nobody onboards.",
          path="/studio/new", target='[data-testid="studio-new"]',
          action="create", action_label="Create the business",
          note="Type it yourself if the room would rather watch you type."),
     Step("onboard.map", "onboard", "Where does each record live today?",
-         "This is the interview that decides everything. Eight kinds of record — sales, "
-         "purchases, stock, who owes them, whom they owe, expenses, cash, staff — and for "
-         "each one: where does it live today? Tally, Excel, other software, a paper "
-         "register, only the bills, WhatsApp, or not kept at all. Every honest answer is on "
-         "that list, including 'not kept'.",
+         point="We ask where each of their eight kinds of record lives today.",
+         say="Sales, purchases, stock, who owes them, whom they owe, expenses, cash, staff. "
+             "Tally, Excel, other software, a paper register, only the bills, WhatsApp — or "
+             "not kept at all. Every honest answer is on that list.",
          path="/studio/{slug}/datamap", target='[data-testid="datamap-form"]',
          action="datamap", action_label="Answer it the way this client would"),
     Step("onboard.freeze", "onboard", "The answer that decides the rest",
-         "How they keep sales is the one that matters. Tally, Excel or other software and "
-         "the business runs on files — they send them and the files are the truth. Paper, "
-         "bills or WhatsApp, and it runs on typed entries instead, where a file sent later "
-         "merges rather than replacing. We decide that once, here, while the workspace is "
-         "still empty.",
+         point="How they keep sales decides how everything else works.",
+         say="Excel or Tally, and the business runs on files they send us — the files are "
+             "the truth. Paper or WhatsApp, and it runs on typed entries instead. We decide "
+             "that once, here, while the workspace is still empty.",
          target='[data-testid="domain-sales"]'),
     Step("onboard.plan", "onboard", "Read this back to them",
-         "And here is what those answers mean in practice — how we bring the past in, and "
-         "how new records keep arriving afterwards. This is the moment the owner "
-         "understands what he is buying, so read it to him line by line.",
+         point="What those answers mean, in plain words, before we touch anything.",
+         say="How we bring the past in, and how new records keep arriving afterwards. This "
+             "is the moment the owner understands what he is buying — so read it to him "
+             "line by line.",
          target='[data-testid="import-plan"]'),
     Step("onboard.profile", "onboard", "What has to print on a bill",
-         "Now the details that make a document a document. The GSTIN and the state are the "
-         "two that matter: without them a bill prints as a bill of supply rather than a tax "
-         "invoice, and the state decides whether a sale carries CGST plus SGST or IGST — "
-         "which is frozen onto the invoice the moment it is raised.",
+         point="The two details that turn a bill into a tax invoice.",
+         say="The GSTIN, and the state. Without them a bill prints as a bill of supply and "
+             "the buyer's accountant sends it back. The state decides CGST plus SGST or "
+             "IGST, and that is frozen onto the invoice the moment it is raised.",
          path="/studio/{slug}/profile", target='[data-testid="profile-form"]',
          action="profile", action_label="Fill in their details"),
     Step("onboard.masters", "onboard", "Who works there",
-         "Items, branches and people. The part worth slowing down on is the phone numbers: "
-         "a role decides who hears what — stock to the manager, money to the accountant, a "
-         "customer gone quiet to the salesman, everything to the owner. A person with no "
-         "number gets skipped, and then the owner is the one told about everything, which "
-         "is exactly what he is paying us to stop.",
+         point="A role decides who gets told — so every person needs a number.",
+         say="Stock to the manager, money to the accountant, a customer gone quiet to the "
+             "salesman, everything to the owner. A person with no number gets skipped, and "
+             "then the owner is told about everything — which is what he is paying us to "
+             "stop.",
          path="/studio/{slug}/masters", target='[data-testid="masters"]',
          action="people", action_label="Add their staff"),
     Step("onboard.later", "onboard", "What we still do by hand",
-         "I will be straight with you about the rest of the stepper. The opening stock "
-         "position, the staged history import and the sign-off are described here but we do "
-         "them by hand today — and that is the next thing being built. I would rather you "
-         "hear that from me now than find it in week three.",
+         point="Some of this we still do by hand. I would rather tell you now.",
+         say="The opening stock position, the staged history import and the sign-off are "
+             "described here, but we do them by hand today — and that is the next thing "
+             "being built.",
          path="/studio/{slug}/opening", target='[data-testid="stage-later"]',
          note="Do not skip this step. It is the one that buys trust for everything else."),
 
     # ----------------------------------------------------------------- data
     Step("data.stock", "data", "Send it exactly as it is",
-         "Here is where their files land, and the instruction we give every client is: do "
-         "not clean anything up. Send it exactly as it is. Handling the mess is the product "
-         "— a client who tidies a file first usually deletes the columns we need. I will "
-         "start with their stock list, because it creates every item on the shelf.",
+         point="They send the file exactly as it is. No cleaning up.",
+         say="That is the instruction we give every client, and we mean it — handling the "
+             "mess is the product. A client who tidies a file first usually deletes the "
+             "columns we need. I will start with their stock list.",
          path="/app/{slug}/data/add", target='[data-testid="send-files"]',
          action="import_stock", action_label="Send the stock statement"),
     Step("data.sales", "data", "A year of bills, as the accountant keeps them",
-         "Now the sales register — and this is a deliberately horrible file. A merged title "
-         "across the top, three junk rows above the real header, dates written as text, "
-         "rupee symbols inside the numbers, a Grand Total sitting in the middle of the "
-         "data, and one customer spelled four different ways. No configuration, no mapping "
-         "screen. Watch.",
+         point="A merged title, junk rows, dates as text, one customer spelled four ways.",
+         say="This is a deliberately horrible file — there is even a Grand Total sitting in "
+             "the middle of the data. No configuration, no mapping screen, no one telling "
+             "it which column is which. Watch.",
          action="import_sales", action_label="Send the sales register"),
     Step("data.dues", "data", "And who still owes them",
-         "Last one — the outstanding list, so the money side is complete.",
+         point="And the list of who still owes them money.",
+         say="Last one, so the money side is complete.",
          action="import_dues", action_label="Send the outstanding list"),
     Step("data.read", "data", "What we understood, and how sure we are",
-         "This screen is the one I would ask you to judge us on. For every file it names "
-         "the sheet it read, the row the header turned out to be on, which columns it "
-         "understood and which it ignored, and every fix it applied. A figure read off a "
-         "properly labelled column and one we reconstructed from quantity times rate do not "
-         "look the same here. If we are ever wrong, this is where you catch us.",
+         point="Everything we understood from each file — and how sure we are of it.",
+         say="The sheet it read, the row the header turned out to be on, which columns it "
+             "understood, which it ignored, and every fix it applied. A figure read off a "
+             "labelled column and one we reconstructed do not look the same here. If we are "
+             "ever wrong, this is where you catch us.",
          path="/app/{slug}/data/read", target='[data-testid="readback"]'),
 
     # ------------------------------------------------------------------ day
     Step("day.home", "day", "What needs you today",
-         "This is the screen the owner opens in the morning, and it is not a dashboard — it "
-         "is a ranked list of decisions. An empty shelf, money that is late, a customer who "
-         "has gone quiet. Each one has the action next to it, so nobody has to go looking "
-         "for the screen where that gets dealt with.",
+         point="The morning screen is a list of decisions, not a wall of charts.",
+         say="An empty shelf, money that is late, a customer who has gone quiet — ranked by "
+             "what it costs to ignore, each with the action sitting next to it.",
          path="/app/{slug}", target='[data-testid="needs-you"]'),
     Step("day.kpis", "day", "The four numbers",
-         "Above it, the four figures he would ask for anyway — what has sold, what is "
-         "owed, what is on the shelf, what is in hand — with the direction of travel.",
+         point="The four numbers he would ask for anyway.",
+         say="What has sold, what is owed, what is on the shelf, what is in hand — with the "
+             "direction of travel.",
          target='[data-testid="kpis"]'),
     Step("day.sales", "day", "What is actually selling",
-         "Sales, month by month, by item and by customer. All of it read out of that one "
-         "messy register, with no one typing anything.",
+         point="All of this came out of that one messy register.",
+         say="Month by month, by item, by customer. Nobody typed any of it.",
          path="/app/{slug}/sales/overview", target='[data-testid="sales-chart"]'),
     Step("day.customers", "day", "The four spellings, as one customer",
-         "Remember the customer spelled four ways in the register — with M/s, without, in "
-         "capitals, with a full stop. Here he is once, with everything he has bought and "
-         "everything he owes. That collapsing is not clever formatting; it is the "
-         "difference between knowing who your biggest customer is and not.",
+         point="Four spellings in the file. One customer here.",
+         say="With M/s, without, in capitals, with a full stop. That collapsing is the "
+             "difference between knowing who your biggest customer is and not.",
          path="/app/{slug}/sales/customers", target='[data-testid="customers"]'),
     Step("day.collect", "day", "Chasing money, without the awkwardness",
-         "Who owes what, and for how long. The message is already written — he reads it, "
-         "changes a word if he wants, and sends it from his own WhatsApp. Chasing money is "
-         "the job every owner puts off, so we take the writing of it away.",
+         point="The chasing message is already written.",
+         say="Who owes what and for how long. He reads it, changes a word if he wants, and "
+             "sends it from his own WhatsApp. Chasing money is the job every owner puts "
+             "off, so we take the writing of it away.",
          path="/app/{slug}/sales/collections"),
     Step("day.stock", "day", "The shelf",
-         "What is on the shelf, what is below its reorder mark, what has not moved in "
-         "ninety days and how much cash is asleep in it. The dead-stock number is usually "
-         "the one that makes an owner sit up — it is money he already spent.",
+         point="What is low, what is dead, and the cash asleep on the shelf.",
+         say="Below the reorder mark, out entirely, or not moved in ninety days. The "
+             "dead-stock figure is usually the one that makes an owner sit up — it is money "
+             "he has already spent.",
          path="/app/{slug}/operations/inventory", target='[data-testid="inventory"]'),
     Step("day.record", "day", "For the day that has not been filed yet",
-         "And when something sells at the counter before any file exists, it gets typed "
-         "here — what, how many, who, their number — in the order the words come out of "
-         "somebody's mouth. Typed entries and uploaded files end up in exactly the same "
-         "place.",
+         point="For the sale that happened before any file existed.",
+         say="What, how many, who, their number — in the order the words come out of "
+             "somebody's mouth. Typed entries and uploaded files end up in the same place.",
          path="/app/{slug}/operations/record", target='[data-testid="record-sale"]'),
 
     # ---------------------------------------------------------------- money
     Step("money.costs", "money", "Watch the margin appear",
-         "Now something honest. Gross margin here is zero — and it should be, because no "
-         "file a distributor sends contains what things cost him. Their sale prices came "
-         "out of the stock list; the costs are in a purchase file that nothing imports. So "
-         "we put them in once, and the whole of Finance wakes up. I will do it now.",
+         point="Margin reads zero — because no file they send says what things cost.",
+         say="Their sale prices came out of the stock list. The costs are in a purchase file "
+             "that nothing imports. So we put them in once, and the whole of Finance wakes "
+             "up. I will do it now — watch this number.",
          path="/app/{slug}/finance/pnl", target='[data-testid="pnl"]',
          action="costs", action_label="Type their costs in",
-         note="Reload the page after the action — the figure changes in front of them."),
+         note="Let the page reload and pause for a second. This is the beat of the demo."),
     Step("money.balance", "money", "What we can see, and what we cannot",
-         "The balance sheet, and underneath it the list of what it does not know — no "
-         "opening balances, no fixed assets, no loans. We print that every time. A trading "
-         "position handed to a bank as though it were a filed one is worse than no "
-         "statement at all.",
+         point="Underneath the statement: what it does not know.",
+         say="No opening balances, no fixed assets, no loans. We print that every time — a "
+             "trading position handed to a bank as though it were a filed one is worse than "
+             "no statement at all.",
          path="/app/{slug}/finance/balance", target='[data-testid="assumptions"]'),
     Step("money.gst", "money", "Tax, and when it is due",
-         "Tax collected on the invoices actually raised — never on sales, because a sale "
-         "with no invoice collected no tax — and the filing dates beside it. Anything that "
-         "touches a filing waits for a named person to approve it. It never just goes.",
+         point="Tax on the invoices actually raised — and the date it is due.",
+         say="Never on sales, because a sale with no invoice collected no tax. And anything "
+             "that touches a filing waits for a named person to approve it. It never just "
+             "goes.",
          path="/app/{slug}/finance/gst", target='[data-testid="filings"]'),
     Step("money.ratios", "money", "The question he cannot ask Excel",
-         "And the analysis he would have to pay somebody for: margins, break-even, and how "
-         "much of his turnover is sitting with three customers.",
+         point="The analysis he would otherwise pay somebody for.",
+         say="Margins, break-even, and how much of his turnover is sitting with three "
+             "customers.",
          path="/app/{slug}/analytics/ratios", target='[data-testid="concentration"]'),
 
     # ----------------------------------------------------------------- tell
     Step("tell.rules", "tell", "Who gets told, before anybody is told",
-         "This is the part I have not seen anyone else do. Vyuha works out who owns each "
-         "problem and tells that person — not the owner, every time. And before a single "
-         "message goes anywhere, you can read exactly who would be told what. We show the "
-         "owner this screen and get his blessing before we switch anything on.",
+         point="You can read who would be told what — before anyone is told anything.",
+         say="Vyuha works out who owns each problem and tells that person, not the owner "
+             "every time. We show the owner this screen and get his blessing before we "
+             "switch anything on.",
          path="/app/{slug}/inbox/rules", target='[data-testid="rules"]'),
     Step("tell.brief", "tell", "The morning brief",
-         "Everything that needs him, as one WhatsApp he can read at a traffic light.",
+         point="One WhatsApp he can read at a traffic light.",
+         say="Everything that needs him, in one message.",
          path="/app/{slug}/inbox/brief", target='[data-testid="brief"]'),
     Step("tell.routines", "tell", "And it keeps happening",
-         "Eight in the morning, every day, to whoever should get it. A Friday stock summary "
-         "for the purchase head is a line in a file, not a new feature.",
+         point="Eight in the morning, every day, without anyone asking.",
+         say="A Friday stock summary for the purchase head is a line in a file, not a new "
+             "feature.",
          path="/app/{slug}/inbox/routines", target='[data-testid="routines"]'),
     Step("tell.access", "tell", "How the owner gets in",
-         "No password. We send him a private link and a four-digit PIN, on WhatsApp, as two "
-         "separate messages — the link nobody can guess, and the PIN that makes a forwarded "
-         "message harmless. He taps it and he is in, on the phone he already has.",
+         point="No password. A link and a PIN, on the phone he already has.",
+         say="Two separate WhatsApp messages — the link nobody can guess, and the PIN that "
+             "makes a forwarded message harmless. He taps it and he is in.",
          path="/app/{slug}/settings/access", target='[data-testid="settings-access"]'),
 
     # ---------------------------------------------------------------- close
     Step("close.ask", "close", "Or he can just ask",
-         "And when he wants something none of these screens show, he asks in his own words. "
-         "Every number in the answer is computed by us — the model chooses what to say, "
-         "never what the figure is.",
+         point="Or he asks, in his own words.",
+         say="Every number in the answer is computed by us. The model chooses what to say, "
+             "never what the figure is.",
          path="/app/{slug}", target='[data-testid="open-assistant"]'),
     Step("close.end", "close", "Where we would start with you",
-         "That is the product. We would start exactly the way you just watched: you send us "
-         "what you already keep, we set it up, and you see your own numbers in it before "
-         "you decide anything. Everything I showed you is running today — what is still "
-         "being built is the automatic collection of new files, and the history import that "
-         "we do by hand for now.",
+         point="We would start with you exactly the way you just watched.",
+         say="You send us what you already keep, we set it up, and you see your own numbers "
+             "in it before you decide anything. Everything I showed you runs today — what "
+             "is still being built is the automatic collection of new files.",
          note="Now ask for their files. That is the only close that matters."),
 )
 
@@ -285,13 +311,32 @@ CHAPTER_BY_KEY = {c.key: c for c in CHAPTERS}
 
 
 def steps_for(slug: str) -> list[dict]:
-    """The script with the demo business's slug filled in, ready for the browser."""
+    """The script with the demo business's slug filled in, ready for the browser.
+
+    Each step also carries where it sits in the walk — which chapter, how far through —
+    so the overlay can show progress without recomputing it on every render.
+    """
+    order = [c.key for c in CHAPTERS]
+    seen: set[str] = set()
     out = []
     for i, s in enumerate(STEPS):
+        chapter = CHAPTER_BY_KEY[s.chapter]
+        first = s.chapter not in seen
+        seen.add(s.chapter)
+        in_chapter = [x for x in STEPS if x.chapter == s.chapter]
         out.append({
-            "i": i, "key": s.key, "chapter": s.chapter,
-            "chapter_label": CHAPTER_BY_KEY[s.chapter].label,
-            "title": s.title, "say": s.say, "note": s.note,
+            "i": i, "key": s.key, "title": s.title, "point": s.point, "say": s.say,
+            "note": s.note,
+            "chapter": s.chapter,
+            "chapter_label": chapter.label,
+            "chapter_blurb": chapter.blurb,
+            "chapter_proves": chapter.proves,
+            "chapter_minutes": chapter.minutes,
+            "chapter_index": order.index(s.chapter) + 1,
+            "chapter_total": len(CHAPTERS),
+            "first_in_chapter": first,
+            "step_in_chapter": in_chapter.index(s) + 1,
+            "steps_in_chapter": len(in_chapter),
             "path": s.path.replace("{slug}", slug) if s.path and slug else "",
             "target": s.target, "action": s.action, "action_label": s.action_label,
         })
@@ -374,7 +419,7 @@ def act_create(account) -> Outcome:
     onboarding.save(record)
     ledger.log("client.onboarded", f"{client.name} created for a demo", client=client,
                channel="studio")
-    return Outcome(True, f"{NAME} created.", client.slug,
+    return Outcome(True, "Business created — that is the whole of stage one.", client.slug,
                    go=f"/studio/{client.slug}/datamap")
 
 
@@ -417,8 +462,8 @@ def act_datamap(account) -> Outcome:
         store.update_client(client)
     ledger.log("settings.changed", "Data map answered (demo)", client=client,
                channel="studio")
-    return Outcome(True, "Eight records answered, cut-over set — and because sales live in "
-                         "Excel, this is now a business we read from files.",
+    return Outcome(True, "Eight records answered. Sales live in Excel, so this is now a "
+                         "business we read from files.",
                    client.slug, go=f"/studio/{client.slug}/datamap")
 
 
@@ -435,8 +480,8 @@ def act_profile(account) -> Outcome:
     onboarding.save(record)
     ledger.log("settings.changed", "Profile filled in (demo)", client=client,
                channel="studio")
-    return Outcome(True, "GSTIN, state and address in — invoices will print as tax "
-                         "invoices, with CGST and SGST inside Karnataka.",
+    return Outcome(True, "GSTIN and state in — bills will print as tax invoices, with CGST "
+                         "and SGST inside Karnataka.",
                    client.slug, go=f"/studio/{client.slug}/profile")
 
 
@@ -548,8 +593,8 @@ def act_costs(account) -> Outcome:
     books.save(book)
     ledger.log("settings.changed", f"Cost set on {priced} item(s) (demo)", client=client,
                channel="manual")
-    return Outcome(True, f"Cost typed in for {priced} item(s) — reload and the margin is "
-                         "there.", client.slug, go=f"/app/{client.slug}/finance/pnl")
+    return Outcome(True, f"Cost typed in for {priced} items — and there is the margin.",
+                   client.slug, go=f"/app/{client.slug}/finance/pnl")
 
 
 ACTIONS = {

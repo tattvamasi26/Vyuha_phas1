@@ -113,6 +113,44 @@ def test_the_script_says_something_at_every_step():
     assert not silent, f"steps with nothing to say: {silent}"
 
 
+def test_every_step_has_one_line_the_room_can_read():
+    """The point is what goes on screen in large type. Long ones stop being readable."""
+    missing = [s.key for s in demo_tour.STEPS if len(s.point.strip()) < 15]
+    assert not missing, f"steps with no point for the audience: {missing}"
+    rambling = [(s.key, len(s.point)) for s in demo_tour.STEPS if len(s.point) > 90]
+    assert not rambling, f"points too long to read at a glance: {rambling}"
+
+
+def test_the_point_and_the_narration_are_not_the_same_words():
+    """Two audiences, two pieces of writing — if they match, one of them is wasted."""
+    same = [s.key for s in demo_tour.STEPS if s.point.strip() == s.say.strip()]
+    assert not same, same
+
+
+def test_every_chapter_says_how_long_it_takes_and_what_it_proves():
+    for c in demo_tour.CHAPTERS:
+        assert c.minutes > 0, c.key
+        assert len(c.proves.strip()) > 15, c.key
+
+
+def test_the_demo_fits_in_the_twenty_minutes_it_promises():
+    total = sum(c.minutes for c in demo_tour.CHAPTERS)
+    assert 15 <= total <= 25, f"the walk claims {total} minutes"
+
+
+def test_the_script_tells_the_browser_where_it_is_in_the_journey():
+    rows = demo_tour.steps_for("a-business")
+    first = rows[0]
+    assert first["chapter_index"] == 1 and first["chapter_total"] == len(demo_tour.CHAPTERS)
+    assert first["first_in_chapter"] is True
+    assert rows[1]["first_in_chapter"] is False
+    # Every chapter is announced exactly once, or a title card is missed or repeated.
+    openers = [r["chapter"] for r in rows if r["first_in_chapter"]]
+    assert openers == [c.key for c in demo_tour.CHAPTERS]
+    for row in rows:
+        assert 1 <= row["step_in_chapter"] <= row["steps_in_chapter"]
+
+
 # -------------------------------------------------------------- who may run it
 
 def test_a_tenant_cannot_open_the_demo():

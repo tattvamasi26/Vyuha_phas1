@@ -3,9 +3,11 @@
  * Plain CSS on the same tokens as app.css (which is compiled from web/assets/app.css by
  * Tailwind). Kept as its own file on purpose: the overlay is not part of the design system
  * a page is built from, it sits on top of every page, and a separate stylesheet means the
- * demo can be styled without rebuilding the site's CSS.
+ * demo can be restyled without rebuilding the site's CSS.
  *
- * Nothing here is inside a dark-mode block: the tokens already flip on <html class="dark">.
+ * Everything here is sized to be read across a room, not by the person holding the mouse:
+ * the point is 21px, because a demo where the audience squints is a demo they tune out of.
+ * Nothing sits inside a dark-mode block — the tokens already flip on <html class="dark">.
  */
 
 .vt-mask,
@@ -19,64 +21,113 @@
    step, and it follows the target on scroll. */
 .vt-mask {
   border-radius: 14px;
-  box-shadow: 0 0 0 3px var(--brand), 0 0 0 9999px rgb(9 10 12 / 0.62);
+  box-shadow: 0 0 0 3px var(--brand), 0 0 0 9999px rgb(9 10 12 / 0.66);
   pointer-events: none;
-  transition: top .18s ease, left .18s ease, width .18s ease, height .18s ease;
+  transition: top .2s ease, left .2s ease, width .2s ease, height .2s ease;
+  animation: vt-breathe 2.4s ease-in-out infinite;
 }
 
 .vt-mask.is-flat {
-  box-shadow: 0 0 0 9999px rgb(9 10 12 / 0.62);
+  box-shadow: 0 0 0 9999px rgb(9 10 12 / 0.72);
+  animation: none;
+}
+
+/* A slow pulse on the ring: it tells the room where to look without moving the page. */
+@keyframes vt-breathe {
+  0%, 100% { box-shadow: 0 0 0 3px var(--brand), 0 0 0 9999px rgb(9 10 12 / 0.66); }
+  50%      { box-shadow: 0 0 0 6px var(--brand), 0 0 0 9999px rgb(9 10 12 / 0.66); }
 }
 
 .vt-card {
-  width: min(430px, calc(100vw - 24px));
+  width: min(460px, calc(100vw - 24px));
   max-height: calc(100vh - 24px);
   overflow-y: auto;
   background: var(--surface);
   color: var(--ink);
   border: 1px solid var(--line);
-  border-radius: 18px;
-  box-shadow: 0 24px 60px -18px rgb(9 10 12 / 0.55), 0 2px 6px rgb(9 10 12 / 0.18);
-  padding: 18px 20px 16px;
+  border-radius: 20px;
+  box-shadow: 0 28px 70px -20px rgb(9 10 12 / 0.6), 0 2px 8px rgb(9 10 12 / 0.2);
+  padding: 18px 22px 16px;
   font-family: var(--font-sans, system-ui, sans-serif);
-  font-size: 15px;
-  line-height: 1.6;
   display: grid;
   gap: 12px;
+  transition: top .2s ease, left .2s ease;
 }
 
-.vt-head {
+/* ------------------------------------------------------------- the journey */
+
+.vt-rail {
   display: flex;
-  align-items: center;
+  gap: 5px;
+}
+
+.vt-dot {
+  height: 4px;
+  flex: 1;
+  border-radius: 999px;
+  background: var(--sunken);
+  border: 0;
+}
+.vt-dot.is-done { background: var(--brand-soft); }
+.vt-dot.is-on { background: var(--brand); }
+
+.vt-meta {
+  display: flex;
+  align-items: baseline;
   justify-content: space-between;
   gap: 12px;
   font-size: 11.5px;
   font-weight: 700;
-  letter-spacing: .08em;
+  letter-spacing: .09em;
   text-transform: uppercase;
 }
-
 .vt-chapter { color: var(--brand); }
-.vt-count { color: var(--ink-3); font-family: var(--font-mono, monospace); letter-spacing: .04em; }
+.vt-where {
+  color: var(--ink-3);
+  font-family: var(--font-mono, monospace);
+  letter-spacing: .04em;
+  white-space: nowrap;
+}
 
-.vt-title {
-  font-family: var(--font-display, inherit);
-  font-size: 19px;
-  font-weight: 700;
-  line-height: 1.2;
+/* ------------------------------------------------ what the room reads */
+
+.vt-point {
   margin: 0;
+  font-family: var(--font-display, inherit);
+  font-size: 21px;
+  font-weight: 700;
+  line-height: 1.28;
+  letter-spacing: -0.01em;
   text-wrap: balance;
 }
 
-.vt-say { margin: 0; color: var(--ink-2); }
-.vt-say.is-off { color: var(--ink); }
+/* ...and what the presenter says over it. */
+.vt-say {
+  margin: 0;
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+
+.vt-result {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.55;
+  border-radius: 11px;
+  padding: 10px 13px;
+  background: var(--ok-soft);
+  color: var(--ok);
+  font-weight: 600;
+}
+.vt-result.is-bad { background: var(--bad-soft); color: var(--bad); }
+.vt-result.is-proves { background: var(--brand-soft); color: var(--brand); }
 
 .vt-note {
   background: var(--surface-2);
   border: 1px solid var(--line);
   border-radius: 11px;
   padding: 9px 12px;
-  font-size: 13.5px;
+  font-size: 13px;
   color: var(--ink-2);
 }
 .vt-note summary { cursor: pointer; font-weight: 600; color: var(--ink); }
@@ -87,15 +138,17 @@
   background: var(--brand);
   color: #fff;
   border: 0;
-  border-radius: 11px;
-  padding: 11px 14px;
-  font: 600 14.5px/1.2 var(--font-sans, system-ui, sans-serif);
+  border-radius: 12px;
+  padding: 12px 14px;
+  font: 600 15px/1.2 var(--font-sans, system-ui, sans-serif);
   cursor: pointer;
 }
 .vt-do:hover { background: var(--brand-strong, var(--brand)); }
 .vt-do[disabled] { opacity: .6; cursor: progress; }
 
-.vt-bar {
+/* -------------------------------------------------------------- controls */
+
+.vt-foot {
   display: flex;
   align-items: center;
   gap: 7px;
@@ -103,47 +156,58 @@
   padding-top: 12px;
 }
 
-.vt-bar button,
-.vt-bar select {
+.vt-foot button,
+.vt-foot select {
   font: 600 13px/1 var(--font-sans, system-ui, sans-serif);
   color: var(--ink-2);
   background: var(--surface);
   border: 1px solid var(--line-strong);
   border-radius: 9px;
-  padding: 8px 11px;
+  padding: 9px 11px;
   cursor: pointer;
 }
-.vt-bar button:hover,
-.vt-bar select:hover { color: var(--ink); border-color: var(--ink-3); }
-.vt-bar button[disabled] { opacity: .45; cursor: default; }
+.vt-foot button:hover,
+.vt-foot select:hover { color: var(--ink); border-color: var(--ink-3); }
+.vt-foot button[disabled] { opacity: .4; cursor: default; }
 
-.vt-bar .vt-next {
-  background: var(--ink);
-  border-color: var(--ink);
-  color: var(--bg);
+.vt-back { font-size: 15px !important; line-height: 1 !important; padding: 8px 12px !important; }
+
+.vt-next {
+  background: var(--ink) !important;
+  border-color: var(--ink) !important;
+  color: var(--bg) !important;
+  padding-inline: 16px !important;
 }
-.vt-bar .vt-next:hover { opacity: .9; color: var(--bg); }
+.vt-next:hover { opacity: .9; }
 
-.vt-bar .vt-sp { flex: 1; }
+.vt-hint {
+  flex: 1;
+  font-size: 11.5px;
+  color: var(--ink-3);
+  font-family: var(--font-mono, monospace);
+  text-align: center;
+  white-space: nowrap;
+}
 
 .vt-jump {
-  max-width: 132px;
+  max-width: 120px;
   appearance: none;
   text-overflow: ellipsis;
 }
 
-.vt-progress {
-  height: 3px;
-  border-radius: 999px;
-  background: var(--sunken);
-  overflow: hidden;
+/* ------------------------------------------------- the chapter title card */
+
+.vt-card.is-intro {
+  width: min(560px, calc(100vw - 24px));
+  padding: 30px 34px 24px;
+  gap: 14px;
+  text-align: center;
 }
-.vt-progress i {
-  display: block;
-  height: 100%;
-  background: var(--brand);
-  transition: width .2s ease;
-}
+.vt-card.is-intro .vt-meta { justify-content: center; gap: 10px; }
+.vt-card.is-intro .vt-point { font-size: 32px; line-height: 1.15; }
+.vt-card.is-intro .vt-say { font-size: 16px; }
+.vt-card.is-intro .vt-result { font-size: 14.5px; text-align: center; }
+.vt-card.is-intro .vt-hint { text-align: center; }
 
 /* Paused: the app is fully usable again and only this stays behind. */
 .vt-pill {
@@ -156,20 +220,23 @@
   color: var(--bg);
   border: 0;
   border-radius: 999px;
-  padding: 11px 16px;
+  padding: 12px 18px;
   font: 600 13.5px/1 var(--font-sans, system-ui, sans-serif);
   box-shadow: 0 12px 30px -12px rgb(9 10 12 / 0.7);
   cursor: pointer;
 }
-.vt-pill span { opacity: .7; font-weight: 500; }
+.vt-pill span { opacity: .7; }
 .vt-pill:hover { opacity: .92; }
 
 @media (max-width: 640px) {
   .vt-card { width: calc(100vw - 16px); }
-  .vt-bar { flex-wrap: wrap; }
-  .vt-jump { max-width: 100%; order: 9; width: 100%; }
+  .vt-card.is-intro { padding: 22px 20px 18px; }
+  .vt-card.is-intro .vt-point { font-size: 25px; }
+  .vt-foot { flex-wrap: wrap; }
+  .vt-hint { order: 9; width: 100%; }
+  .vt-jump { max-width: 100%; flex: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .vt-mask, .vt-progress i { transition: none; }
+  .vt-mask, .vt-card { transition: none; animation: none; }
 }

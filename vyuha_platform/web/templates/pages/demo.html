@@ -83,6 +83,16 @@
         <span class="font-mono text-xs">→</span> move between steps.
       </p>
     </div>
+    <div class="card p-5 md:col-span-3">
+      <p class="font-semibold">What the room sees</p>
+      <p class="mt-1 text-sm text-ink-2">
+        Each step puts <span class="font-semibold text-ink">one plain sentence in large type</span>
+        on screen for the audience, with the longer line for you to say underneath it in small
+        type — so nobody is asked to read a paragraph while you talk over it. Every chapter
+        announces itself with a title card and what it proves, and after an action the result
+        stays on screen beside the thing that just changed, instead of a toast that vanishes.
+      </p>
+    </div>
   </section>
 
   {# --------------------------------------------------------- the script #}
@@ -90,7 +100,9 @@
     <header class="flex flex-wrap items-center gap-3 border-b border-line px-5 py-4">
       <div class="min-w-0 flex-1">
         <h2 class="font-bold">The script</h2>
-        <p class="text-sm text-ink-3">{{ steps|length }} steps in {{ chapters|length }} chapters. Start anywhere.</p>
+        <p class="text-sm text-ink-3">
+          {{ steps|length }} steps in {{ chapters|length }} chapters · about {{ chapters|sum(attribute="minutes") }} minutes end to end. Start anywhere.
+        </p>
       </div>
     </header>
 
@@ -99,18 +111,20 @@
       {% for s in steps %}
       {% if s.chapter != ns.chapter %}
       {% set ns.chapter = s.chapter %}
-      <li class="bg-surface-2 px-5 py-2.5">
-        <p class="text-xs font-bold uppercase tracking-wider text-brand">
-          {{ chapters | selectattr("key", "equalto", s.chapter) | map(attribute="label") | first }}
-        </p>
+      {% set ch = chapters | selectattr("key", "equalto", s.chapter) | first %}
+      <li class="flex flex-wrap items-baseline gap-x-3 gap-y-1 bg-surface-2 px-5 py-3">
+        <p class="text-xs font-bold uppercase tracking-wider text-brand">{{ ch.label }}</p>
+        <p class="font-mono text-xs text-ink-3">about {{ ch.minutes }} min</p>
+        <p class="w-full text-sm text-ink-2">{{ ch.proves }}</p>
       </li>
       {% endif %}
       <li class="flex flex-wrap items-baseline gap-x-4 gap-y-1 px-5 py-3 hover:bg-surface-2">
         <span class="w-6 font-mono text-xs text-ink-3">{{ "%02d"|format(loop.index) }}</span>
         <span class="min-w-0 flex-1">
-          <span class="font-semibold">{{ s.title }}</span>
+          {# The line the room reads off the screen — so it is the line listed here too. #}
+          <span class="font-semibold">{{ s.point }}</span>
           {% if s.action %}<span class="badge tone-brand ml-2">does the typing</span>{% endif %}
-          <span class="mt-0.5 block text-sm text-ink-3">{{ s.say|truncate(120) }}</span>
+          <span class="mt-0.5 block text-sm text-ink-3">{{ s.title }}</span>
         </span>
         <button type="button" class="btn btn-ghost btn-sm"
                 onclick="window.VyuhaTour.start({{ loop.index0 }})">Start here</button>
