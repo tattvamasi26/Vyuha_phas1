@@ -9,6 +9,10 @@
  * presenter speaks over it. A demo where the presenter reads a paragraph aloud is a demo
  * nobody in the room follows.
  *
+ * There is exactly one way through: Next. Chapters announce themselves on the card rather
+ * than interrupting with a title screen, because an extra click between chapters is seven
+ * extra clicks in front of a customer and buys nothing.
+ *
  * Three things it refuses to do:
  *   - trap the presenter: Pause puts the app back exactly as it was, and every action is
  *     optional — type it yourself if the room would rather watch you type;
@@ -24,7 +28,7 @@
   "use strict";
 
   var KEY = "vy-tour";
-  var state = { on: false, i: 0, paused: false, intro: false, result: null };
+  var state = { on: false, i: 0, paused: false, result: null, done: {} };
   var script = null;          // { steps, chapters, status } — fetched once per page
   var ui = null;              // the overlay, built lazily
   var pill = null;
@@ -37,9 +41,11 @@
       var raw = JSON.parse(localStorage.getItem(KEY) || "{}");
       return {
         on: !!raw.on, i: raw.i || 0, paused: !!raw.paused,
-        intro: !!raw.intro, result: raw.result || null
+        result: raw.result || null, done: raw.done || {}
       };
-    } catch (e) { return { on: false, i: 0, paused: false, intro: false, result: null }; }
+    } catch (e) {
+      return { on: false, i: 0, paused: false, result: null, done: {} };
+    }
   }
 
   function save() {
@@ -81,6 +87,7 @@
     card.innerHTML =
       '<div class="vt-rail" aria-hidden="true"></div>' +
       '<div class="vt-meta"><span class="vt-chapter"></span><span class="vt-where"></span></div>' +
+      '<p class="vt-chapline" hidden></p>' +
       '<p class="vt-point"></p>' +
       '<p class="vt-say"></p>' +
       '<p class="vt-result" hidden></p>' +
@@ -90,8 +97,7 @@
       '<button type="button" class="vt-back" aria-label="Previous step">&#8249;</button>' +
       '<button type="button" class="vt-next">Next</button>' +
       '<span class="vt-hint"></span>' +
-      '<select class="vt-jump" aria-label="Jump to a chapter"></select>' +
-      '<button type="button" class="vt-pause" title="Pause (Esc)">Pause</button>' +
+      '<button type="button" class="vt-pause" title="Pause — the app stays usable (Esc)">Pause</button>' +
       '<button type="button" class="vt-exit" title="End the demo">End</button>' +
       "</div>";
 
@@ -103,6 +109,7 @@
       rail: card.querySelector(".vt-rail"),
       chapter: card.querySelector(".vt-chapter"),
       where: card.querySelector(".vt-where"),
+      chapline: card.querySelector(".vt-chapline"),
       point: card.querySelector(".vt-point"),
       say: card.querySelector(".vt-say"),
       result: card.querySelector(".vt-result"),
@@ -112,19 +119,14 @@
       back: card.querySelector(".vt-back"),
       next: card.querySelector(".vt-next"),
       hint: card.querySelector(".vt-hint"),
-      jump: card.querySelector(".vt-jump"),
       pause: card.querySelector(".vt-pause"),
       exit: card.querySelector(".vt-exit")
     };
 
     ui.back.addEventListener("click", function () { go(state.i - 1); });
-    ui.next.addEventListener("click", function () { onNext(); });
+    ui.next.addEventListener("click", function () { go(state.i + 1); });
     ui.pause.addEventListener("click", pause);
     ui.exit.addEventListener("click", stop);
-    ui.jump.addEventListener("change", function () {
-      var i = parseInt(ui.jump.value, 10);
-      if (!isNaN(i)) go(i);
-    });
     return ui;
   }
 
@@ -169,8 +171,8 @@
     // Beside the target where there is room, below it otherwise, and never off-screen.
     var cw = u.card.offsetWidth, ch = u.card.offsetHeight;
     var left, top;
-    if (vw - r.right > cw + 28) left = r.right + 18;          // to its right
-    else if (r.left > cw + 28) left = r.left - cw - 18;       // to its left
+    if (vw - r.right > cw + 28) left = r.right + 18;
+    else if (r.left > cw + 28) left = r.left - cw - 18;
     else left = Math.max(12, Math.min(vw - cw - 12, r.left + r.width / 2 - cw / 2));
     top = r.top + r.height / 2 - ch / 2;
     top = Math.max(12, Math.min(vh - ch - 12, top));
@@ -180,7 +182,6 @@
 
   function reposition() {
     if (!ui || !state.on || state.paused) return;
-    if (state.intro) { place(null); return; }
     var s = step();
     if (!s) return;
     place(s.target ? document.querySelector(s.target) : null);
@@ -211,20 +212,6 @@
     });
   }
 
-  function fillJump() {
-    var u = build();
-    if (u.jump.options.length) return;
-    (script.chapters || []).forEach(function (c) {
-      var first = -1;
-      script.steps.forEach(function (s, i) { if (first < 0 && s.chapter === c.key) first = i; });
-      if (first < 0) return;
-      var opt = document.createElement("option");
-      opt.value = String(first);
-      opt.textContent = c.label;
-      u.jump.appendChild(opt);
-    });
-  }
-
   function showResult(u) {
     if (state.result && state.result.text) {
       u.result.hidden = false;
@@ -237,66 +224,42 @@
 
   // -------------------------------------------------------------- rendering
 
-  function renderIntro(s) {
-    var u = build();
-    u.card.classList.add("is-intro");
-    paintRail(s);
-    u.chapter.textContent = "Chapter " + s.chapter_index + " of " + s.chapter_total;
-    u.where.textContent = "about " + s.chapter_minutes + " min";
-    u.point.textContent = s.chapter_label;
-    u.say.textContent = s.chapter_blurb;
-    u.result.hidden = false;
-    u.result.className = "vt-result is-proves";
-    u.result.textContent = s.chapter_proves;
-    u.note.hidden = true;
-    u.doBtn.hidden = false;
-    u.doBtn.disabled = false;
-    u.doBtn.textContent = "Begin this chapter";
-    u.doBtn.onclick = function () {
-      state.intro = false;
-      save();
-      go(state.i, true);
-    };
-    u.back.disabled = state.i === 0;
-    u.next.textContent = "Skip chapter";
-    u.hint.textContent = "";
-    fillJump();
-    place(null);
-  }
-
   function offPath(s) {
     var u = build();
-    u.card.classList.remove("is-intro");
     paintRail(s);
     u.chapter.textContent = "Off the path";
     u.where.textContent = "";
+    u.chapline.hidden = true;
     u.point.textContent = "Carry on — nothing is lost.";
     u.say.textContent = 'When you want the demo back, it is waiting at "' + s.title + '".';
     u.result.hidden = true;
     u.note.hidden = true;
     u.doBtn.hidden = false;
     u.doBtn.disabled = false;
+    u.doBtn.className = "vt-do";
     u.doBtn.textContent = "Back to the demo";
-    u.doBtn.onclick = function () { window.location.href = s.path; };
+    u.doBtn.onclick = function () { window.location.href = s.page; };
     u.back.disabled = false;
     u.next.textContent = "Next";
     u.hint.textContent = "";
-    fillJump();
     place(null);
   }
 
   function render() {
     var s = step();
     if (!s) return;
-
-    if (state.intro) { renderIntro(s); return; }
-    if (s.path && s.path !== window.location.pathname) { offPath(s); return; }
+    if (s.page && s.page !== window.location.pathname) { offPath(s); return; }
 
     var u = build();
-    u.card.classList.remove("is-intro");
     paintRail(s);
     u.chapter.textContent = s.chapter_label;
     u.where.textContent = s.step_in_chapter + " of " + s.steps_in_chapter;
+
+    // A chapter says what it is and what it proves on its own first step — no title
+    // screen to click past.
+    u.chapline.hidden = !s.first_in_chapter;
+    u.chapline.textContent = s.first_in_chapter ? s.chapter_proves : "";
+
     u.point.textContent = s.point;
     u.say.textContent = s.say;
     showResult(u);
@@ -305,10 +268,12 @@
     u.noteText.textContent = s.note || "";
 
     if (s.action) {
+      var done = !!state.done[s.key];
       u.doBtn.hidden = false;
-      u.doBtn.disabled = false;
-      u.doBtn.textContent = s.action_label || "Do it";
-      u.doBtn.onclick = function () { act(s, u.doBtn); };
+      u.doBtn.disabled = done;
+      u.doBtn.className = "vt-do" + (done ? " is-done" : "");
+      u.doBtn.textContent = done ? "✓ Done" : (s.action_label || "Do it");
+      u.doBtn.onclick = done ? null : function () { act(s, u.doBtn); };
     } else {
       u.doBtn.hidden = true;
       u.doBtn.onclick = null;
@@ -316,13 +281,7 @@
 
     u.back.disabled = state.i === 0;
     u.next.textContent = state.i === script.steps.length - 1 ? "Finish" : "Next";
-    u.hint.textContent = "Step " + (s.i + 1) + " of " + script.steps.length;
-    fillJump();
-    var chapterStart = -1;
-    script.steps.forEach(function (st, i) {
-      if (st.chapter === s.chapter && chapterStart < 0) chapterStart = i;
-    });
-    u.jump.value = String(chapterStart);
+    u.hint.textContent = (s.i + 1) + " / " + script.steps.length;
 
     var el = s.target ? document.querySelector(s.target) : null;
     if (el && el.scrollIntoView) {
@@ -352,16 +311,17 @@
         }
         // Keep the proof on screen: the result is shown on whichever step the change
         // actually happened on, so the room sees the message and the changed page
-        // together rather than a toast that vanishes.
+        // together rather than a toast that vanishes. And the button will not run
+        // twice — a second import of the same file looks like a bug to a customer.
         state.result = { ok: true, text: res.message };
+        state.done[s.key] = true;
         script = null;                       // the slug may have only just come to exist
         load().then(function (fresh) {
           var dest = res.go || window.location.pathname;
-          var here = fresh.steps[state.i];
-          if (!here || here.path !== dest) {
-            // The action moved us on: land on the step that owns that address.
+          var cur = fresh.steps[state.i];
+          if (!cur || cur.page !== dest) {
             for (var n = state.i; n < fresh.steps.length; n++) {
-              if (fresh.steps[n].path === dest) { state.i = n; break; }
+              if (fresh.steps[n].page === dest) { state.i = n; break; }
             }
           }
           save();
@@ -378,55 +338,26 @@
 
   // -------------------------------------------------------------- the walk
 
-  function onNext() {
-    if (state.intro) {                       // "Skip chapter" — on to the next one
-      var s = step();
-      for (var n = state.i; n < script.steps.length; n++) {
-        if (script.steps[n].chapter !== s.chapter) { go(n); return; }
-      }
-      stop();
-      toast("Demo finished.", "ok");
-      return;
-    }
-    go(state.i + 1);
-  }
-
-  function go(i, keepIntro) {
+  function go(i) {
     if (!script || !script.steps.length) return;
     if (i >= script.steps.length) { stop(); toast("Demo finished.", "ok"); return; }
-    var forward = i > state.i;
     state.i = Math.max(0, i);
-    state.result = null;                     // a new step: last step's proof goes away
-    if (!keepIntro) {
-      // A chapter announces itself, but only on the way in — stepping back into one
-      // does not replay its title card.
-      var s = script.steps[state.i];
-      state.intro = !!(s.first_in_chapter && (forward || !state.on || state.intro));
-    }
+    state.result = null;                     // a new step: the last one's proof goes away
     state.on = true;
     save();
-    var target = script.steps[state.i];
-    if (!state.intro && target.path && target.path !== window.location.pathname) {
-      window.location.href = target.path;
+    var s = script.steps[state.i];
+    if (s.page && s.page !== window.location.pathname) {
+      window.location.href = s.page;
       return;
     }
     render();
   }
 
   function start(i) {
-    state = { on: true, i: i || 0, paused: false, intro: false, result: null };
+    state = { on: true, i: i || 0, paused: false, result: null, done: {} };
     save();
     hidePill();
-    load().then(function () {
-      var s = script.steps[state.i];
-      state.intro = !!(s && s.first_in_chapter);
-      save();
-      if (!state.intro && s && s.path && s.path !== window.location.pathname) {
-        window.location.href = s.path;
-        return;
-      }
-      render();
-    });
+    load().then(function () { go(state.i); });
   }
 
   function pause() {
@@ -437,11 +368,11 @@
   function resume() {
     state.paused = false; save();
     hidePill();
-    load().then(function () { go(state.i, true); });
+    load().then(function () { go(state.i); });
   }
 
   function stop() {
-    state = { on: false, i: 0, paused: false, intro: false, result: null };
+    state = { on: false, i: 0, paused: false, result: null, done: {} };
     save();
     teardown(); hidePill();
   }
@@ -462,7 +393,7 @@
     if (!state.on || state.paused || !ui) return;
     var t = e.target || {};
     if (/^(input|textarea|select)$/i.test(t.tagName || "") || t.isContentEditable) return;
-    if (e.key === "ArrowRight") { e.preventDefault(); onNext(); }
+    if (e.key === "ArrowRight") { e.preventDefault(); go(state.i + 1); }
     else if (e.key === "ArrowLeft") { e.preventDefault(); go(state.i - 1); }
     else if (e.key === "Escape") { e.preventDefault(); pause(); }
   });

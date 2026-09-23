@@ -138,6 +138,36 @@ def test_the_demo_fits_in_the_twenty_minutes_it_promises():
     assert 15 <= total <= 25, f"the walk claims {total} minutes"
 
 
+def test_the_opening_steps_work_before_the_business_exists():
+    """The bug that stranded the first minutes of every demo.
+
+    The opening lives on /studio and /studio/new, which exist whether or not the demo
+    business does. Blanking them because no slug was known yet meant Start navigated
+    nowhere and the first three steps talked about a screen nobody was looking at.
+    """
+    rows = demo_tour.steps_for("")
+    assert rows[0]["page"] == "/studio"
+    assert any(r["page"] == "/studio/new" for r in rows), "the create screen is unreachable"
+
+
+def test_a_step_that_needs_the_business_names_no_page_until_there_is_one():
+    rows = demo_tour.steps_for("")
+    needs_slug = [r for r in rows if "{slug}" in demo_tour.BY_KEY[r["key"]].path]
+    assert needs_slug
+    assert all(r["page"] == "" for r in needs_slug), \
+        "a step that needs the business must not guess somebody else's page"
+
+
+def test_every_step_knows_the_page_it_belongs_on():
+    """Half the script deliberately names no address — it carries on where the step
+    before it left off. Without an inherited page those steps cannot be jumped to."""
+    rows = demo_tour.steps_for("a-business")
+    lost = [r["key"] for r in rows if not r["page"]]
+    assert not lost, f"steps that cannot be started directly: {lost}"
+    carried = [r["key"] for r in rows if not r["path"]]
+    assert carried, "some steps should carry on where the last one left off"
+
+
 def test_the_script_tells_the_browser_where_it_is_in_the_journey():
     rows = demo_tour.steps_for("a-business")
     first = rows[0]

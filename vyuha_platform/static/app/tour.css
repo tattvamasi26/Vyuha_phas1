@@ -89,6 +89,19 @@
   white-space: nowrap;
 }
 
+/* A chapter announces itself on its own first step, in one line — rather than
+   interrupting the walk with a title screen somebody has to click past. */
+.vt-chapline {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--brand);
+  background: var(--brand-soft);
+  border-radius: 10px;
+  padding: 8px 12px;
+}
+
 /* ------------------------------------------------ what the room reads */
 
 .vt-point {
@@ -146,6 +159,16 @@
 .vt-do:hover { background: var(--brand-strong, var(--brand)); }
 .vt-do[disabled] { opacity: .6; cursor: progress; }
 
+/* Already run. It stays on screen so the room can see what was done, but it cannot
+   be pressed again — importing the same file twice looks like a bug to a customer. */
+.vt-do.is-done,
+.vt-do.is-done[disabled] {
+  background: var(--ok-soft);
+  color: var(--ok);
+  opacity: 1;
+  cursor: default;
+}
+
 /* -------------------------------------------------------------- controls */
 
 .vt-foot {
@@ -189,26 +212,6 @@
   white-space: nowrap;
 }
 
-.vt-jump {
-  max-width: 120px;
-  appearance: none;
-  text-overflow: ellipsis;
-}
-
-/* ------------------------------------------------- the chapter title card */
-
-.vt-card.is-intro {
-  width: min(560px, calc(100vw - 24px));
-  padding: 30px 34px 24px;
-  gap: 14px;
-  text-align: center;
-}
-.vt-card.is-intro .vt-meta { justify-content: center; gap: 10px; }
-.vt-card.is-intro .vt-point { font-size: 32px; line-height: 1.15; }
-.vt-card.is-intro .vt-say { font-size: 16px; }
-.vt-card.is-intro .vt-result { font-size: 14.5px; text-align: center; }
-.vt-card.is-intro .vt-hint { text-align: center; }
-
 /* Paused: the app is fully usable again and only this stays behind. */
 .vt-pill {
   left: 16px;
@@ -230,11 +233,9 @@
 
 @media (max-width: 640px) {
   .vt-card { width: calc(100vw - 16px); }
-  .vt-card.is-intro { padding: 22px 20px 18px; }
-  .vt-card.is-intro .vt-point { font-size: 25px; }
+  .vt-point { font-size: 19px; }
   .vt-foot { flex-wrap: wrap; }
   .vt-hint { order: 9; width: 100%; }
-  .vt-jump { max-width: 100%; flex: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {

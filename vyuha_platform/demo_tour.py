@@ -313,13 +313,31 @@ CHAPTER_BY_KEY = {c.key: c for c in CHAPTERS}
 def steps_for(slug: str) -> list[dict]:
     """The script with the demo business's slug filled in, ready for the browser.
 
-    Each step also carries where it sits in the walk — which chapter, how far through —
-    so the overlay can show progress without recomputing it on every render.
+    Two things are resolved here rather than in the browser, because getting either wrong
+    strands a presenter mid-demo:
+
+    * **A path that needs no business still works before there is one.** The first steps
+      live on ``/studio`` and ``/studio/new``, which exist whether or not the demo business
+      has been created — blanking them because the slug was not known yet left the opening
+      of every demo sitting on the wrong page.
+    * **Every step knows the page it belongs on** (``page``), inherited from the last step
+      that named one. Half the script deliberately says nothing about the address because
+      it carries on where the step before it left off, and without this those steps could
+      not be jumped to from the control page at all.
     """
     order = [c.key for c in CHAPTERS]
     seen: set[str] = set()
+    page = ""
     out = []
     for i, s in enumerate(STEPS):
+        path = s.path
+        if "{slug}" in path:
+            # Needs the business. Unresolvable until it exists, and inheriting the page
+            # before it would send somebody to the wrong screen confidently.
+            path = path.replace("{slug}", slug) if slug else ""
+            page = path
+        elif path:
+            page = path
         chapter = CHAPTER_BY_KEY[s.chapter]
         first = s.chapter not in seen
         seen.add(s.chapter)
@@ -337,7 +355,10 @@ def steps_for(slug: str) -> list[dict]:
             "first_in_chapter": first,
             "step_in_chapter": in_chapter.index(s) + 1,
             "steps_in_chapter": len(in_chapter),
-            "path": s.path.replace("{slug}", slug) if s.path and slug else "",
+            #: What this step itself names — empty means "carry on where we are".
+            "path": path,
+            #: The page it belongs on, inherited. This is what the overlay navigates to.
+            "page": page,
             "target": s.target, "action": s.action, "action_label": s.action_label,
         })
     return out
